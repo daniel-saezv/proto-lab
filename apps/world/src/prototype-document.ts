@@ -1,35 +1,16 @@
-const BOOT = `<script>
+const BRIDGE = `<script>
+window.addEventListener("error",function(event){if(!event.message)return;parent.postMessage({source:"proto-lab",type:"error",message:String(event.message)},"*");});
 window.addEventListener("keydown",function(event){if(event.key==="Escape"){event.preventDefault();parent.postMessage({source:"proto-lab",type:"close"},"*");}});
-window.addEventListener("message",function(event){
-  if(event.source!==window.parent)return;
-  var data=event.data;
-  if(!data||data.source!=="proto-lab"||data.type!=="boot"||!Array.isArray(data.scripts))return;
-  var chain=Promise.resolve();
-  data.scripts.forEach(function(script){
-    chain=chain.then(function(){
-      var url=URL.createObjectURL(new Blob([script.code],{type:"text/javascript"}));
-      if(script.type==="module")return import(url);
-      return new Promise(function(resolve,reject){
-        var el=document.createElement("script");
-        el.src=url;
-        el.onload=function(){resolve();};
-        el.onerror=function(){reject(new Error("script"));};
-        document.head.appendChild(el);
-      });
-    });
-  });
-  chain.catch(function(error){parent.postMessage({source:"proto-lab",type:"error",message:String(error)},"*");});
-});
-parent.postMessage({source:"proto-lab",type:"ready"},"*");
+parent.postMessage({source:"proto-lab",type:"alive"},"*");
 </script>`;
-
-export type PrototypeScript = { type: "module" | "classic"; code: string };
-
-export type EmbeddedPrototype = { html: string; scripts: PrototypeScript[] };
 
 const SCRIPT_TAG = /<script\b([^>]*?)\bsrc\s*=\s*["']([^"']+)["']([^>]*)>\s*<\/script>/gi;
 const MODULE_PRELOAD = /<link\b[^>]*\brel\s*=\s*["']modulepreload["'][^>]*>\s*/gi;
 const LINK_TAG = /<link\b([^>]*)>/gi;
+
+export function escapeInlineScript(code: string): string {
+  return code.replace(/<\/script/gi, "<\\/script");
+}
 
 function sameOrigin(url: URL, base: URL): boolean {
   return url.origin === base.origin;
@@ -55,17 +36,16 @@ export function collectSameOriginAssets(html: string, pageUrl: string): string[]
   return [...urls];
 }
 
-export function rewritePrototypeHtml(html: string, assets: ReadonlyMap<string, string>, pageUrl: string): EmbeddedPrototype {
+export function rewritePrototypeHtml(html: string, assets: ReadonlyMap<string, string>, pageUrl: string): string {
   const base = new URL(pageUrl);
-  const scripts: PrototypeScript[] = [];
+  const blocks: string[] = [];
   let output = html.replace(MODULE_PRELOAD, "");
-  output = output.replace(SCRIPT_TAG, (full, before: string, src: string, after: string) => {
+  output = output.replace(SCRIPT_TAG, (full, _before: string, src: string) => {
     const url = new URL(src, base);
     if (!sameOrigin(url, base)) return full;
     const code = assets.get(url.href);
     if (code == null) throw new Error(`Falta el script ${url.pathname}`);
-    const type = /type\s*=\s*["']module["']/i.test(`${before} ${after}`) ? "module" : "classic";
-    scripts.push({ type, code });
+    blocks.push(`<script>${escapeInlineScript(code)}</script>`);
     return "";
   });
   output = output.replace(LINK_TAG, (full, attrs: string) => {
@@ -78,25 +58,39 @@ export function rewritePrototypeHtml(html: string, assets: ReadonlyMap<string, s
     if (css == null) throw new Error(`Falta el CSS ${url.pathname}`);
     return `<style>${css.replace(/<\/style/gi, "<\\/style")}</style>`;
   });
-  if (/<head\b/i.test(output)) output = output.replace(/<head\b([^>]*)>/i, `<head$1>${BOOT}`);
-  else output = BOOT + output;
-  return { html: output, scripts };
+  if (blocks.length === 0) throw new Error("not-prototype");
+  const scripts = blocks.join("");
+  if (/<\/body>/i.test(output)) output = output.replace(/<\/body>/i, () => `${scripts}</body>`);
+  else output += scripts;
+  if (/<head\b/i.test(output)) return output.replace(/<head\b([^>]*)>/i, `<head$1>${BRIDGE}`);
+  return BRIDGE + output;
 }
 
-async function fetchText(url: string, fetchImpl: typeof fetch, expectHtml: boolean): Promise<string> {
-  const response = await fetchImpl(url, { credentials: "include", redirect: "manual" });
-  if (response.type === "opaqueredirect" || !response.ok) throw new Error("blocked");
-  const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
-  if (!expectHtml && contentType.includes("text/html")) throw new Error("blocked");
-  return response.text();
-}
-
-export async function fetchPrototypeDocument(href: string, fetchImpl: typeof fetch = fetch): Promise<EmbeddedPrototype> {
-  const pageUrl = new URL(href, location.origin).href;
-  const html = await fetchText(pageUrl, fetchImpl, true);
-  const assets = new Map<string, string>();
-  for (const url of collectSameOriginAssets(html, pageUrl)) {
-    assets.set(url, await fetchText(url, fetchImpl, false));
+async function fetchText(url: string, fetchImpl: typeof fetch, pageOrigin: string, expectHtml: boolean): Promise<string> {
+  const response = await fetchImpl(url, { credentials: "include", redirect: "follow" });
+  if (!response.ok) throw new Error("blocked");
+  let finalUrl: URL;
+  try {
+    finalUrl = new URL(response.url);
+  } catch {
+    throw new Error("blocked");
   }
-  return rewritePrototypeHtml(html, assets, pageUrl);
+  if (finalUrl.origin !== pageOrigin) throw new Error("blocked");
+  const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+  if (!expectHtml && (contentType.includes("text/html") || contentType.includes("text/plain"))) throw new Error("blocked");
+  const text = await response.text();
+  if (/cloudflareaccess\.com/i.test(text.slice(0, 2000)) && !text.includes("data-testid=\"game-title\"")) {
+    throw new Error("blocked");
+  }
+  return text;
+}
+
+export async function fetchPrototypeDocument(href: string, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const pageUrl = new URL(href, location.origin);
+  const html = await fetchText(pageUrl.href, fetchImpl, pageUrl.origin, true);
+  const assets = new Map<string, string>();
+  for (const url of collectSameOriginAssets(html, pageUrl.href)) {
+    assets.set(url, await fetchText(url, fetchImpl, pageUrl.origin, false));
+  }
+  return rewritePrototypeHtml(html, assets, pageUrl.href);
 }

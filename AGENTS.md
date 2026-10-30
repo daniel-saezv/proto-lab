@@ -27,7 +27,7 @@ TypeScript, Vite 7 y pnpm 10 (workspaces). El laboratorio usa Three.js 0.186 (ge
 
 El service worker cachea la shell y los assets del mundo. No intercepta `/protos/` ni `/api/`.
 
-El laboratorio no navega el iframe a `/protos/<slug>/`. Esa navegación, con `sandbox="allow-scripts"` y sin `allow-same-origin`, deja el documento en un origen opaco: el HTML puede entrar, pero el módulo se pide con `Origin: null` y sin la cookie `CF_Authorization`, y Cloudflare Access lo corta. En su lugar, la página del laboratorio (que ya pasó Access) descarga el HTML y los scripts y CSS del mismo origen. El HTML va a un iframe `srcdoc` con solo `allow-scripts`; el JS viaja por `postMessage` y se ejecuta con `import()` de un blob creado dentro del iframe. El prototipo no puede leer el DOM, las cookies ni el almacenamiento del laboratorio. No se añade `allow-same-origin` ni `allow-top-navigation`.
+El laboratorio no deja que el iframe pida `/protos/<slug>/` por su cuenta. Con `sandbox="allow-scripts"` el origen es opaco: el módulo saldría con `Origin: null` y sin `CF_Authorization`, y Access lo manda al PIN. En iOS un `srcdoc` aislado además puede quedarse en blanco. La página del laboratorio, que ya pasó Access, descarga el HTML y el JS, incrusta el JS como script clásico y carga ese documento en un iframe cuyo `src` es un `blob:` con solo `allow-scripts`. El prototipo no puede leer el DOM, las cookies ni el almacenamiento del laboratorio. No se añade `allow-same-origin` ni `allow-top-navigation`. Si la descarga no es el prototipo (redirección a Access, HTML de login), no se monta el iframe y se muestra el error con Volver.
 
 Un prototipo tiene que quedar autocontenido en ese HTML: Vite empaqueta el JS en el archivo que referencia `index.html`. No debe depender de más peticiones al arrancar (`import()` dinámico, imágenes, audio o `fetch` al propio sitio). Esas peticiones salen del origen opaco, sin la cookie de Access, y Access las rechaza. `base` sigue siendo `/protos/<slug>/`.
 
@@ -37,11 +37,11 @@ El catálogo no se edita a mano. `apps/world/src/generated/catalog.json` y `func
 
 Comandos comprobados en este repositorio (Node 22.23, pnpm 10.33.4):
 
-- Instalación: `corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium`
+- Instalación: `corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit`
 - Build: `pnpm build` → sitio estático en `dist/` (`/` el laboratorio, `/protos/chispa/` el ejemplo)
 - Typecheck: `pnpm typecheck`
 - Tests unitarios: `pnpm test:unit`
-- Tests e2e: `pnpm test:e2e` (hace falta el build antes; Playwright arranca `pnpm preview` en el puerto 4173)
+- Tests e2e: `pnpm test:e2e` (hace falta el build antes; Playwright arranca `pnpm preview` en el puerto 4173; Chromium y WebKit con perfil de iPhone)
 - Arranque de producción local: `pnpm preview` → `http://127.0.0.1:4173`
 - Arranque con recarga: `pnpm dev` → laboratorio en el puerto 5173, sirviendo los prototipos ya construidos
 

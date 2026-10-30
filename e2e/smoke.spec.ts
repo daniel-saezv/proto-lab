@@ -113,14 +113,12 @@ test("en el móvil aparece el joystick", async ({ browser }) => {
 
 async function simulateAccess(page: import("@playwright/test").Page) {
   await page.route("**/protos/**", async (route) => {
-    const headers = route.request().headers();
-    const origin = headers.origin ?? "";
-    const cookie = headers.cookie ?? "";
-    if (origin === "null" || !cookie.includes("CF_Authorization=")) {
+    const origin = route.request().headers().origin ?? "";
+    if (origin === "null") {
       await route.fulfill({
         status: 302,
-        headers: { location: "https://proto-lab-3k6.cloudflareaccess.com/cdn-cgi/access/login" },
-        body: "<!doctype html><title>Access</title><p>login</p>",
+        headers: { location: "https://ancient-waterfall-b3eb.cloudflareaccess.com/cdn-cgi/access/login" },
+        body: "<!doctype html><title>Access</title>",
       });
       return;
     }
@@ -176,7 +174,13 @@ test("Escape dentro del prototipo vuelve al laboratorio", async ({ page }) => {
 test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browser }) => {
   const context = await browser.newContext({ ...devices["Pixel 7"], locale: "es-ES" });
   const page = await context.newPage();
-  await simulateAccess(page);
+  await page.route("**/protos/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html; charset=utf-8",
+      body: "<!doctype html><html><body style=\"background:#fff\"><p>Iniciar sesión en Cloudflare Access</p></body></html>",
+    });
+  });
   await openChispa(page);
   await expect(page.getByTestId("prototype-error")).toBeVisible();
   await expect(page.locator("iframe")).toHaveCount(0);

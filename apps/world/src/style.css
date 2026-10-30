@@ -189,20 +189,31 @@ body.prototype-open #labels {
   background: #0e1224;
   flex-direction: column;
   overflow: hidden;
-  padding-top: env(safe-area-inset-top);
+  padding-top: calc(64px + env(safe-area-inset-top));
   padding-bottom: env(safe-area-inset-bottom);
 }
 #stage:not([hidden]) { display: flex; }
 .prototype-chrome {
-  position: relative;
-  z-index: 2;
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
   touch-action: manipulation;
   background: #0e1224;
+}
+.prototype-banner {
+  flex: 1 0 100%;
+  margin: 0;
+  color: #f6f1e7;
+  background: #5c2a2a;
+  border-radius: 12px;
+  padding: 10px 12px;
 }
 .prototype-chrome h1 { flex: 1; margin: 0; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prototype-frame {
