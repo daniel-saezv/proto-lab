@@ -1,0 +1,17 @@
+{
+  "slug": "chispa",
+  "title": "Atrapa la chispa",
+  "description": "Minijuego táctil: mueve el frasco y atrapa las chispas antes de que se apaguen. En el escritorio también vale el teclado.",
+  "author": "daniel-saezv",
+  "date": "2026-10-30",
+  "tags": ["arcade", "phaser", "movil"],
+  "cover": null,
+  "version": "0.1.0",
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-10-30",
+      "note": "Primera versión jugable, con controles táctiles y de teclado."
+    }
+  ]
+}

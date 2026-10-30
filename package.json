@@ -1,0 +1,27 @@
+{
+  "name": "proto-lab",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "generate": "node scripts/generate-catalog.mjs",
+    "dev": "pnpm generate && pnpm --filter @proto-lab/chispa build && pnpm --filter @proto-lab/world dev",
+    "build": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa build && node scripts/assemble.mjs",
+    "preview": "pnpm --filter @proto-lab/world preview",
+    "typecheck": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa typecheck && tsc -p functions/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
+    "test:unit": "pnpm generate && vitest run",
+    "test:e2e": "playwright test",
+    "test": "pnpm test:unit && pnpm test:e2e",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261030.1",
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

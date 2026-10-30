@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#14182b" />
+    <meta name="description" content="Laboratorio privado de prototipos" />
+    <meta name="robots" content="noindex" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Proto Lab" />
+    <title>Proto Lab</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #14182b; color: #f6f1e7; font-family: "Segoe UI", sans-serif; }
+      #boot { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; }
+      .boot-spark { width: 18px; height: 18px; margin: 0 auto 16px; border-radius: 50%; background: #ffb703; box-shadow: 0 0 24px #ffb703; }
+    </style>
+  </head>
+  <body>
+    <div id="boot" data-testid="loading">
+      <div>
+        <div class="boot-spark"></div>
+        <p>Encendiendo el laboratorio…</p>
+      </div>
+    </div>
+    <div id="shell" hidden>
+      <p class="sr-only">Laboratorio en tres dimensiones. Camina con WASD o el joystick, mira arrastrando y pulsa E o el botón para usar lo que tengas delante.</p>
+      <div id="viewport"></div>
+      <div id="labels"></div>
+      <p id="hint" data-testid="hint"></p>
+      <button id="interact" type="button" data-testid="interact" hidden></button>
+      <div id="joystick" data-testid="joystick" hidden><div id="knob"></div></div>
+      <div id="dialogue" data-testid="dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="dialogue-name"></div>
+      <div id="stage" data-testid="prototype-player" hidden></div>
+      <div id="fallback" data-testid="fallback" hidden></div>
+    </div>
+    <noscript><p>Proto Lab necesita JavaScript para encender el laboratorio.</p></noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

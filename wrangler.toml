@@ -1,0 +1,10 @@
+# Pages Functions. El despliegue lo hace la integración Git de Cloudflare Pages,
+# no GitHub Actions. El comando de build y el directorio de salida se configuran
+# en el panel y deben coincidir con este archivo.
+name = "proto-lab-3k6"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-30"
+
+# El KV del límite diario no va aquí: el id del namespace es de la cuenta.
+# En el panel: Settings → Bindings → KV namespace, variable PROPOSALS.
+# Sin ese binding la función acepta propuestas y no aplica el límite diario.

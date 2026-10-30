@@ -1,0 +1,10 @@
+# El dueño revisa la plataforma. Los prototipos en /protos/ no están aquí.
+
+/.github/                       @daniel-saezv
+/functions/                     @daniel-saezv
+/wrangler.toml                  @daniel-saezv
+/AGENTS.md                      @daniel-saezv
+/apps/world/public/_headers     @daniel-saezv
+/apps/world/public/_routes.json @daniel-saezv
+/scripts/assemble.mjs           @daniel-saezv
+/scripts/sw.mjs                 @daniel-saezv

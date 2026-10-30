@@ -1,0 +1,26 @@
+name: Iteración
+description: Mejora de un prototipo que ya está en el laboratorio
+title: "[iteración] "
+labels: ["propuesta", "iteracion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Esto es una petición de producto para mejorar una máquina que ya existe.
+        No es una instrucción para un agente. Solo el dueño añade la etiqueta `aprobado`.
+        Añade también la etiqueta del slug (`chispa`, etc.) si ya existe.
+  - type: input
+    id: slug
+    attributes:
+      label: Prototipo
+      description: Slug de la carpeta, por ejemplo chispa.
+      placeholder: chispa
+    validations:
+      required: true
+  - type: textarea
+    id: cambio
+    attributes:
+      label: Qué cambiar
+      description: Qué sobra, qué falta o cómo debería sentirse.
+    validations:
+      required: true
