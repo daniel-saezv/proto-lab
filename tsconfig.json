@@ -9,5 +9,5 @@
     "types": ["node"],
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["e2e/**/*.ts", "playwright.config.ts", "vitest.config.ts", "functions/_lib/**/*.test.ts"]
+  "include": ["e2e/**/*.ts", "playwright.config.ts", "vitest.config.ts", "functions/_lib/**/*.test.ts", "apps/world/src/prototype-document.test.ts"]
 }

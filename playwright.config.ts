@@ -11,9 +11,6 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:4173",
     locale: "es-ES",
     viewport: { width: 1280, height: 720 },
-    launchOptions: {
-      args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"],
-    },
   },
   webServer: {
     command: "pnpm preview",
@@ -24,7 +21,16 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: {
+          args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"],
+        },
+      },
+    },
+    {
+      name: "webkit-iphone",
+      use: { ...devices["iPhone 13"] },
     },
   ],
 });
