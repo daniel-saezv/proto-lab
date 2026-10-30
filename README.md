@@ -38,6 +38,10 @@ Crea `protos/<slug>/` con su `package.json`, su build de Vite (`base` en `/proto
 
 `pnpm build` lee esos manifiestos, publica el laboratorio en `/` y cada prototipo en `/protos/<slug>/`. El mundo coloca una máquina por manifiesto. Crea también la etiqueta de GitHub con el slug para que las iteraciones puedan llevarla.
 
+Al jugar desde el laboratorio, la app —que ya pasó Access— descarga el `index.html` del prototipo y el JS y el CSS del mismo origen. El HTML entra en un iframe `srcdoc` con `sandbox` solo `allow-scripts` (sin el mismo origen) y el JS se ejecuta desde un blob creado dentro de ese iframe. Así el juego arranca detrás de Cloudflare Access: si el iframe pidiera el módulo por su cuenta, la petición saldría con origen `null` y sin la cookie `CF_Authorization`, Access la mandaría al PIN y el juego se quedaría en el fondo. El prototipo no ve las cookies ni el DOM del laboratorio.
+
+Tiene que ser una página autocontenida. El build de Vite (un JS referenciado por el HTML, y el CSS si lo hay) es el formato esperado. No añadas imágenes, audio, `import()` dinámicos ni `fetch` al propio sitio para que el juego arranque: desde el iframe aislado esas peticiones no llevan la sesión y Access las corta. Abrir `/protos/<slug>/` en una pestaña sigue funcionando, porque ahí la navegación sí lleva la cookie.
+
 ## Cloudflare Pages
 
 El proyecto ya está conectado al repositorio. No hace falta cambiar el build:
@@ -59,7 +63,7 @@ Hostnames:
 
 Access con PIN de un solo uso cubre los dos. La Function lee el email de `Cf-Access-Authenticated-User-Email`. Esa cabecera solo es de fiar porque Access está delante de producción y de las previews; sin eso, cualquiera podría falsificarla. No definas `ALLOW_DEV_AUTH` en Pages: es solo para probar la Function en local.
 
-Los assets de `/protos/*` responden `Access-Control-Allow-Origin: *` para que el `iframe` aislado (origen `null`) pueda cargar el JavaScript del prototipo. No abre la API ni la ventana principal. La app en sí solo se sirve en los hostnames de arriba.
+La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/protos/*` no basta para saltarse Access: sin la cookie, el PIN sigue delante. Por eso el laboratorio incrusta el prototipo en vez de dejar que el iframe lo pida solo.
 
 ### Pendiente en el panel
 

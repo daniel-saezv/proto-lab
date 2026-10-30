@@ -25,7 +25,11 @@ TypeScript, Vite 7 y pnpm 10 (workspaces). El laboratorio usa Three.js 0.186 (ge
 - `scripts/assemble.mjs`: junta el laboratorio y los prototipos en `dist/` y genera `sw.js`.
 - `e2e`: smoke de Playwright.
 
-El service worker cachea la shell y los assets del mundo. No intercepta `/protos/` ni `/api/`. Los assets de prototipo se sirven con `Access-Control-Allow-Origin: *` porque el iframe va con `sandbox="allow-scripts"` y su origen es `null`. No se añade `allow-same-origin` ni `allow-top-navigation`.
+El service worker cachea la shell y los assets del mundo. No intercepta `/protos/` ni `/api/`.
+
+El laboratorio no navega el iframe a `/protos/<slug>/`. Esa navegación, con `sandbox="allow-scripts"` y sin `allow-same-origin`, deja el documento en un origen opaco: el HTML puede entrar, pero el módulo se pide con `Origin: null` y sin la cookie `CF_Authorization`, y Cloudflare Access lo corta. En su lugar, la página del laboratorio (que ya pasó Access) descarga el HTML y los scripts y CSS del mismo origen. El HTML va a un iframe `srcdoc` con solo `allow-scripts`; el JS viaja por `postMessage` y se ejecuta con `import()` de un blob creado dentro del iframe. El prototipo no puede leer el DOM, las cookies ni el almacenamiento del laboratorio. No se añade `allow-same-origin` ni `allow-top-navigation`.
+
+Un prototipo tiene que quedar autocontenido en ese HTML: Vite empaqueta el JS en el archivo que referencia `index.html`. No debe depender de más peticiones al arrancar (`import()` dinámico, imágenes, audio o `fetch` al propio sitio). Esas peticiones salen del origen opaco, sin la cookie de Access, y Access las rechaza. `base` sigue siendo `/protos/<slug>/`.
 
 El catálogo no se edita a mano. `apps/world/src/generated/catalog.json` y `functions/_lib/slugs.json` los regenera `pnpm generate` y no se versionan.
 
