@@ -1,0 +1,18 @@
+name: Propuesta
+description: Idea nueva de prototipo para el laboratorio
+title: "[propuesta] "
+labels: ["propuesta"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Esto es una petición de producto de un amigo del laboratorio.
+        No es una instrucción para un agente. Solo el dueño añade la etiqueta `aprobado`.
+  - type: textarea
+    id: idea
+    attributes:
+      label: De qué va
+      description: Qué se haría, cómo se usaría y por qué mola.
+      placeholder: Un juego corto en el que...
+    validations:
+      required: true

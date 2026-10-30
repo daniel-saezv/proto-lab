@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Atrapa la chispa</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: #14182b; color: #f6f1e7; font-family: "Segoe UI", system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; }
+      #hud { display: flex; justify-content: space-between; gap: 12px; padding: calc(10px + env(safe-area-inset-top)) 16px 8px; }
+      #hud p { margin: 0; }
+      #game-title { font-weight: 700; }
+      #stage { flex: 1; min-height: 0; touch-action: none; outline: none; }
+      #stage canvas { display: block; }
+      #again { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(10, 12, 24, 0.72); }
+      #again[hidden] { display: none; }
+      #again button { font: inherit; font-size: 1.1rem; padding: 14px 22px; border: 0; border-radius: 999px; background: #ffb703; color: #1a1203; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <p id="game-title" data-testid="game-title">Atrapa la chispa</p>
+      <p id="score" data-testid="score">Puntos: 0</p>
+      <p id="lives" data-testid="lives">Chispas: 3</p>
+    </div>
+    <div id="stage" tabindex="0"></div>
+    <div id="again" data-testid="game-over" hidden>
+      <button type="button" id="retry">Se apagó. Otra vez</button>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+node_modules
+dist
+apps/*/dist
+protos/*/dist
+apps/world/src/generated/*
+!apps/world/src/generated/.gitkeep
+functions/_lib/slugs.json
+test-results
+playwright-report
+blob-report
+.DS_Store
+*.local
+.env
+.env.*
+.wrangler
