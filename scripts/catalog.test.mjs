@@ -32,11 +32,10 @@ describe("service worker", () => {
     expect(source).not.toContain("/protos/chispa/");
   });
 
-  it("no precarga pistas de música del lobby", () => {
+  it("no precarga la música del lobby", () => {
     const source = renderServiceWorker(["/assets/app.js", "/index.html", "/sw.js"]);
-    expect(source).not.toContain("life-in-fragments");
-    expect(source).not.toContain("luanda.m4a");
-    expect(source).not.toContain("lemonade.m4a");
+    expect(source).not.toContain(".m4a");
+    expect(isShellPath("/protos/audio/luanda.m4a")).toBe(false);
   });
 
   it("pide que los prototipos no se cacheen en el borde", () => {

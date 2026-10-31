@@ -40,6 +40,38 @@ export function applyLook(delta: number, sensitivity: number, maxRadians: number
   return Math.min(maxRadians, Math.max(-maxRadians, radians));
 }
 
+/**
+ * El stick táctil mantiene una deflexión, no un desplazamiento de píxeles.
+ * A 60 Hz esa deflexión por la sensibilidad era el paso de un fotograma;
+ * multiplicar por esta referencia la convierte en rad/s para que 120 Hz
+ * no gire el doble.
+ */
+export const TOUCH_LOOK_REF_HZ = 60;
+/** Seguir la velocidad objetivo. ~6 da ataque y frenada de unas dos décimas. */
+export const TOUCH_LOOK_FOLLOW = 6;
+
+export function lookRateFromDeflection(deflection: number, sensitivity: number, refHz = TOUCH_LOOK_REF_HZ): number {
+  return deflection * sensitivity * refHz;
+}
+
+/**
+ * Recorta la velocidad al acercarse a un tope. En el borde queda en cero,
+ * así el pitch no golpea el clamp.
+ */
+export function softenTowardLimit(
+  angle: number,
+  velocity: number,
+  min: number,
+  max: number,
+  zone: number,
+): number {
+  if (!(zone > 0) || velocity === 0) return velocity;
+  const room = velocity > 0 ? max - angle : angle - min;
+  if (room >= zone) return velocity;
+  if (room <= 0) return 0;
+  return velocity * (room / zone);
+}
+
 export function dampAngle(current: number, target: number, dt: number, sharpness = 8): number {
   let diff = target - current;
   while (diff > Math.PI) diff -= Math.PI * 2;
