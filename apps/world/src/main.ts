@@ -8,8 +8,10 @@ import { createInstallHelp, type DeferredInstallPrompt } from "./install-help";
 import { createOverlay } from "./overlay";
 import { createProposalStatusPoller, lobbyPollActive } from "./proposals-status-poller";
 import { fetchProposalStatus } from "./proposals-status-api";
-import type { WhiteboardStatusController } from "./whiteboard-status";
+import { readPrototypeSlugFromHash, writePrototypeHash } from "./proto-deep-link";
+import { isPrototypeUnseen, markPrototypeSeen } from "./proto-version-seen";
 import type { CatalogEntry } from "./types";
+import type { WhiteboardStatusController } from "./whiteboard-status-types";
 import "./style.css";
 
 const catalogPrototypes = catalogFile.prototypes as CatalogEntry[];
@@ -87,13 +89,29 @@ const dialogue = createDialogue({
   onClose: restoreWorldInput,
 });
 
-const overlay = createOverlay(stage, () => {
-  inputEnabled = true;
-  world?.setInputEnabled(true);
-  world?.setSelectorOpen(false);
-  music.setPaused(document.visibilityState !== "visible");
-  statusPoller.refresh();
-});
+const overlay = createOverlay(
+  stage,
+  () => {
+    inputEnabled = true;
+    world?.setInputEnabled(true);
+    world?.setSelectorOpen(false);
+    music.setPaused(document.visibilityState !== "visible");
+    statusPoller.refresh();
+  },
+  {
+    onOpenEntry: (entry) => {
+      markPrototypeSeen(entry.slug, entry.version);
+      writePrototypeHash(entry.slug);
+    },
+    onClosed: () => {
+      writePrototypeHash(null);
+    },
+    onSuggestImprovement: (entry) => {
+      overlay.close();
+      dialogue.openIteration(entry.slug);
+    },
+  },
+);
 
 function openPrototype(entry: CatalogEntry) {
   music.setPaused(true);
@@ -138,11 +156,31 @@ function flushProposalStatusToBoards() {
   applyProposalStatus(latestProposalStatus.items, latestProposalStatus.partial);
 }
 
+function tryOpenDeepLink() {
+  const slug = readPrototypeSlugFromHash();
+  if (!slug) return;
+  const entry = catalogPrototypes.find((item) => item.slug === slug && !item.hidden);
+  if (!entry) {
+    writePrototypeHash(null);
+    return;
+  }
+  if (selector.isOpen()) selector.close();
+  world?.setSelectorOpen(false);
+  inputEnabled = false;
+  world?.setInputEnabled(false);
+  interact.hidden = true;
+  openPrototype(entry);
+}
+
 let world: import("./world").WorldHandle | null = null;
 
 const selector = createGameSelector({
   root: selectorRoot,
   prototypes: visiblePrototypes,
+  isPrototypeUnseen: (slug) => {
+    const entry = visiblePrototypes.find((item) => item.slug === slug);
+    return entry ? isPrototypeUnseen(slug, entry.version) : false;
+  },
   onHighlight: (index) => world?.setArcadeHighlight(index),
   onPlay: (entry) => {
     selector.close();
@@ -218,6 +256,7 @@ async function bootWorld() {
       },
     });
     finishBoot();
+    tryOpenDeepLink();
     return;
   }
   try {
@@ -230,10 +269,15 @@ async function bootWorld() {
         ? { zoneMove: touchZoneMove, zoneLook: touchZoneLook, activeMarker: joystickMarker }
         : undefined,
       e2e,
+      isPrototypeUnseen: (slug) => {
+        const entry = visiblePrototypes.find((item) => item.slug === slug);
+        return entry ? isPrototypeUnseen(slug, entry.version) : false;
+      },
       onReady: () => {
         viewport.dataset.testid = "world-ready";
         finishBoot();
         statusPoller.refresh();
+        tryOpenDeepLink();
       },
       onE2eReady: () => {
         if (!window.__protoLab) return;
@@ -294,6 +338,7 @@ async function bootWorld() {
 
 function finishBoot() {
   boot.hidden = true;
+  boot.style.display = "none";
   if (import.meta.env.PROD && !e2e && "serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
@@ -316,3 +361,8 @@ function must<T extends HTMLElement>(selector: string): T {
 }
 
 void bootWorld();
+
+window.addEventListener("hashchange", () => {
+  if (overlay.isOpen() || !boot.hasAttribute("hidden")) return;
+  tryOpenDeepLink();
+});

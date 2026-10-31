@@ -1,5 +1,5 @@
 import type { CatalogEntry } from "./types";
-import { createWhiteboardStatus, type WhiteboardStatusController } from "./whiteboard-status";
+import type { WhiteboardStatusController } from "./whiteboard-status-types";
 
 export function showFallback(options: {
   root: HTMLElement;
@@ -21,8 +21,12 @@ export function showFallback(options: {
   const boardHeading = document.createElement("h2");
   boardHeading.textContent = "Tablón de propuestas";
   boardSection.append(boardHeading);
-  const whiteboard = createWhiteboardStatus({ attachTo: boardSection });
-  options.onWhiteboardReady?.(whiteboard);
+
+  void import("./whiteboard-status").then(({ createWhiteboardStatus }) => {
+    if (!boardSection.isConnected) return;
+    const whiteboard = createWhiteboardStatus({ attachTo: boardSection });
+    options.onWhiteboardReady?.(whiteboard);
+  });
 
   const actions = document.createElement("div");
   actions.className = "fallback-actions";

@@ -301,8 +301,21 @@ export function createDialogue(options: {
     render();
   }
 
+  function openIteration(slug: string) {
+    const entry = prototypeBySlug(slug);
+    if (!entry) return;
+    open = true;
+    resetDraft("iteracion", slug);
+    phase = { name: "title", mode: "iteracion" };
+    document.body.classList.add("dialogue-open");
+    options.root.hidden = false;
+    options.onOpen();
+    render();
+  }
+
   return {
     open: show,
+    openIteration,
     close,
     isOpen: () => open,
   };

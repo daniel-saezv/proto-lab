@@ -15,7 +15,15 @@ function nativeFullscreenElement(): Element | null {
   return document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
 }
 
-export function createOverlay(root: HTMLElement, onClose: () => void) {
+export function createOverlay(
+  root: HTMLElement,
+  onClose: () => void,
+  hooks?: {
+    onOpenEntry?: (entry: CatalogEntry) => void;
+    onClosed?: () => void;
+    onSuggestImprovement?: (entry: CatalogEntry) => void;
+  },
+) {
   let generation = 0;
   let opened = false;
   let frame: HTMLIFrameElement | null = null;
@@ -101,6 +109,7 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     root.querySelector(".prototype-chrome")?.remove();
     root.replaceChildren();
     root.hidden = true;
+    hooks?.onClosed?.();
     onClose();
   }
 
@@ -175,11 +184,22 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
       else void enterFullscreen();
     });
 
+    const suggest = document.createElement("button");
+    suggest.type = "button";
+    suggest.className = "text-button";
+    suggest.dataset.testid = "suggest-improvement";
+    suggest.textContent = "Sugerir mejora";
+    suggest.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hooks?.onSuggestImprovement?.(entry);
+    });
+
     const banner = document.createElement("p");
     banner.className = "prototype-banner";
     banner.hidden = true;
 
-    header.append(back, title, full, banner);
+    header.append(back, title, suggest, full, banner);
     const slot = document.createElement("div");
     slot.className = "prototype-frame";
     const status = document.createElement("p");
@@ -188,6 +208,8 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     status.textContent = "Abriendo el prototipo…";
     slot.append(status);
     root.append(header, slot);
+
+    hooks?.onOpenEntry?.(entry);
 
     assetHost = createPrototypeAssetHost({ slug: entry.slug, allowedPaths: entry.assets });
 
