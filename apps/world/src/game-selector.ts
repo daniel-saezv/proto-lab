@@ -9,6 +9,7 @@ export function createGameSelector(options: {
   onHighlight: (index: number) => void;
   onOpen: () => void;
   onClose: () => void;
+  isPrototypeUnseen?: (slug: string) => boolean;
 }) {
   let open = false;
   let index = 0;
@@ -47,6 +48,11 @@ export function createGameSelector(options: {
     if (image) {
       image.src = previewSrc(entry);
       image.alt = `Vista previa de ${entry.title}`;
+    }
+    const badge = options.root.querySelector<HTMLElement>("[data-testid='selector-update-badge']");
+    if (badge) {
+      const show = options.isPrototypeUnseen?.(entry.slug) ?? false;
+      badge.hidden = !show;
     }
   }
 
@@ -95,6 +101,11 @@ export function createGameSelector(options: {
 
     const meta = document.createElement("div");
     meta.className = "selector-meta";
+    const badge = document.createElement("p");
+    badge.className = "selector-update-badge";
+    badge.dataset.testid = "selector-update-badge";
+    badge.hidden = true;
+    badge.textContent = "Nuevo / actualizado";
     const title = document.createElement("h3");
     title.dataset.testid = "selector-title";
     const author = document.createElement("p");
@@ -106,7 +117,7 @@ export function createGameSelector(options: {
     const description = document.createElement("p");
     description.className = "selector-description";
     description.dataset.testid = "selector-description";
-    meta.append(title, author, version, description);
+    meta.append(badge, title, author, version, description);
 
     const actions = document.createElement("div");
     actions.className = "selector-actions";

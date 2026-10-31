@@ -122,7 +122,7 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: exige `Cf-Access-A
 
 **Caché:** KV `PROPOSALS`, clave `proposal-status:v2:all`, TTL **120 s**. Sin binding, sin caché.
 
-**UI:** en el laboratorio 3D, acércate a la **pizarra** («Ver el tablón»). Sin WebGL, botón equivalente en el fallback. Textos con `textContent`; la preview abre en pestaña nueva con `rel=noopener noreferrer`.
+**UI:** en el laboratorio 3D, la **pizarra** pinta el tablón en la escena (estado vía `GET /api/proposals/status`). Sin WebGL, el fallback HTML muestra el mismo tablón en un canvas 2D. Textos con `textContent`; la preview abre en pestaña nueva con `rel=noopener noreferrer`.
 
 **Pull requests de propuestas:** el cuerpo del PR debe citar siempre el número de su issue (p. ej. `Closes #N` en propuestas aprobadas implementadas) para que el tablón enlace issue y PR.
 

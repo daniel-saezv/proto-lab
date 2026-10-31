@@ -754,3 +754,40 @@ test("en horizontal el botón de interacción queda en la mitad inferior", async
   expect(box!.y + box!.height / 2).toBeGreaterThanOrEqual(midline - 1);
   await context.close();
 });
+
+test("el hash #p= abre un prototipo y un slug desconocido se ignora", async ({ page, isMobile }) => {
+  await page.goto("/?e2e=1#p=chispa");
+  await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+  await expect(page.locator("iframe")).toHaveCount(1);
+  expect(page.url()).toContain("#p=chispa");
+  const back = page.getByTestId("close-prototype");
+  if (isMobile) await back.tap();
+  else await back.click();
+  await expect(page.getByTestId("prototype-player")).toBeHidden();
+  expect(page.url()).not.toContain("#p=");
+
+  await page.goto("/?e2e=1#p=no-existe");
+  await expect(page.locator("#viewport")).toHaveAttribute("data-testid", "world-ready");
+  expect(page.url()).not.toContain("#p=");
+});
+
+test("Sugerir mejora abre una iteración del prototipo abierto", async ({ page, isMobile }) => {
+  await page.goto("/?e2e=1#p=chispa");
+  await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+  const suggest = page.getByTestId("suggest-improvement");
+  if (isMobile) await suggest.tap();
+  else await suggest.click();
+  await expect(page.getByTestId("dialogue")).toBeVisible();
+  await expect(page.getByTestId("prototype-player")).toBeHidden();
+  await page.getByTestId("dialogue-input").fill("Más contraste");
+  await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-input").fill("Que el HUD se lea mejor en móvil.");
+  await page.getByTestId("dialogue-send").click();
+  const proposal = page.waitForRequest("**/api/proposals");
+  await page.getByTestId("choice-confirm").click();
+  expect((await proposal).postDataJSON()).toMatchObject({
+    kind: "iteracion",
+    title: "Más contraste",
+    slug: "chispa",
+  });
+});
