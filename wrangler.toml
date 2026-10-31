@@ -5,6 +5,8 @@ name = "proto-lab-3k6"
 pages_build_output_dir = "dist"
 compatibility_date = "2026-10-30"
 
-# El KV del límite diario no va aquí: el id del namespace es de la cuenta.
-# En el panel: Settings → Bindings → KV namespace, variable PROPOSALS.
-# Sin ese binding la función acepta propuestas y no aplica el límite diario.
+# Bindings (KV, etc.) van en este archivo; los secretos siguen en el panel de Pages.
+# Sin PROPOSALS la función acepta propuestas y no aplica el límite diario ni caché del tablón.
+[[kv_namespaces]]
+binding = "PROPOSALS"
+id = "80ac94ce81e8459fb3882e9fe2a68330"
