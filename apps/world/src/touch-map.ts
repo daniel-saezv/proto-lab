@@ -6,8 +6,13 @@ export function touchScreenSide(clientX: number, viewportWidth: number): "left" 
   return clientX < viewportWidth * 0.5 ? "left" : "right";
 }
 
-/** Escala del stick derecho (mirar). Ajustar aquí la sensibilidad táctil. */
-export const TOUCH_LOOK_RATE = 18;
+/**
+ * Escala del stick derecho. El horizontal (giro) queda un poco por debajo
+ * del valor inicial (18). El vertical (inclinar hacia el personaje) es
+ * menos de la mitad: en el teléfono se sentía demasiado vivo.
+ */
+export const TOUCH_LOOK_RATE = 15;
+export const TOUCH_LOOK_RATE_Y = 7;
 /** Exponente >1 suaviza gestos pequeños; a fondo sigue llegando a ~1. */
 export const TOUCH_LOOK_CURVE = 1.45;
 
@@ -25,15 +30,16 @@ function curveLookAxis(value: number): number {
   return sign * mag ** TOUCH_LOOK_CURVE;
 }
 
-/** Stick de cámara: tasa de giro por frame (se resetea tras leer). */
+/** Stick de cámara: deflexión curvada, con tasa distinta en cada eje. */
 export function lookRatesFromStickVector(
   vectorX: number,
   vectorY: number,
   rate = TOUCH_LOOK_RATE,
+  rateY = TOUCH_LOOK_RATE_Y,
 ): { lookX: number; lookY: number } {
   return {
     lookX: curveLookAxis(vectorX) * rate,
-    lookY: curveLookAxis(vectorY) * rate,
+    lookY: curveLookAxis(vectorY) * rateY,
   };
 }
 

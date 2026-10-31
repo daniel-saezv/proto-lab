@@ -36,7 +36,17 @@ import { attachInput } from "./input";
 import { getMusicEnergy } from "./ambience-music";
 import { addAmbient } from "./ambient";
 import { drawTitleCard } from "./title-card";
-import { WALK_SPEED, applyLook, approachVelocity, dampAngle, dampBlockedAxis, smoothLookInput } from "./locomotion";
+import {
+  TOUCH_LOOK_FOLLOW,
+  WALK_SPEED,
+  applyLook,
+  approachVelocity,
+  dampAngle,
+  dampBlockedAxis,
+  lookRateFromDeflection,
+  smoothLookInput,
+  softenTowardLimit,
+} from "./locomotion";
 import {
   CAMERA_NEAR,
   CEILING_UNDERSIDE,
@@ -381,6 +391,10 @@ export function startWorld(options: {
   let viewPitch = pitch;
   let lookSmoothX = 0;
   let lookSmoothY = 0;
+  let lookRateYaw = 0;
+  let lookRatePitch = 0;
+  const pitchMin = -0.35;
+  const pitchMax = 0.7;
   let velX = 0;
   let velZ = 0;
   let arm = 3.8;
@@ -463,11 +477,25 @@ export function startWorld(options: {
     const readingBoard = boardPhase === "enter" || boardPhase === "hold";
     if (readingBoard && Math.hypot(sample.forward, sample.right) > 0.08) beginLeaveBoard();
     if (inputEnabled && boardPhase === "idle") {
-      lookSmoothX = smoothLookInput(lookSmoothX, sample.lookX, dt);
-      lookSmoothY = smoothLookInput(lookSmoothY, sample.lookY, dt);
       const lookSens = coarse ? 0.0042 : 0.00315;
-      yaw -= applyLook(lookSmoothX, lookSens, 0.11);
-      pitch = clamp(pitch - applyLook(lookSmoothY, lookSens * 0.72, 0.08), -0.35, 0.7);
+      if (options.touchControls) {
+        // El stick es una velocidad, no un delta de píxeles. Se sigue en rad/s
+        // (ataque y freno suaves) y el paso vertical se afloja antes del tope.
+        const targetYaw = -lookRateFromDeflection(sample.lookX, lookSens);
+        const targetPitch = -lookRateFromDeflection(sample.lookY, lookSens * 0.72);
+        lookRateYaw = smoothLookInput(lookRateYaw, targetYaw, dt, TOUCH_LOOK_FOLLOW);
+        lookRatePitch = smoothLookInput(lookRatePitch, targetPitch, dt, TOUCH_LOOK_FOLLOW);
+        yaw += lookRateYaw * dt;
+        const pitchStep = softenTowardLimit(pitch, lookRatePitch, pitchMin, pitchMax, 0.16);
+        pitch = clamp(pitch + pitchStep * dt, pitchMin, pitchMax);
+      } else {
+        lookRateYaw = 0;
+        lookRatePitch = 0;
+        lookSmoothX = smoothLookInput(lookSmoothX, sample.lookX, dt);
+        lookSmoothY = smoothLookInput(lookSmoothY, sample.lookY, dt);
+        yaw -= applyLook(lookSmoothX, lookSens, 0.11);
+        pitch = clamp(pitch - applyLook(lookSmoothY, lookSens * 0.72, 0.08), pitchMin, pitchMax);
+      }
       const forwardX = Math.sin(yaw);
       const forwardZ = -Math.cos(yaw);
       const rightX = Math.cos(yaw);
@@ -485,6 +513,8 @@ export function startWorld(options: {
     } else {
       velX = 0;
       velZ = 0;
+      lookRateYaw = 0;
+      lookRatePitch = 0;
     }
 
     const beat = getMusicEnergy();
@@ -782,6 +812,8 @@ export function startWorld(options: {
     options.viewport.dataset.renderSuspended = next ? "1" : "0";
     velX = 0;
     velZ = 0;
+    lookRateYaw = 0;
+    lookRatePitch = 0;
     input.resetLook();
     if (!next) kickLoop();
   }
