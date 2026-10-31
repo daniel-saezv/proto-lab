@@ -6,19 +6,35 @@ export function touchScreenSide(clientX: number, viewportWidth: number): "left" 
   return clientX < viewportWidth * 0.5 ? "left" : "right";
 }
 
+/** Escala del stick derecho (mirar). Ajustar aquí la sensibilidad táctil. */
+export const TOUCH_LOOK_RATE = 18;
+/** Exponente >1 suaviza gestos pequeños; a fondo sigue llegando a ~1. */
+export const TOUCH_LOOK_CURVE = 1.45;
+
 /** Vector nipplejs (-1…1) → avance/lateral con la misma curva que el joystick fijo. */
 export function movementFromStickVector(vectorX: number, vectorY: number): { forward: number; right: number } {
-  const shaped = shapeStick(vectorX, -vectorY);
+  // En pantalla nipplejs, Y positivo = empujar hacia arriba (avanzar en el lobby).
+  const shaped = shapeStick(vectorX, vectorY);
   return { forward: shaped.y, right: shaped.x };
+}
+
+function curveLookAxis(value: number): number {
+  const sign = Math.sign(value);
+  const mag = Math.abs(value);
+  if (mag === 0) return 0;
+  return sign * mag ** TOUCH_LOOK_CURVE;
 }
 
 /** Stick de cámara: tasa de giro por frame (se resetea tras leer). */
 export function lookRatesFromStickVector(
   vectorX: number,
   vectorY: number,
-  pixelsPerUnit = 42,
+  rate = TOUCH_LOOK_RATE,
 ): { lookX: number; lookY: number } {
-  return { lookX: vectorX * pixelsPerUnit, lookY: vectorY * pixelsPerUnit };
+  return {
+    lookX: curveLookAxis(vectorX) * rate,
+    lookY: curveLookAxis(vectorY) * rate,
+  };
 }
 
 const INTERACTIVE_SELECTOR =
