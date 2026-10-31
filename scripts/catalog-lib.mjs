@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { parseManifestAssets } from "./asset-path.mjs";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -55,7 +56,11 @@ export function assertManifest(dirName, manifest, protoDir) {
     if (entry.version === manifest.version) seen = true;
   }
   if (!seen) fail(`${dirName}: el historial tiene que incluir la versión actual`);
-  return manifest;
+  if (manifest.hidden != null && manifest.hidden !== true) {
+    fail(`${dirName}: hidden solo puede ser true u omitirse`);
+  }
+  const assets = parseManifestAssets(dirName, manifest.assets, protoDir);
+  return { ...manifest, assets };
 }
 
 export function readCatalog(repoRoot) {
@@ -67,20 +72,22 @@ export function readCatalog(repoRoot) {
     const manifestPath = join(protoDir, "proto.json");
     if (!existsSync(manifestPath)) fail(`${dirName} no tiene proto.json`);
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    assertManifest(dirName, manifest, protoDir);
+    const validated = assertManifest(dirName, manifest, protoDir);
     entries.push({
-      slug: manifest.slug,
-      title: manifest.title,
-      description: manifest.description,
-      author: manifest.author,
-      date: manifest.date,
-      tags: manifest.tags,
-      cover: manifest.cover,
-      preview: manifest.preview ?? null,
-      previewHref: manifest.preview ? `/protos/${manifest.slug}/${manifest.preview}` : null,
-      version: manifest.version,
-      history: manifest.history,
-      href: `/protos/${manifest.slug}/`,
+      slug: validated.slug,
+      title: validated.title,
+      description: validated.description,
+      author: validated.author,
+      date: validated.date,
+      tags: validated.tags,
+      cover: validated.cover,
+      preview: validated.preview ?? null,
+      previewHref: validated.preview ? `/protos/${validated.slug}/${validated.preview}` : null,
+      version: validated.version,
+      history: validated.history,
+      href: `/protos/${validated.slug}/`,
+      assets: validated.assets ?? [],
+      hidden: validated.hidden === true,
     });
   }
   if (entries.length === 0) fail("no hay prototipos");

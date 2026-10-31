@@ -8,10 +8,10 @@
   },
   "scripts": {
     "generate": "node scripts/generate-catalog.mjs",
-    "dev": "pnpm generate && pnpm --filter @proto-lab/chispa build && pnpm --filter @proto-lab/world dev",
-    "build": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa build && node scripts/assemble.mjs",
+    "dev": "pnpm generate && pnpm --filter @proto-lab/chispa --filter @proto-lab/asset-lab build && pnpm --filter @proto-lab/world dev",
+    "build": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa --filter @proto-lab/asset-lab build && node scripts/assemble.mjs",
     "preview": "pnpm --filter @proto-lab/world preview",
-    "typecheck": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa typecheck && tsc -p functions/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa --filter @proto-lab/asset-lab typecheck && tsc -p functions/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
     "test:unit": "pnpm generate && vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm test:unit && pnpm test:e2e",

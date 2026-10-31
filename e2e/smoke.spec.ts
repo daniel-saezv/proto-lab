@@ -129,6 +129,7 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
 
   await openSelector(page, isMobile);
   await expect(page.getByTestId("selector-title")).toContainText("Pozo de bolas");
+  await expect(page.getByTestId("selector-title")).not.toContainText("Laboratorio de assets");
   await playFromSelector(page, isMobile);
   const frame = page.frameLocator("iframe");
   await expect(page.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
@@ -428,24 +429,26 @@ test("se puede caminar por el lobby hasta los puntos clave", async ({ page }) =>
   }
 });
 
-test("la máquina central abre el selector, cambia de juego y vuelve al laboratorio", async ({ page, isMobile }) => {
+test("la máquina central abre el selector, lanza el juego y vuelve al laboratorio", async ({ page, isMobile }) => {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await openSelector(page, isMobile);
   await expect(page.getByTestId("selector-title")).toHaveText("Pozo de bolas");
-  await page.getByTestId("selector-next").click();
-  await expect(page.getByTestId("selector-title")).toHaveText("Pozo de bolas");
-  if (!isMobile) {
-    await page.keyboard.press("ArrowLeft");
-    await page.keyboard.press("Enter");
-  } else {
-    await playFromSelector(page, true);
-  }
+  await expect(page.getByTestId("game-selector")).not.toContainText("Laboratorio de assets");
+  await playFromSelector(page, isMobile);
   const frame = page.frameLocator("iframe");
   await expect(frame.locator("canvas")).toBeVisible();
   await page.getByTestId("close-prototype").click();
   await expect(page.getByTestId("prototype-player")).toBeHidden();
   await expect(page.getByTestId("world-ready")).toBeVisible();
+});
+
+test("asset-lab no aparece en el selector del lobby", async ({ page, isMobile }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await openSelector(page, isMobile);
+  await expect(page.getByTestId("selector-title")).not.toContainText("Laboratorio de assets");
+  await expect(page.getByTestId("game-selector")).not.toContainText("asset-lab");
 });
 
 test("el selector cabe en el iPhone y tapa el joystick y las etiquetas", async ({ browser }) => {

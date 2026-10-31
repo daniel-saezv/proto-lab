@@ -1,4 +1,5 @@
 import { fetchPrototypeDocument } from "./prototype-document";
+import { createPrototypeAssetHost } from "./prototype-assets-host";
 import type { CatalogEntry } from "./types";
 
 const FAIL = "No he podido abrir el prototipo. Pulsa Volver para salir del laboratorio.";
@@ -20,6 +21,7 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
   let frame: HTMLIFrameElement | null = null;
   let objectUrl: string | null = null;
   let aliveTimer = 0;
+  let assetHost: ReturnType<typeof createPrototypeAssetHost> | null = null;
 
   function revoke() {
     if (!objectUrl) return;
@@ -92,6 +94,7 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     generation += 1;
     window.clearTimeout(aliveTimer);
     frame = null;
+    assetHost = null;
     revoke();
     exitFullscreenModes();
     document.body.classList.remove("prototype-open");
@@ -105,6 +108,7 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     window.clearTimeout(aliveTimer);
     frame?.remove();
     frame = null;
+    assetHost = null;
     revoke();
     banner.hidden = false;
     banner.dataset.testid = "prototype-error";
@@ -115,6 +119,10 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     if (!frame || event.source !== frame.contentWindow) return;
     const data = event.data as { source?: string; type?: string; message?: string } | null;
     if (data?.source !== "proto-lab") return;
+    if (data.type === "asset-request") {
+      void assetHost?.onMessage(event, frame);
+      return;
+    }
     const banner = document.querySelector<HTMLElement>(".prototype-banner");
     if (!banner) return;
     if (data.type === "close") close();
@@ -180,6 +188,8 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     status.textContent = "Abriendo el prototipo…";
     slot.append(status);
     root.append(header, slot);
+
+    assetHost = createPrototypeAssetHost({ slug: entry.slug, allowedPaths: entry.assets });
 
     void fetchPrototypeDocument(entry.href)
       .then((html) => {

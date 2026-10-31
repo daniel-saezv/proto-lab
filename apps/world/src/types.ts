@@ -17,6 +17,10 @@ export type CatalogEntry = {
   version: string;
   history: HistoryEntry[];
   href: string;
+  /** Rutas relativas declaradas en proto.json para el puente de recursos privados. */
+  assets: string[];
+  /** Si es true, no aparece en selector, pizarra ni fallback (solo build y pruebas). */
+  hidden?: boolean;
 };
 
 export type CatalogFile = {

@@ -39,12 +39,13 @@ Crea `protos/<slug>/` con su `package.json`, su build de Vite (`base` en `/proto
 - `title`, `description`, `author` (email o alias), `date` (`AAAA-MM-DD`)
 - `tags`, `cover` (archivo en la misma carpeta, o `null`)
 - `version` y `history` (la versión actual tiene que aparecer en el historial)
+- opcional: `"assets": ["media/foo.png", …]` — rutas relativas declaradas para el puente de recursos privados (límites en [`AGENTS.md`](AGENTS.md))
 
 `pnpm build` lee esos manifiestos, publica el laboratorio en `/` y cada prototipo en `/protos/<slug>/`. El mundo coloca una máquina por manifiesto. Crea también la etiqueta de GitHub con el slug para que las iteraciones puedan llevarla.
 
 Al jugar desde el laboratorio, la app —que ya pasó Access— descarga el `index.html` y el JS, junta un solo documento y lo abre en un iframe aislado (`sandbox` solo `allow-scripts`, dirección `blob:`). El prototipo no ve las cookies ni el DOM del laboratorio. Si Access devuelve la página del PIN en vez del juego, o el juego no llega a arrancar, se quita el iframe y queda el aviso con Volver: en el iPhone un documento a medias se ve como una pantalla blanca y tapa los botones.
 
-Tiene que ser una página autocontenida. El build de Vite (un JS referenciado por el HTML, y el CSS si lo hay) es el formato esperado. No añadas imágenes, audio, `import()` dinámicos ni `fetch` al propio sitio para que el juego arranque: desde el iframe aislado esas peticiones no llevan la sesión y Access las corta. Abrir `/protos/<slug>/` en una pestaña sigue funcionando, porque ahí la navegación sí lleva la cookie.
+Tiene que ser una página autocontenida en el arranque: el build de Vite (un JS referenciado por el HTML, y el CSS si lo hay) es el formato esperado. No uses `import()` dinámicos ni `fetch` al propio sitio para cargar el juego; desde el iframe aislado no llevan la sesión y Access las corta. **Excepción:** binarios listados en `"assets"` del manifiesto se piden al laboratorio con `window.__protoLabAssets` (blob URLs o `ArrayBuffer`); el padre los descarga con la cookie de Access. Límites: 32 rutas, 2 MiB por archivo, 8 MiB total, 64 peticiones por sesión. Abrir `/protos/<slug>/` en una pestaña sigue funcionando con peticiones normales.
 
 ## Cloudflare Pages
 
