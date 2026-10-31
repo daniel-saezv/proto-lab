@@ -3,6 +3,7 @@ import catalogFile from "./generated/catalog.json";
 import { createDialogue } from "./dialogue";
 import { showFallback } from "./fallback";
 import { createGameSelector } from "./game-selector";
+import { createInstallHelp, type DeferredInstallPrompt } from "./install-help";
 import { createOverlay } from "./overlay";
 import type { CatalogEntry } from "./types";
 import "./style.css";
@@ -22,6 +23,7 @@ const joystick = must("#joystick");
 const knob = must("#knob");
 const dialogueRoot = must("#dialogue");
 const selectorRoot = must("#game-selector");
+const installHelpRoot = must("#install-help");
 const stage = must("#stage");
 const fallback = must("#fallback");
 
@@ -35,21 +37,43 @@ if (touch) {
 }
 
 let inputEnabled = true;
+let deferredInstallPrompt: DeferredInstallPrompt | null = null;
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event as DeferredInstallPrompt;
+});
+
+function blockWorldInput() {
+  inputEnabled = false;
+  world?.setInputEnabled(false);
+  interact.hidden = true;
+}
+
+function restoreWorldInput() {
+  inputEnabled = true;
+  world?.setInputEnabled(true);
+}
+
+const installHelp = createInstallHelp({
+  root: installHelpRoot,
+  getDeferredPrompt: () => deferredInstallPrompt,
+  clearDeferredPrompt: () => {
+    deferredInstallPrompt = null;
+  },
+  onOpen: blockWorldInput,
+  onClose: restoreWorldInput,
+});
+
 const dialogue = createDialogue({
   root: dialogueRoot,
   prototypes,
   instant,
   submit: sendProposal,
   getNearbySlug: () => world?.getNearbySlug() ?? null,
-  onOpen: () => {
-    inputEnabled = false;
-    world?.setInputEnabled(false);
-    interact.hidden = true;
-  },
-  onClose: () => {
-    inputEnabled = true;
-    world?.setInputEnabled(true);
-  },
+  onShowInstallHelp: () => installHelp.open(),
+  onOpen: blockWorldInput,
+  onClose: restoreWorldInput,
 });
 
 const overlay = createOverlay(stage, () => {
@@ -89,13 +113,15 @@ interact.addEventListener("click", () => world?.interact());
 
 window.addEventListener("keydown", (event) => {
   if (selector.handleKey(event)) return;
+  if (installHelp.handleKey(event)) return;
   if (event.key === "Escape") {
     if (overlay.isOpen()) overlay.close();
+    else if (installHelp.isOpen()) installHelp.close();
     else if (selector.isOpen()) selector.close();
     else if (dialogue.isOpen()) dialogue.close();
     return;
   }
-  if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen()) return;
+  if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen()) return;
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
   if (event.key.toLowerCase() === "e" && !event.repeat) {
     event.preventDefault();
@@ -110,7 +136,13 @@ document.addEventListener("visibilitychange", () => {
 async function bootWorld() {
   shell.hidden = false;
   if (!hasWebGL()) {
-    showFallback({ root: fallback, prototypes, onTalk: () => dialogue.open(), onPlay: (entry) => overlay.open(entry) });
+    showFallback({
+      root: fallback,
+      prototypes,
+      onTalk: () => dialogue.open(),
+      onInstallHelp: () => installHelp.open(),
+      onPlay: (entry) => overlay.open(entry),
+    });
     finishBoot();
     return;
   }
@@ -133,7 +165,7 @@ async function bootWorld() {
         selector.open(index);
       },
       onTarget: (label) => {
-        if (!inputEnabled || dialogue.isOpen() || overlay.isOpen() || selector.isOpen()) {
+        if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen()) {
           interact.hidden = true;
           return;
         }
@@ -143,7 +175,13 @@ async function bootWorld() {
     });
   } catch (error) {
     console.error("No se ha podido encender el laboratorio en 3D");
-    showFallback({ root: fallback, prototypes, onTalk: () => dialogue.open(), onPlay: (entry) => overlay.open(entry) });
+    showFallback({
+      root: fallback,
+      prototypes,
+      onTalk: () => dialogue.open(),
+      onInstallHelp: () => installHelp.open(),
+      onPlay: (entry) => overlay.open(entry),
+    });
     finishBoot();
     void error;
   }

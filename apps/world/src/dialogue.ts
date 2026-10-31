@@ -30,6 +30,7 @@ export function createDialogue(options: {
   instant: boolean;
   submit: (draft: ProposalDraft) => Promise<SubmitOutcome>;
   getNearbySlug: () => string | null;
+  onShowInstallHelp?: () => void;
   onOpen: () => void;
   onClose: () => void;
 }) {
@@ -80,6 +81,14 @@ export function createDialogue(options: {
       return [
         { id: "choice-propose", label: "Quiero proponer un prototipo", run: () => { resetDraft("propuesta"); phase = { name: "title", mode: "propuesta" }; render(); } },
         { id: "choice-iterate", label: "Quiero mejorar uno que ya está", run: () => { resetDraft("iteracion"); phase = { name: "pick" }; render(); } },
+        {
+          id: "choice-install",
+          label: "¿Cómo instalo el laboratorio?",
+          run: () => {
+            close();
+            options.onShowInstallHelp?.();
+          },
+        },
         { id: "choice-bye", label: "Nada, seguiré mirando", run: () => close() },
       ];
     }

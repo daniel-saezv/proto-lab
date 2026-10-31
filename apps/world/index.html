@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Proto Lab" />
     <title>Proto Lab</title>
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <style>
@@ -36,6 +36,7 @@
       <div id="joystick" data-testid="joystick" hidden><div id="knob"></div></div>
       <div id="dialogue" data-testid="dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="dialogue-name"></div>
       <div id="game-selector" hidden></div>
+      <div id="install-help" hidden></div>
       <div id="stage" data-testid="prototype-player" hidden></div>
       <div id="fallback" data-testid="fallback" hidden></div>
     </div>
