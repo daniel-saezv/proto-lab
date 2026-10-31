@@ -108,11 +108,16 @@ Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml), en `pull_reques
 En pull request corren en paralelo:
 
 - **`verificar`**: typecheck, tests unitarios y build (sin e2e).
-- **`E2E (chromium 1/6)` … `E2E (chromium 6/6)`**: el mismo prepare (caché de navegador que ya acierta desde `main`, `install-deps` solo en hit) y `playwright test --project=chromium --shard=n/6`. Un worker por runner: en los runners de 2 vCPU, SwiftShader se satura si el lobby sigue pintando mientras hay otro WebGL. El grupo en serie de recursos privados no se parte; seis shards lo dejan solo en un job.
+- **`Versión Playwright (lockfile)`**: lee la versión de `@playwright/test` del lockfile para etiquetar la imagen Docker de los e2e.
+- **`E2E (chromium 1/6)` … `E2E (chromium 6/6)`**: contenedor `mcr.microsoft.com/playwright:v<versión lockfile>-noble` (navegadores y deps del sistema en la imagen; `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` en `pnpm install`), luego `pnpm build` y `playwright test --project=chromium --shard=n/6`. Un worker por runner: en los runners de 2 vCPU, SwiftShader se satura si el lobby sigue pintando mientras hay otro WebGL. El grupo en serie de recursos privados no se parte; seis shards lo dejan solo en un job.
 - **`E2E (chromium)`**: compuerta que espera a los seis shards. El nombre del check obligatorio no cambia. Su duración en la UI es solo el arranque de la compuerta; el tiempo real es el del shard más lento.
-- **`E2E (webkit-iphone)`**: un solo job, sin shard, igual que antes.
+- **`E2E (webkit-iphone)`**: mismo contenedor Playwright que Chromium, un solo job, sin shard.
 
-Checks obligatorios en el PR: **`verificar`** (en la UI: `Typecheck, tests y build`), **`E2E (chromium)`** y **`E2E (webkit-iphone)`**. En push a `main`, además, **`Typecheck y unitarios (main)`** y el job de caché de navegadores Playwright.
+En **`verificar`** (y en **`Typecheck y unitarios (main)`** en push a `main`), `assert-playwright-docker-image.sh` comprueba con `docker manifest inspect` que exista la imagen `-noble` de esa versión antes de mergear un bump de Playwright sin tag publicado.
+
+En push a `main` solo corre **`Typecheck y unitarios (main)`** (ya no hay job de calentar caché de navegadores Playwright).
+
+Checks obligatorios en el PR: **`verificar`** (en la UI: `Typecheck, tests y build`), **`E2E (chromium)`** y **`E2E (webkit-iphone)`**. En push a `main`, además, **`Typecheck y unitarios (main)`**.
 
 Convendría añadir un aviso si `dist/` se cuela en el commit y, cuando haya más prototipos, un job que falle si un `proto.json` no pasa el lector del catálogo; hoy ese lector ya corre dentro de `pnpm test:unit` y de `pnpm build`.
 
@@ -155,7 +160,7 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: valida el JWT `Cf-
 
 ## Cursor Cloud specific instructions
 
-El `install` de `.cursor/environment.json` instala dependencias con pnpm y los navegadores Chromium y WebKit de Playwright (CI, `pnpm previews` y depuración puntual de e2e). Es idempotente.
+El `install` de `.cursor/environment.json` instala dependencias con pnpm y los navegadores Chromium y WebKit de Playwright para entorno local (`pnpm previews` y depuración puntual de e2e). En GitHub Actions los e2e usan la imagen Docker oficial, no `playwright install`. Es idempotente.
 
 Para probar en la nube: `pnpm typecheck`, `pnpm test:unit` y `pnpm build`; opcional `pnpm preview` (4173) o `pnpm dev` (5173). Playwright local según **Pruebas E2E sostenibles**; la suite completa del PR en GitHub Actions.
 

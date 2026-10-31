@@ -29,6 +29,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Comprobar imagen Docker de Playwright (lockfile)
+        run: bash .github/scripts/assert-playwright-docker-image.sh
       - run: pnpm typecheck
       - run: pnpm test:unit
       - run: pnpm build
@@ -48,53 +50,37 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Comprobar imagen Docker de Playwright (lockfile)
+        run: bash .github/scripts/assert-playwright-docker-image.sh
       - run: pnpm typecheck
       - run: pnpm test:unit
 
-  # Las cachés guardadas en runs de pull_request viven en el ámbito del merge-ref del PR
-  # (refs/pull/N/merge) y otros PRs no pueden leerlas; este job corre en push a main para
-  # guardar la caché de navegadores Playwright en el ámbito de main y que los PRs la restauren.
-  cache-playwright:
-    name: Caché Playwright (${{ matrix.browser }})
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  playwright-version:
+    name: Versión Playwright (lockfile)
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      matrix:
-        browser: [chromium, webkit]
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.playwright-version.outputs.version }}
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: pnpm/action-setup@v6.1.0
-        with:
-          version: 12.17.0
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version: 22
-          cache: pnpm
       - name: Resolver versión de Playwright
         id: playwright-version
         run: |
-          version=$(grep -E "^  '@playwright/test@" pnpm-lock.yaml | head -1 | sed -E "s/^  '@playwright\\/test@([0-9.]+)':/\1/")
-          test -n "$version"
+          version=$(bash .github/scripts/playwright-lockfile-version.sh)
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ matrix.browser }}
-          lookup-only: true
-      - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile && pnpm exec playwright install ${{ matrix.browser }}
 
   # Chromium en runners de 2 vCPU va a 1 worker (SwiftShader). Partir el proyecto
   # en shards baja el reloj de pared: el grupo en serie de private-assets ocupa
   # un shard entero y no comparte máquina con el test de cámara.
-  # La imagen oficial de Playwright no compensa: la caché de navegadores ya
-  # acierta y bajarla costaría más que los ~15 s de install-deps.
+  # Contenedor: mcr.microsoft.com/playwright:v<lockfile>-noble (ver job playwright-version).
   e2e-chromium:
     name: E2E (chromium ${{ matrix.shard }}/6)
+    needs: playwright-version
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
     timeout-minutes: 12
     strategy:
       fail-fast: false
@@ -128,8 +114,11 @@ jobs:
 
   e2e-webkit:
     name: E2E (webkit-iphone)
+    needs: playwright-version
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1

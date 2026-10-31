@@ -1,5 +1,5 @@
 name: Playwright en CI
-description: Restaura el navegador cacheado en main, instala dependencias del sistema y ejecuta un proyecto.
+description: Build, install con pnpm y tests Playwright en el contenedor oficial (sin caché ~/.cache/ms-playwright ni install-deps).
 
 inputs:
   browser:
@@ -16,6 +16,9 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Configurar git (contenedor)
+      shell: bash
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
     - uses: pnpm/action-setup@v6.1.0
       with:
         version: 12.17.0
@@ -23,29 +26,29 @@ runs:
       with:
         node-version: 22
         cache: pnpm
-    - name: Resolver versión de Playwright
-      id: playwright-version
+    - name: Comprobar ruta de navegadores (imagen)
       shell: bash
       run: |
-        version=$(grep -E "^  '@playwright/test@" pnpm-lock.yaml | head -1 | sed -E "s/^  '@playwright\\/test@([0-9.]+)':/\1/")
-        test -n "$version"
-        echo "version=${version}" >> "$GITHUB_OUTPUT"
-    - uses: actions/cache@v6
-      id: playwright-cache
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ inputs.browser }}
+        if [[ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]]; then
+          echo "PLAYWRIGHT_BROWSERS_PATH vacío; se esperaba la ruta de la imagen oficial (/ms-playwright)." >&2
+          exit 1
+        fi
+        echo "Navegadores preinstalados en ${PLAYWRIGHT_BROWSERS_PATH}"
     - name: Instalar dependencias
       shell: bash
+      env:
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       run: pnpm install --frozen-lockfile
-    - name: Instalar navegador Playwright (miss)
-      if: steps.playwright-cache.outputs.cache-hit != 'true'
+    - name: Comprobar alineación con la imagen Docker
       shell: bash
-      run: pnpm exec playwright install --with-deps ${{ inputs.browser }}
-    - name: Instalar dependencias del sistema (cache hit)
-      if: steps.playwright-cache.outputs.cache-hit == 'true'
-      shell: bash
-      run: pnpm exec playwright install-deps ${{ inputs.browser }}
+      run: |
+        expected=$(bash .github/scripts/playwright-lockfile-version.sh)
+        actual=$(pnpm exec playwright --version | sed -n 's/^Version //p')
+        if [[ "$expected" != "$actual" ]]; then
+          echo "Lockfile: $expected; CLI en contenedor: $actual" >&2
+          exit 1
+        fi
+        echo "Playwright $actual alineado con lockfile"
     - name: Build
       shell: bash
       run: pnpm build
