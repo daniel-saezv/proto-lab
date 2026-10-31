@@ -18,7 +18,7 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    chunkSizeWarningLimit: 1300,
+    chunkSizeWarningLimit: 1450,
   },
   plugins: [copyPreview()],
 });
