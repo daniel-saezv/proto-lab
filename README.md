@@ -27,6 +27,10 @@ pnpm preview
 
 `pnpm test:unit` cubre la validación de propuestas. `pnpm test:e2e` abre el mundo, completa una propuesta con la Function simulada y lanza el prototipo de ejemplo. `pnpm typecheck` comprueba los tipos.
 
+### Commits en pull requests
+
+Convención canónica para agentes y colaboradores: **[`AGENTS.md` — Convenciones para agentes (pull requests)](AGENTS.md#convenciones-para-agentes-pull-requests)** (`[skip ci]` en commits intermedios; el último commit del PR sin marca para CI y preview de Pages).
+
 ## Añadir un prototipo
 
 Crea `protos/<slug>/` con su `package.json`, su build de Vite (`base` en `/protos/<slug>/`) y un `proto.json`:

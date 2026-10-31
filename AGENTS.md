@@ -14,6 +14,20 @@ Una iteración trabaja en el prototipo indicado y actualiza su `proto.json`: sub
 
 La etiqueta `aprobado` solo la pone el dueño (@daniel-saezv). El workflow [`.github/workflows/aprobado-webhook.yml`](.github/workflows/aprobado-webhook.yml) avisa al Grok Bot al abrir una issue (`event: nueva`, solo el número) y cuando el dueño pone `aprobado` (`event: aprobado`; nunca manda título, cuerpo ni otro texto). En la aprobación el bot vuelve a comprobar en GitHub que la etiqueta la puso el dueño, añade `en-curso` y lanza un agente de Cursor. Ese agente abre un pull request con preview. El merge lo hace una persona. Otras etiquetas o un `aprobado` de otra cuenta no disparan el aviso de aprobación.
 
+## Convenciones para agentes (pull requests)
+
+Flujo: trabaja en una rama, abre el PR contra `main`, deja evidencia de pruebas en la descripción y no fusiones. Cada **push** a la rama dispara GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) y un despliegue de preview en Cloudflare Pages (integración Git, no Actions).
+
+**Commits y CI/preview**
+
+- Los commits **intermedios** que subas mientras el PR aún no está listo para revisión deben llevar **`[skip ci]`** en el mensaje (convención del repo; también válida para Pages porque no distingue mayúsculas).
+- Solo el **último** commit —el que deja el PR listo para revisión— va **sin** esa marca, para que corran una vez typecheck, tests unitarios, e2e y el preview de Pages.
+- En ese commit final **no pongas en el mensaje** ninguna cadena que GitHub o Pages traten como skip (las listadas abajo), **ni siquiera citándola** para explicar la convención: GitHub busca esas subcadenas en todo el texto del mensaje.
+
+GitHub omite workflows `on: push` / `on: pull_request` si el mensaje del commit empujado, o el **HEAD** del PR, contiene `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` o `[actions skip]` ([Skipping workflow runs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)). Cloudflare Pages omite ese despliegue con `[CI Skip]`, `[CI-Skip]`, `[Skip CI]`, `[Skip-CI]` o `[CF-Pages-Skip]` en el mensaje ([GitHub integration · Skipping a build](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/#skipping-a-build-via-a-commit-message)).
+
+**Importante:** si el **HEAD** del PR lleva la marca, no habrá CI ni preview nuevos. Para reactivarlos, haz un push cuyo commit no la incluya (p. ej. `git commit --allow-empty -m "Reactivar CI"`). Si GitHub salta el workflow por la marca, los checks obligatorios pueden quedar en estado pendiente hasta ese push.
+
 ## Stack y estructura
 
 TypeScript, Vite 7 y pnpm 10 (workspaces). El laboratorio usa Three.js 0.186 (geometría procedural, sin modelos de terceros). El prototipo de ejemplo usa Phaser 3.90.
@@ -67,6 +81,8 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml), en `pull_request`, `push` a `main` y `workflow_dispatch`. Concurrencia con `cancel-in-progress` y 20 minutos de tope. El job instala, hace typecheck, tests unitarios, instala Chromium, construye y ejecuta Playwright.
 
 Check obligatorio en el pull request: el job `verificar`. Convendría añadir un aviso si `dist/` se cuela en el commit y, cuando haya más prototipos, un job que falle si un `proto.json` no pasa el lector del catálogo; hoy ese lector ya corre dentro de `pnpm test:unit` y de `pnpm build`.
+
+Sigue la sección **Convenciones para agentes (pull requests)** al hacer push en un PR.
 
 Dependabot vigila `github-actions` y `npm` (semanal, agrupado).
 
