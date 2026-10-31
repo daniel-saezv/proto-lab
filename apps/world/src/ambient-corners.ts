@@ -417,6 +417,8 @@ export function tickCornerReactions(
   time: number,
   dt: number,
   reduced: boolean,
+  beatBass = 0,
+  beatMid = 0,
 ) {
   const catX = LAYOUT.crates.x + 0.18;
   const catZ = LAYOUT.crates.z;
@@ -438,20 +440,22 @@ export function tickCornerReactions(
   }
 
   if (!reduced) {
-    interact.fan.rotation.y += dt * 1.7;
+    interact.fan.rotation.y += dt * 1.7 * (1 + beatBass * 0.35);
     for (const plant of interact.sway) {
-      plant.mesh.rotation.z = Math.sin(time * 1.15 + plant.phase) * 0.09;
+      const sway = 0.09 + beatMid * 0.02;
+      plant.mesh.rotation.z = Math.sin(time * 1.15 + plant.phase) * sway;
       plant.mesh.rotation.x = Math.cos(time * 0.9 + plant.phase) * 0.04;
     }
     for (const lamp of interact.lamps) {
       const phase = (lamp.userData.phase as number) ?? 0;
       const base = (lamp.userData.base as number) ?? 2;
       const blink = Math.sin(time * 7.4 + phase) > 0.984 ? 0.72 : 1;
-      lamp.intensity = base * (0.93 + Math.sin(time * 1.8 + phase) * 0.07) * blink;
+      lamp.intensity = base * (0.93 + Math.sin(time * 1.8 + phase) * 0.07) * blink * (1 + beatBass * 0.18);
     }
     paintNightWindows(interact.windowMats, time);
     blinkScreenMaterial(interact.pcScreen, time);
-    const neonPulse = 0.75 + Math.sin(time * 2.8) * 0.25;
+    interact.pcScreen.color.setScalar(1 + beatMid * 0.22);
+    const neonPulse = (0.75 + Math.sin(time * 2.8) * 0.25) * (1 + beatMid * 0.12);
     interact.neonMat.color.setScalar(neonPulse);
   }
 }

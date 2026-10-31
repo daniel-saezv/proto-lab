@@ -86,7 +86,7 @@ export type AmbientFactories = {
 export type AmbientHandle = {
   colliders: AmbientCollider[];
   slacker: { x: number; z: number; radius: number };
-  tick: (time: number, dt: number, player: Vector3) => void;
+  tick: (time: number, dt: number, player: Vector3, beatBass?: number, beatMid?: number) => void;
 };
 
 export function addAmbient(f: AmbientFactories): AmbientHandle {
@@ -120,7 +120,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
   return {
     colliders: [{ id: "couch", x: slackerX, z: slackerZ, collider: LAYOUT.couch.collider }, ...corners.colliders],
     slacker: { x: slackerX, z: slackerZ, radius: 2.35 },
-    tick(time, dt, player) {
+    tick(time, dt, player, beatBass = 0, beatMid = 0) {
       const near =
         Math.hypot(player.x - slackerX, player.z - slackerZ) <= 2.35;
       if (near && lineShown < 0) {
@@ -156,20 +156,21 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
         flickerTv(tvCtx, tvCanvas, tvMaterial);
       }
       const flick = 0.7 + Math.sin(time * 11) * 0.15 + Math.sin(time * 23.7) * 0.1;
-      tvLight.intensity = 4.5 * flick;
+      tvLight.intensity = 4.5 * flick * (1 + beatMid * 0.1);
       tvMaterial.color.setRGB(0.55 + flick * 0.35, 0.65 + flick * 0.25, 1);
 
       for (let i = 0; i < dust.length; i++) {
         const m = dust[i]!;
         const base = m.userData.base as { x: number; y: number; z: number; phase: number };
         const cycle = (time * 0.07 + base.phase) % 1;
-        m.position.y = 0.35 + cycle * 2.15;
+        m.position.y = 0.35 + cycle * 2.15 + beatMid * 0.08;
         m.position.x = base.x + Math.sin(time * 0.22 + base.phase * 2) * 0.12;
         m.position.z = base.z + Math.cos(time * 0.18 + base.phase) * 0.1;
+        m.scale.setScalar(1 + beatMid * 0.12);
       }
 
       fridgeHum.scale.set(1, 1 + Math.sin(time * 16) * 0.4, 1);
-      tickCornerReactions(corners.interact, player, time, dt, f.reduced);
+      tickCornerReactions(corners.interact, player, time, dt, f.reduced, beatBass, beatMid);
     },
   };
 }

@@ -552,6 +552,25 @@ test("en horizontal las acciones de confirmación del diálogo caben en pantalla
   await context.close();
 });
 
+test("la música se sirve y no entra en la precarga del service worker", async ({ page }) => {
+  const sw = await page.request.get("/sw.js");
+  expect(sw.ok()).toBeTruthy();
+  const source = await sw.text();
+  expect(source).not.toContain("life-in-fragments");
+  expect(source).not.toContain("luanda.m4a");
+  expect(source).not.toContain("lemonade.m4a");
+  const track = await page.request.get("/protos/audio/life-in-fragments.m4a");
+  expect(track.ok()).toBeTruthy();
+  expect(track.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
+  const credits = await page.request.get("/protos/audio/CREDITS.md");
+  expect(credits.ok()).toBeTruthy();
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  const bodyText = await page.locator("body").innerText();
+  expect(bodyText.toLowerCase()).not.toContain("credit");
+  expect(bodyText.toLowerCase()).not.toContain("crédito");
+});
+
 test("el botón de silenciar alterna y persiste", async ({ page }) => {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();

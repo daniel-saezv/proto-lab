@@ -11,8 +11,14 @@ export const ROOM_INNER = {
   maxZ: 12,
 } as const;
 
-/** Cara inferior del techo. La cámara no puede subir de aquí. */
+/** Cara inferior del techo (mallas). Las vigas cuelgan por debajo. */
 export const CEILING_UNDERSIDE = 3.42;
+
+/**
+ * Altura máxima de la cámara: bajo el suelo de las vigas (≈ 3,08)
+ * y de las pantallas de las lámparas (≈ 2,99).
+ */
+export const CAMERA_CEILING_Y = 2.96;
 
 /** Margen para que el near plane no se coma el muro cuando la cámara se acerca. */
 export const CAMERA_WALL_MARGIN = 0.32;
@@ -189,7 +195,7 @@ export function cameraVolume(): {
     minZ: ROOM_INNER.minZ + margin,
     maxZ: ROOM_INNER.maxZ - margin,
     minY: 0.9,
-    maxY: CEILING_UNDERSIDE - 0.12,
+    maxY: CAMERA_CEILING_Y,
   };
 }
 
@@ -210,13 +216,17 @@ export function lobbyCameraBlockers(): CameraBlocker[] {
     { minX: desk.x - 0.75, maxX: desk.x + 0.75, minY: 0, maxY: 1.05, minZ: desk.z - 0.45, maxZ: desk.z + 0.45 },
     { minX: couch.x - 0.85, maxX: couch.x + 0.85, minY: 0, maxY: 1.05, minZ: couch.z - 0.48, maxZ: couch.z + 0.48 },
     { minX: pinball.x - 0.55, maxX: pinball.x + 0.55, minY: 0, maxY: 0.85, minZ: pinball.z - 0.42, maxZ: pinball.z + 0.42 },
-    { minX: -9.3, maxX: 9.3, minY: 3.02, maxY: CEILING_UNDERSIDE, minZ: -5.7, maxZ: -5.5 },
-    { minX: -9.3, maxX: 9.3, minY: 3.02, maxY: CEILING_UNDERSIDE, minZ: -1.2, maxZ: -1 },
-    { minX: -9.3, maxX: 9.3, minY: 3.02, maxY: CEILING_UNDERSIDE, minZ: 4.5, maxZ: 4.7 },
-    { minX: -9.3, maxX: 9.3, minY: 3.02, maxY: CEILING_UNDERSIDE, minZ: 8.7, maxZ: 8.9 },
-    { minX: -6.32, maxX: -6.08, minY: 3.02, maxY: CEILING_UNDERSIDE, minZ: -7.1, maxZ: 11.7 },
-    { minX: 6.08, maxX: 6.32, minY: 3.02, maxY: CEILING_UNDERSIDE, minZ: -7.1, maxZ: 11.7 },
   ];
+}
+
+/**
+ * 1 a la altura de paseo. Al mirar hacia arriba el brazo se acorta
+ * con suavidad para deslizarse bajo el techo, sin clavarse en las vigas.
+ */
+export function ceilingArmScale(desiredY: number, ceilingY = CAMERA_CEILING_Y): number {
+  const t = clamp((desiredY - (ceilingY - 0.22)) / 0.48, 0, 1);
+  const s = t * t * (3 - 2 * t);
+  return 1 - s * 0.6;
 }
 
 export function resolveCameraArm(options: {
@@ -229,10 +239,14 @@ export function resolveCameraArm(options: {
   baseY?: number;
 }): { x: number; y: number; z: number; distance: number } {
   const volume = cameraVolume();
-  const y = clamp((options.baseY ?? CAMERA_BASE_Y) + options.pitch, volume.minY, volume.maxY);
+  const desiredY = (options.baseY ?? CAMERA_BASE_Y) + options.pitch;
+  const y = clamp(desiredY, volume.minY, volume.maxY);
   const sx = -Math.sin(options.yaw);
   const sz = Math.cos(options.yaw);
-  let distance = Math.max(0, options.distance);
+  const requested = Math.max(0, options.distance);
+  const scale = ceilingArmScale(desiredY);
+  let distance = requested * scale;
+  if (scale < 1) distance = Math.max(distance, Math.min(0.85, requested));
   distance = Math.min(distance, axisLimit(options.playerX, sx, volume.minX, volume.maxX));
   distance = Math.min(distance, axisLimit(options.playerZ, sz, volume.minZ, volume.maxZ));
 

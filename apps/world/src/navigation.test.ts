@@ -8,6 +8,9 @@ import {
   lobbyStaticColliders,
   moveWithSlide,
   playerLobbyBounds,
+  CAMERA_CEILING_Y,
+  ceilingArmScale,
+  lobbyCameraBlockers,
   resolveCameraArm,
   walkToward,
   LAYOUT,
@@ -73,7 +76,11 @@ describe("cámara del lobby", () => {
   it("el near plane queda por dentro del margen contra el muro", () => {
     expect(CAMERA_NEAR).toBeLessThan(CAMERA_WALL_MARGIN);
     expect(CAMERA_NEAR).toBeLessThanOrEqual(0.08);
+    expect(volume.maxY).toBeLessThanOrEqual(CAMERA_CEILING_Y);
     expect(volume.maxY).toBeLessThan(3.42);
+    for (const box of lobbyCameraBlockers()) {
+      expect(box.minY).toBeLessThan(2.4);
+    }
   });
 
   it("acerca el brazo y deja la cámara dentro de la sala junto a la pared sur", () => {
@@ -139,5 +146,66 @@ describe("cámara del lobby", () => {
     });
     expect(pose.distance).toBeGreaterThan(3.5);
     expect(pose.y).toBeLessThanOrEqual(volume.maxY);
+    expect(ceilingArmScale(2.55 + 0.15)).toBe(1);
+  });
+
+  it("al mirar casi en vertical se desliza bajo el techo sin clavarse", () => {
+    const mild = resolveCameraArm({
+      playerX: 0,
+      playerZ: 2,
+      yaw: 0.4,
+      pitch: 0.15,
+      distance: 3.8,
+    });
+    const yaws = [0, 0.8, 1.6, 2.4, 3.2, 4.2, 5.2, -0.6];
+    for (const yaw of yaws) {
+      const pose = resolveCameraArm({
+        playerX: 0,
+        playerZ: 2,
+        yaw,
+        pitch: 0.7,
+        distance: 3.8,
+      });
+      expect(pose.y, `yaw ${yaw}`).toBeLessThanOrEqual(CAMERA_CEILING_Y + 1e-4);
+      expect(pose.y, `yaw ${yaw}`).toBeGreaterThan(mild.y);
+      expect(pose.distance, `yaw ${yaw}`).toBeGreaterThan(1.2);
+      expect(pose.distance, `yaw ${yaw}`).toBeLessThan(mild.distance);
+      expect(pose.x).toBeGreaterThanOrEqual(volume.minX - 1e-4);
+      expect(pose.x).toBeLessThanOrEqual(volume.maxX + 1e-4);
+      expect(pose.z).toBeGreaterThanOrEqual(volume.minZ - 1e-4);
+      expect(pose.z).toBeLessThanOrEqual(volume.maxZ + 1e-4);
+    }
+    expect(ceilingArmScale(2.55 + 0.7)).toBeLessThan(ceilingArmScale(2.55 + 0.4));
+    expect(ceilingArmScale(2.55 + 0.4)).toBeLessThan(1);
+  });
+
+  it("junto a la pared, con pitch alto, sigue dentro y bajo el techo", () => {
+    const inward = resolveCameraArm({
+      playerX: volume.maxX - 1.1,
+      playerZ: volume.maxZ - 1.1,
+      yaw: Math.PI * 0.75,
+      pitch: 0.7,
+      distance: 6.4,
+    });
+    expect(inward.y).toBeLessThanOrEqual(CAMERA_CEILING_Y + 1e-4);
+    expect(inward.distance).toBeGreaterThan(0.8);
+    expect(inward.distance).toBeLessThan(6.4);
+    expect(inward.x).toBeLessThanOrEqual(volume.maxX + 1e-4);
+    expect(inward.z).toBeLessThanOrEqual(volume.maxZ + 1e-4);
+
+    const outward = resolveCameraArm({
+      playerX: volume.maxX - 0.4,
+      playerZ: volume.minZ + 0.4,
+      yaw: -Math.PI / 2,
+      pitch: 0.7,
+      distance: 6.4,
+    });
+    expect(outward.y).toBeLessThanOrEqual(CAMERA_CEILING_Y + 1e-4);
+    expect(outward.x).toBeLessThanOrEqual(volume.maxX + 1e-4);
+    expect(outward.x).toBeGreaterThanOrEqual(volume.minX - 1e-4);
+    expect(outward.z).toBeGreaterThanOrEqual(volume.minZ - 1e-4);
+    expect(outward.z).toBeLessThanOrEqual(volume.maxZ + 1e-4);
+    expect(outward.distance).toBeGreaterThan(0);
+    expect(outward.distance).toBeLessThan(1);
   });
 });

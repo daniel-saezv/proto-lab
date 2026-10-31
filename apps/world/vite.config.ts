@@ -17,6 +17,8 @@ const MIME: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".wasm": "application/wasm",
   ".webmanifest": "application/manifest+json",
+  ".m4a": "audio/mp4",
+  ".md": "text/plain; charset=utf-8",
 };
 
 function allowPrototypeCors(): Plugin {
@@ -55,6 +57,21 @@ function serveProtos(): Plugin {
         const slug = match[1] ?? "";
         let rel = match[2] || "/";
         if (rel.endsWith("/")) rel += "index.html";
+        if (slug === "audio") {
+          const base = resolve(worldDir, "public/protos/audio");
+          const file = resolve(base, rel.replace(/^\//, ""));
+          const basePrefix = base.endsWith(sep) ? base : `${base}${sep}`;
+          if (!file.startsWith(basePrefix) || !existsSync(file) || statSync(file).isDirectory()) {
+            res.statusCode = 404;
+            res.end("No está esa pista.");
+            return;
+          }
+          const ext = file.slice(file.lastIndexOf("."));
+          res.setHeader("content-type", MIME[ext] ?? "application/octet-stream");
+          res.setHeader("cache-control", "public, max-age=86400");
+          createReadStream(file).pipe(res);
+          return;
+        }
         const base = resolve(repoRoot, "protos", slug, "dist");
         const file = resolve(base, rel.replace(/^\//, ""));
         const basePrefix = base.endsWith(sep) ? base : `${base}${sep}`;

@@ -33,6 +33,7 @@ import {
 } from "three";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 import { attachInput } from "./input";
+import { getMusicEnergy } from "./ambience-music";
 import { addAmbient } from "./ambient";
 import { drawTitleCard } from "./title-card";
 import { WALK_SPEED, applyLook, approachVelocity, dampAngle, dampBlockedAxis, smoothLookInput } from "./locomotion";
@@ -411,18 +412,22 @@ export function startWorld(options: {
       velZ = 0;
     }
 
+    const beat = getMusicEnergy();
+    const bass = reduced ? 0 : beat.bass;
+    const mid = reduced ? 0 : beat.mid;
     if (!reduced) {
+      const lampBeat = 1 + bass * 0.15;
       for (const light of hangingLights) {
         const phase = (light.userData.phase as number) ?? 0;
         const base = (light.userData.base as number) ?? 3.2;
         const blink = Math.sin(frame * 8.5 + phase) > 0.985 ? 0.7 : 1;
-        light.intensity = base * (0.92 + Math.sin(frame * 1.7 + phase) * 0.08) * blink;
+        light.intensity = base * (0.92 + Math.sin(frame * 1.7 + phase) * 0.08) * blink * lampBeat;
       }
-      lampLight.intensity = 6 * (0.94 + Math.sin(frame * 2.2) * 0.06);
+      lampLight.intensity = 6 * (0.94 + Math.sin(frame * 2.2) * 0.06) * lampBeat;
       inventor.position.y = Math.sin(frame * 2) * 0.04;
       const arm = inventor.userData.arm as Object3D | undefined;
       if (arm) arm.rotation.x = Math.sin(frame * 1.6) * 0.25;
-      const pulse = 0.82 + Math.sin(frame * 3) * 0.18;
+      const pulse = (0.82 + Math.sin(frame * 3) * 0.18) * (1 + mid * 0.08);
       for (const material of pulses) {
         const data = material.userData as { pulseBase?: Color };
         if (!data.pulseBase) data.pulseBase = material.color.clone();
@@ -434,7 +439,7 @@ export function startWorld(options: {
       if (!ring.visible) continue;
       material.opacity = reduced ? 0.92 : 0.58 + Math.sin(frame * 4) * 0.28;
     }
-    ambient.tick(frame, dt, player.position);
+    ambient.tick(frame, dt, player.position, bass, mid);
 
     if (!selectorOpen && options.prototypes.length > 1 && !reduced) {
       idleElapsed += dt;
