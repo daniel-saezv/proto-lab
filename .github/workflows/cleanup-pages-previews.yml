@@ -1,0 +1,92 @@
+name: Limpiar previews de Pages
+
+on:
+  pull_request:
+    types: [closed]
+  schedule:
+    # Domingos 04:00 UTC — barrido de previews huérfanas o antiguas
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Modo manual (sweep = barrido; purge-all-previews = limpieza inicial)
+        type: choice
+        options:
+          - sweep
+          - purge-all-previews
+        default: sweep
+      dry_run:
+        description: Simular sin borrar (recomendado antes de purge-all-previews)
+        type: boolean
+        default: true
+      max_age_days:
+        description: Días de antigüedad para el barrido (modo sweep)
+        type: number
+        default: 14
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pages-preview-cleanup-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  CF_PAGES_PROJECT: proto-lab
+  PRODUCTION_BRANCH: main
+  MAX_AGE_DAYS: "14"
+
+jobs:
+  cleanup:
+    name: Limpiar despliegues preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolver modo y parámetros
+        id: params
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          case "${{ github.event_name }}" in
+            pull_request)
+              echo "mode=pr-closed" >> "$GITHUB_OUTPUT"
+              echo "dry_run=false" >> "$GITHUB_OUTPUT"
+              echo "max_age_days=14" >> "$GITHUB_OUTPUT"
+              printf 'target_branch=%s\n' "${PR_HEAD_REF}" >> "$GITHUB_OUTPUT"
+              ;;
+            schedule)
+              echo "mode=sweep" >> "$GITHUB_OUTPUT"
+              echo "dry_run=false" >> "$GITHUB_OUTPUT"
+              echo "max_age_days=${MAX_AGE_DAYS}" >> "$GITHUB_OUTPUT"
+              echo "target_branch=" >> "$GITHUB_OUTPUT"
+              ;;
+            workflow_dispatch)
+              echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+              echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+              echo "max_age_days=${{ inputs.max_age_days }}" >> "$GITHUB_OUTPUT"
+              echo "target_branch=" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Evento no soportado"
+              exit 1
+              ;;
+          esac
+
+      - name: Ejecutar limpieza
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CLEANUP_MODE: ${{ steps.params.outputs.mode }}
+          DRY_RUN: ${{ steps.params.outputs.dry_run }}
+          MAX_AGE_DAYS: ${{ steps.params.outputs.max_age_days }}
+          TARGET_BRANCH: ${{ steps.params.outputs.target_branch }}
+        run: bash .github/scripts/cleanup-pages-previews.sh
