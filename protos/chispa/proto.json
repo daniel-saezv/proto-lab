@@ -10,7 +10,7 @@
     "movil"
   ],
   "cover": null,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "history": [
     {
       "version": "0.1.0",
@@ -31,6 +31,11 @@
       "version": "0.3.0",
       "date": "2026-10-31",
       "note": "Controles de un pulgar, caída más rápida, combos, fiebre, bomba y arcoíris."
+    },
+    {
+      "version": "0.5.0",
+      "date": "2026-10-31",
+      "note": "Animaciones de fusión más vistosas, bolas oro y hielo, y HUD de combo con altura fija para que el pozo no se mueva."
     }
   ],
   "preview": "preview.webp"
