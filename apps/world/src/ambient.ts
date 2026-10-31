@@ -81,6 +81,7 @@ export type AmbientFactories = {
   materials: Material[];
   pulses: MeshBasicMaterial[];
   reduced: boolean;
+  e2e?: boolean;
 };
 
 export type AmbientHandle = {
@@ -102,7 +103,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
   addSnackClutter(lounge, slackerX + 0.55, slackerZ + 0.35, f);
   addPosters(f.scene, f);
   addFloorCables(f.scene, f);
-  const dust = addDust(f.scene, f);
+  const dust = f.e2e ? [] : addDust(f.scene, f);
   const corners = addStoryCorners(f);
   const fridgeHum = addFridgeCorner(f);
 
@@ -130,7 +131,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
       if (!near) lineShown = -1;
       bubbleAnchor.hidden = !near;
 
-      if (f.reduced) return;
+      if (f.reduced || f.e2e) return;
 
       const chew = Math.sin(time * 1.4);
       arm.rotation.x = -0.35 + (chew > 0.6 ? 0.55 : 0.08);

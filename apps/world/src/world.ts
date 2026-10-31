@@ -127,7 +127,8 @@ export function startWorld(options: {
 }): WorldHandle {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const shadows = !coarse;
+  const e2eRender = options.e2e;
+  const shadows = e2eRender ? false : !coarse;
 
   const scene = new Scene();
   scene.background = new Color(0x1a2140);
@@ -137,11 +138,15 @@ export function startWorld(options: {
   const overviewCamera = new OrthographicCamera(-12, 12, 12, -12, 0.1, 90);
   overviewCamera.up.set(0, 0, -1);
   let cameraMode: "follow" | "top" = "follow";
-  const renderer = new WebGLRenderer({ antialias: !coarse, alpha: false, powerPreference: coarse ? "low-power" : "default" });
+  const renderer = new WebGLRenderer({
+    antialias: e2eRender ? false : !coarse,
+    alpha: false,
+    powerPreference: coarse ? "low-power" : "default",
+  });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2));
+  renderer.setPixelRatio(e2eRender ? 1 : Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2));
   renderer.shadowMap.enabled = shadows;
   options.viewport.append(renderer.domElement);
 
@@ -233,7 +238,7 @@ export function startWorld(options: {
   addBench();
   addLamp();
 
-  const ambient = addAmbient({ scene, geo, mat, box, shadows, materials, pulses, reduced });
+  const ambient = addAmbient({ scene, geo, mat, box, shadows, materials, pulses, reduced, e2e: e2eRender });
 
   const arcadeSpot = arcadeMachineCollider();
   const arcadeIndex = { current: 0 };
@@ -475,9 +480,11 @@ export function startWorld(options: {
         light.intensity = base * (0.92 + Math.sin(frame * 1.7 + phase) * 0.08) * blink * lampBeat;
       }
       lampLight.intensity = 6 * (0.94 + Math.sin(frame * 2.2) * 0.06) * lampBeat;
-      inventor.position.y = Math.sin(frame * 2) * 0.04;
-      const arm = inventor.userData.arm as Object3D | undefined;
-      if (arm) arm.rotation.x = Math.sin(frame * 1.6) * 0.25;
+      if (!e2eRender) {
+        inventor.position.y = Math.sin(frame * 2) * 0.04;
+        const arm = inventor.userData.arm as Object3D | undefined;
+        if (arm) arm.rotation.x = Math.sin(frame * 1.6) * 0.25;
+      }
       const pulse = (0.82 + Math.sin(frame * 3) * 0.18) * (1 + mid * 0.08);
       for (const material of pulses) {
         const data = material.userData as { pulseBase?: Color };
@@ -488,12 +495,12 @@ export function startWorld(options: {
     for (const ring of highlightRings.values()) {
       const material = ring.material as MeshBasicMaterial;
       if (!ring.visible) continue;
-      material.opacity = reduced ? 0.92 : 0.58 + Math.sin(frame * 4) * 0.28;
+      material.opacity = reduced || e2eRender ? 0.92 : 0.58 + Math.sin(frame * 4) * 0.28;
     }
     ambient.tick(frame, dt, player.position, bass, mid);
     lobbyWhiteboard.tick(now);
 
-    if (!selectorOpen && options.prototypes.length > 1 && !reduced) {
+    if (!selectorOpen && options.prototypes.length > 1 && !reduced && !e2eRender) {
       idleElapsed += dt;
       if (idleElapsed >= 4.5) {
         idleElapsed = 0;

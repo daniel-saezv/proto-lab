@@ -32,6 +32,13 @@ describe("service worker", () => {
     expect(source).not.toContain("/protos/chispa/");
   });
 
+  it("no precarga pistas de música del lobby", () => {
+    const source = renderServiceWorker(["/assets/app.js", "/index.html", "/sw.js"]);
+    expect(source).not.toContain("life-in-fragments");
+    expect(source).not.toContain("luanda.m4a");
+    expect(source).not.toContain("lemonade.m4a");
+  });
+
   it("pide que los prototipos no se cacheen en el borde", () => {
     const headers = readFileSync(join(root, "apps/world/public/_headers"), "utf8");
     expect(headers).toMatch(/\/protos\/\*/);
