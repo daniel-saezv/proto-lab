@@ -1,4 +1,5 @@
 import { devices, expect, test } from "@playwright/test";
+import { skipUnlessChromium } from "./helpers";
 
 async function focusArcade(page: import("@playwright/test").Page) {
   await page.evaluate(() => window.__protoLab?.focus("arcade"));
@@ -78,7 +79,6 @@ test("mensajes de asset desde otra ventana se ignoran", async ({ page, isMobile 
   await page.evaluate(() => {
     window.postMessage({ source: "proto-lab", type: "asset-request", id: 42, path: "media/pixel.png" }, "*");
   });
-  await page.waitForTimeout(200);
   const frame = page.frameLocator("iframe");
   await expect.poll(async () => frame.locator("body").getAttribute("data-media-ok")).toBe("1");
 });
@@ -104,7 +104,8 @@ test("límite de peticiones en el iframe", async ({ page, isMobile }) => {
   expect(overflow).toBe("rate-limit");
 });
 
-test("detrás de Access el puente sigue sirviendo bytes", async ({ browser }) => {
+test("detrás de Access el puente sigue sirviendo bytes", async ({ browser }, testInfo) => {
+  skipUnlessChromium(testInfo, "perfil Pixel 7");
   const context = await browser.newContext({ ...devices["Pixel 7"], locale: "es-ES" });
   await context.addCookies([{ name: "CF_Authorization", value: "sesion-de-prueba", url: "http://127.0.0.1:4173" }]);
   const page = await context.newPage();

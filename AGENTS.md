@@ -66,11 +66,23 @@ Comandos comprobados en este repositorio (Node 22.23, pnpm 12.17.0):
 - Pasada visual del lobby: con `pnpm dev` o `pnpm preview` en marcha, `pnpm shots -- --out shots --prefix antes` (y el mismo comando con `--prefix despues`). Usa los encuadres fijos de `apps/world/src/viewpoints.ts` (aparición, Inventor, arcade, cuatro rincones y cenital) en escritorio 1280×800, iPhone 390×844 y 844×390, abre el selector en la arcade y compone una sola hoja de contacto. `--debug` añade una cenital con anillos en Inventor, arcade y pizarra. `SHOTS_URL` fuerza la base; si no hay servidor, arranca `pnpm dev`. La carpeta `shots/` no se versiona.
 - Typecheck: `pnpm typecheck`
 - Tests unitarios: `pnpm test:unit`
-- Tests e2e: `pnpm test:e2e` (hace falta el build antes; Playwright arranca `pnpm preview` en el puerto 4173; Chromium y WebKit con perfil de iPhone)
+- Tests e2e: `pnpm test:e2e` (hace falta el build antes; Playwright arranca `pnpm preview` en el puerto 4173; proyectos `chromium` y `webkit-iphone` en paralelo). Ver **Pruebas E2E sostenibles**.
 - Arranque de producción local: `pnpm preview` → `http://127.0.0.1:4173`
 - Arranque con recarga: `pnpm dev` → laboratorio en el puerto 5173, sirviendo los prototipos ya construidos
 
 En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=true` y la petición lleve `X-Dev-User-Email`. Esa variable no se define en Pages. Para crear issues de verdad hace falta además `GITHUB_TOKEN` en el entorno del servidor, nunca en el cliente.
+
+## Pruebas E2E sostenibles
+
+- Prioriza tests unitarios para lógica pura; reserva e2e al cableado en un navegador real (`/?e2e=1` activa render ligero: sin sombras ni antialias, `pixelRatio` 1 y animaciones decorativas reducidas; no afecta al uso normal).
+- Añade como mucho **1–2** tests e2e nuevos por cambio; extiende flujos existentes cuando puedas.
+- Ningún test nuevo debería superar **15 s** en CI Chromium; el job e2e de Chromium debería quedar **por debajo de 5 min**. Si lo superas, indícalo en el PR.
+- Prohibido `page.waitForTimeout`: usa `expect.poll`, `toBeVisible` o atributos expuestos en `?e2e=1` (p. ej. `data-playback` en música).
+- Reutiliza helpers en `e2e/helpers.ts`, rutas simuladas del `beforeEach` y `/?e2e=1`.
+- Tests con viewport o dispositivo fijo (`Pixel 7`, iPhone, `isMobile` manual) solo en **un** proyecto Playwright (`chromium` o `webkit-iphone`, según corresponda).
+- Tests solo WebKit para comportamiento Safari/iOS (gestos táctiles, desbloqueo de audio, pantalla completa, safe areas).
+- En local itera con `pnpm exec playwright test <spec>`; ejecuta la suite completa una vez antes del commit final.
+- Un test que solo pasa en reintento hay que arreglarlo o quitarlo; no subas reintentos ni timeouts para ocultarlo.
 
 ## Buenas prácticas
 
@@ -87,9 +99,16 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 
 ## CI/CD
 
-Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml), en `pull_request`, `push` a `main` y `workflow_dispatch`. Concurrencia con `cancel-in-progress` y 20 minutos de tope. El job instala, hace typecheck, tests unitarios, instala Chromium, construye y ejecuta Playwright.
+Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml), en `pull_request`, `push` a `main` y `workflow_dispatch`. Concurrencia con `cancel-in-progress` y 20 minutos de tope.
 
-Check obligatorio en el pull request: el job `verificar`. Convendría añadir un aviso si `dist/` se cuela en el commit y, cuando haya más prototipos, un job que falle si un `proto.json` no pasa el lector del catálogo; hoy ese lector ya corre dentro de `pnpm test:unit` y de `pnpm build`.
+En pull request corren en paralelo:
+
+- **`verificar`**: typecheck, tests unitarios y build (sin e2e).
+- **`E2E (chromium)`** y **`E2E (webkit-iphone)`**: instalan dependencias, construyen y ejecutan `playwright test --project=…` (matriz de dos jobs).
+
+Checks obligatorios en el PR: **`verificar`**, **`E2E (chromium)`** y **`E2E (webkit-iphone)`**. En push a `main`, además, **`Typecheck y unitarios (main)`** y el job de caché de navegadores Playwright.
+
+Convendría añadir un aviso si `dist/` se cuela en el commit y, cuando haya más prototipos, un job que falle si un `proto.json` no pasa el lector del catálogo; hoy ese lector ya corre dentro de `pnpm test:unit` y de `pnpm build`.
 
 Sigue la sección **Convenciones para agentes (pull requests)** al hacer push en un PR.
 
