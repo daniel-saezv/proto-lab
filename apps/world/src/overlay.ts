@@ -2,7 +2,7 @@ import { fetchPrototypeDocument } from "./prototype-document";
 import { createPrototypeAssetHost } from "./prototype-assets-host";
 import type { CatalogEntry } from "./types";
 
-const FAIL = "No he podido abrir el prototipo. Pulsa Volver para salir del laboratorio.";
+const FAIL = "No he podido abrir el prototipo. Pulsa Volver para volver al laboratorio.";
 
 type FullscreenHost = HTMLElement & { webkitRequestFullscreen?: () => void };
 type FullscreenDoc = Document & {

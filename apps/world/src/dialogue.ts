@@ -283,6 +283,7 @@ export function createDialogue(options: {
     if (!open) return;
     open = false;
     token += 1;
+    document.body.classList.remove("dialogue-open");
     options.root.hidden = true;
     options.root.replaceChildren();
     phase = { name: "greet" };
@@ -294,6 +295,7 @@ export function createDialogue(options: {
     open = true;
     phase = { name: "greet" };
     draft = { kind: "propuesta", title: "", description: "" };
+    document.body.classList.add("dialogue-open");
     options.root.hidden = false;
     options.onOpen();
     render();
