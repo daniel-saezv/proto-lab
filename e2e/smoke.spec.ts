@@ -93,7 +93,10 @@ test("el tablón de propuestas muestra el estado simulado", async ({ page, isMob
   await status;
   await expect(page.getByTestId("board-list")).toBeVisible();
   await expect(page.getByTestId("board-item-7")).toContainText("Cometa lunar");
-  await expect(page.getByTestId("board-item-8")).toContainText("Preview lista");
+  await expect(page.getByTestId("board-item-7").getByTestId("board-track")).toBeVisible();
+  await expect(page.getByTestId("board-item-7").locator('[data-visual="active"]')).toHaveCount(1);
+  await expect(page.getByTestId("board-item-8")).toContainText("Chispas más rápidas");
+  await expect(page.getByTestId("board-item-8").locator('[data-testid="board-step-4"][data-visual="active"]')).toBeVisible();
   const preview = page.getByTestId("board-preview-8");
   await expect(preview).toHaveAttribute("href", "https://preview-test.proto-lab-3k6.pages.dev");
   await expect(preview).toHaveAttribute("rel", "noopener noreferrer");

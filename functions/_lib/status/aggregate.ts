@@ -22,6 +22,7 @@ import {
   type GitHubFetch,
   type PagesDeployment,
 } from "./github";
+import { boardClosedSinceIso, isIssueVisibleOnBoard } from "./board-visibility";
 import { pickLinkedPullRequest, type PullCandidate, type PullRequestRef } from "./issue-pr";
 import { previewUrlForPhase, resolvePhase, type CiSnapshot, type DeploySnapshot } from "./phases";
 
@@ -91,6 +92,8 @@ function buildDeploySnapshot(
 
 export async function buildProposalStatus(env: StatusEnv, options: StatusOptions = {}): Promise<StatusResponse> {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const now = options.now ?? new Date();
+  const nowMs = now.getTime();
   const cached = await readStatusCache(env.PROPOSALS);
   if (cached) {
     return { ok: true, partial: cached.partial, items: cached.items as StatusItem[] };
@@ -107,7 +110,7 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
   let deployments: PagesDeployment[] | null = null;
 
   try {
-    issues = await fetchProposalIssues(token, fetchImpl);
+    issues = await fetchProposalIssues(token, fetchImpl, { closedSince: boardClosedSinceIso(now) });
   } catch {
     partial = true;
     issues = [];
@@ -132,7 +135,12 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
     }
   }
 
-  const filtered = issues.filter((issue) => hasPropuestaLabel(issue.labels.map((l) => l.name)) && isUserProposalIssue(issue.body));
+  const filtered = issues.filter(
+    (issue) =>
+      hasPropuestaLabel(issue.labels.map((l) => l.name)) &&
+      isUserProposalIssue(issue.body) &&
+      isIssueVisibleOnBoard(issue, nowMs),
+  );
 
   const items: StatusItem[] = [];
 
@@ -190,7 +198,7 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
   items.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : b.number - a.number));
 
   const payload: StatusCachePayload = {
-    fetchedAt: (options.now ?? new Date()).toISOString(),
+    fetchedAt: now.toISOString(),
     partial,
     items,
   };

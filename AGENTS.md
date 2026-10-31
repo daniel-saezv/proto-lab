@@ -120,7 +120,7 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: exige `Cf-Access-A
 
 **Respuesta JSON:** `{ ok: true, partial?: boolean, items: [{ number, title, kind, slug?, phase, updatedAt, previewUrl? }] }`. Título escapado y truncado (80 caracteres). `previewUrl` solo en `preview_lista` (subdominio `*.proto-lab-3k6.pages.dev`) o en `publicada` (producción). **No** se exponen emails, cuerpos, ramas, logs, mensajes de commit ni enlaces a GitHub.
 
-**Caché:** KV `PROPOSALS`, clave `proposal-status:v1:all`, TTL **120 s**. Sin binding, sin caché.
+**Caché:** KV `PROPOSALS`, clave `proposal-status:v2:all`, TTL **120 s**. Sin binding, sin caché.
 
 **UI:** en el laboratorio 3D, acércate a la **pizarra** («Ver el tablón»). Sin WebGL, botón equivalente en el fallback. Textos con `textContent`; la preview abre en pestaña nueva con `rel=noopener noreferrer`.
 

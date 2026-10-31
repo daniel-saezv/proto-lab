@@ -1,37 +1,76 @@
-import type { ProposalPhase, ProposalStatusItem } from "./proposals-status-api";
+import { trackAriaLabel, trackStepVisuals, TRACK_STEP_LABELS } from "./proposals-board-track";
+import type { ProposalStatusItem } from "./proposals-status-api";
 
-const PHASE_LABELS: Record<ProposalPhase, string> = {
-  recibida: "Recibida en el tablón",
-  aprobada: "Aprobada por el dueño",
-  en_curso: "En curso (agente)",
-  pr_abierto: "Pull request abierto",
-  ci_en_curso: "CI en curso",
-  ci_correcta: "CI correcta",
-  ci_con_fallos: "CI con fallos",
-  preview_lista: "Preview lista",
-  publicada: "Publicada en producción",
-  cerrada_sin_hacer: "Cerrada sin hacer",
-};
+const PARTIAL_NOTE = "Algunos datos pueden ir un poco desfasados.";
 
-const INTRO =
-  "Estas son las peticiones que han llegado desde el laboratorio. El dueño las revisa; cuando marca una como aprobada, un agente abre un pull request con preview.";
-
-const PARTIAL_NOTE = "Algunos datos no se han podido leer del todo; la fase puede estar un poco desfasada.";
-
-const EMPTY = "Todavía no hay propuestas en el tablón, o el taller no puede leerlas ahora.";
+const EMPTY = "Nada activo en el tablón ahora mismo.";
 
 const ERROR = "No he podido leer el tablón. Prueba otra vez dentro de un rato.";
 
-function formatKind(item: ProposalStatusItem): string {
-  if (item.kind === "iteracion" && item.slug) return `Iteración · ${item.slug}`;
-  if (item.kind === "iteracion") return "Iteración";
-  return "Propuesta nueva";
-}
+function renderTrack(phase: ProposalStatusItem["phase"]): HTMLElement {
+  const track = document.createElement("div");
+  track.className = "board-track";
+  track.dataset.testid = "board-track";
+  track.setAttribute("role", "img");
+  track.setAttribute("aria-label", trackAriaLabel(phase));
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" });
+  const visuals = trackStepVisuals(phase);
+  visuals.forEach((visual, index) => {
+    const step = document.createElement("div");
+    step.className = "board-step";
+    step.dataset.visual = visual;
+    step.dataset.testid = `board-step-${index}`;
+
+    const dotWrap = document.createElement("span");
+    dotWrap.className = "board-dot-wrap";
+
+    const dot = document.createElement("span");
+    dot.className = "board-dot";
+    if (visual === "active") {
+      const pulse = document.createElement("span");
+      pulse.className = "board-dot-pulse";
+      pulse.setAttribute("aria-hidden", "true");
+      dotWrap.append(pulse);
+    }
+    if (visual === "celebrate") {
+      for (let s = 0; s < 3; s += 1) {
+        const spark = document.createElement("span");
+        spark.className = "board-dot-spark";
+        spark.setAttribute("aria-hidden", "true");
+        dotWrap.append(spark);
+      }
+    }
+    if (visual === "fail") {
+      dot.classList.add("board-dot--fail");
+      dot.textContent = "!";
+      dot.setAttribute("aria-hidden", "true");
+    } else if (visual === "filled" || visual === "celebrate") {
+      dot.classList.add("board-dot--done");
+      dot.textContent = "✓";
+      dot.setAttribute("aria-hidden", "true");
+    }
+
+    dotWrap.append(dot);
+
+    const caption = document.createElement("span");
+    caption.className = "board-step-label sr-only";
+    caption.textContent = TRACK_STEP_LABELS[index];
+
+    step.append(dotWrap, caption);
+
+    if (index < visuals.length - 1) {
+      const next = visuals[index + 1];
+      const line = document.createElement("span");
+      line.className = "board-step-line";
+      line.setAttribute("aria-hidden", "true");
+      if (next !== "empty") line.dataset.filled = "1";
+      step.append(line);
+    }
+
+    track.append(step);
+  });
+
+  return track;
 }
 
 export function createProposalsBoard(options: {
@@ -47,8 +86,12 @@ export function createProposalsBoard(options: {
     const panel = buildShell();
     const body = panel.querySelector("[data-testid='board-body']")!;
     const note = document.createElement("p");
+    note.className = "board-status board-status--loading";
     note.dataset.testid = "board-loading";
-    note.textContent = "Leyendo el tablón…";
+    const gem = document.createElement("span");
+    gem.className = "board-gem board-gem--pulse";
+    gem.setAttribute("aria-hidden", "true");
+    note.append(gem, document.createTextNode("Leyendo el tablón…"));
     body.append(note);
     options.root.append(panel);
   }
@@ -66,7 +109,7 @@ export function createProposalsBoard(options: {
     const title = document.createElement("h2");
     title.id = "board-title";
     title.dataset.testid = "board-title";
-    title.textContent = "Tablón de propuestas";
+    title.textContent = "Tablón";
     const close = document.createElement("button");
     close.type = "button";
     close.className = "text-button";
@@ -88,22 +131,20 @@ export function createProposalsBoard(options: {
     const panel = buildShell();
     const body = panel.querySelector("[data-testid='board-body']")!;
 
-    const intro = document.createElement("p");
-    intro.className = "board-intro";
-    intro.dataset.testid = "board-intro";
-    intro.textContent = INTRO;
-    body.append(intro);
-
     if (partial) {
       const warn = document.createElement("p");
       warn.className = "board-note";
       warn.dataset.testid = "board-partial";
-      warn.textContent = PARTIAL_NOTE;
+      const icon = document.createElement("span");
+      icon.className = "board-gem board-gem--warn";
+      icon.setAttribute("aria-hidden", "true");
+      warn.append(icon, document.createTextNode(PARTIAL_NOTE));
       body.append(warn);
     }
 
     if (items.length === 0) {
       const empty = document.createElement("p");
+      empty.className = "board-status";
       empty.dataset.testid = "board-empty";
       empty.textContent = EMPTY;
       body.append(empty);
@@ -115,16 +156,13 @@ export function createProposalsBoard(options: {
         const li = document.createElement("li");
         li.className = "board-item";
         li.dataset.testid = `board-item-${item.number}`;
+        li.dataset.phase = item.phase;
 
         const heading = document.createElement("p");
         heading.className = "board-item-title";
         heading.textContent = `#${item.number} · ${item.title}`;
 
-        const meta = document.createElement("p");
-        meta.className = "board-item-meta";
-        meta.textContent = `${formatKind(item)} · ${PHASE_LABELS[item.phase]} · ${formatDate(item.updatedAt)}`;
-
-        li.append(heading, meta);
+        li.append(heading, renderTrack(item.phase));
 
         if (item.previewUrl && (item.phase === "preview_lista" || item.phase === "publicada")) {
           const link = document.createElement("a");
@@ -133,7 +171,7 @@ export function createProposalsBoard(options: {
           link.target = "_blank";
           link.rel = "noopener noreferrer";
           link.dataset.testid = `board-preview-${item.number}`;
-          link.textContent = item.phase === "publicada" ? "Abrir producción" : "Abrir preview";
+          link.textContent = item.phase === "publicada" ? "Producción" : "Preview";
           li.append(link);
         }
 
@@ -150,6 +188,7 @@ export function createProposalsBoard(options: {
     const panel = buildShell();
     const body = panel.querySelector("[data-testid='board-body']")!;
     const note = document.createElement("p");
+    note.className = "board-status board-status--error";
     note.dataset.testid = "board-error";
     note.textContent = ERROR;
     body.append(note);
@@ -199,4 +238,4 @@ export function createProposalsBoard(options: {
   return { open: openPanel, close: closePanel, handleKey, isOpen };
 }
 
-export { PHASE_LABELS };
+export { trackStepVisuals, trackAriaLabel };
