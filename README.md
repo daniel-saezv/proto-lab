@@ -8,7 +8,7 @@ Producción: [https://proto-lab-3k6.pages.dev](https://proto-lab-3k6.pages.dev).
 
 Entras al laboratorio, caminas y te acercas a una máquina. Al usarla, el prototipo ocupa la pantalla en un `iframe` con `sandbox="allow-scripts"` (sin navegación de la ventana superior). Volver cierra el juego y regresas al mundo.
 
-El Inventor pregunta, resume y pide confirmación. Al confirmar, una Pages Function crea una issue en este repositorio. El texto del amigo va citado como petición de producto. Solo el dueño añade la etiqueta `aprobado`; una automatización externa, no este repositorio, arranca después el trabajo de un agente.
+El Inventor pregunta, resume y pide confirmación. Al confirmar, una Pages Function crea una issue en este repositorio. El texto del amigo va citado como petición de producto. Solo el dueño (@daniel-saezv) añade la etiqueta `aprobado`. Eso avisa al Grok Bot; el bot comprueba en GitHub que la puso el dueño, marca la issue como `en-curso` y lanza un agente de Cursor. El agente abre un pull request con preview. El merge lo hace el dueño a mano.
 
 ## Desarrollo
 
@@ -69,8 +69,13 @@ La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/pr
 
 1. **Secreto `GITHUB_TOKEN`.** Token fine-grained de GitHub, solo el repositorio `daniel-saezv/proto-lab`, permiso Issues de lectura y escritura, nada más. Guárdalo cifrado en Pages para producción y para preview si las previews deben poder proponer. No lo pongas en el cliente ni en el repositorio.
 2. **KV opcional.** Namespace enlazado con el nombre de variable `PROPOSALS`, en producción y en preview. Con él hay un máximo de 5 propuestas por email y día (UTC). Sin el binding la Function sigue creando issues y no aplica ese límite.
-3. **Etiquetas.** `propuesta`, `iteracion`, `aprobado` y `chispa`. El significado está en [`.github/LABELS.md`](.github/LABELS.md). `aprobado` solo la pone el dueño.
+3. **Etiquetas.** `propuesta`, `iteracion`, `aprobado` y `chispa`. El significado está en [`.github/LABELS.md`](.github/LABELS.md). `aprobado` solo la pone el dueño. `en-curso` la pone el Grok Bot cuando ya está trabajando.
 4. **Amigos.** Quien deba entrar tiene que poder superar la política de Access (el PIN de un solo uso). El email con el que entren es el que queda escrito en la issue.
+5. **Secretos del aviso al Grok Bot**, en el repositorio (Settings → Secrets and variables → Actions), sin pegar los valores en el código ni en las issues:
+   - `GROKBOT_WEBHOOK_URL`: la URL del webhook.
+   - `GROKBOT_WEBHOOK_AUTH`: el valor completo de la cabecera `Authorization`, tal como lo muestra el panel del Grok Bot. No lleva el prefijo `Bearer` añadido por el workflow.
+
+   Si faltan, el workflow [`.github/workflows/aprobado-webhook.yml`](.github/workflows/aprobado-webhook.yml) no falla: deja un aviso y no envía nada. Solo corre cuando el dueño pone `aprobado`. Una etiqueta puesta por otra cuenta no dispara el aviso.
 
 ## Instalar la PWA
 
