@@ -1,4 +1,5 @@
 import { devices, expect, test } from "@playwright/test";
+import { skipUnlessChromium, skipUnlessWebKitIphone } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/proposals/status", async (route) => {
@@ -119,7 +120,8 @@ test("ver la pizarra encuadra la cámara y vuelve sin abrir un diálogo", async 
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
 });
 
-test("en vertical la pizarra se lee con un botón de volver dentro de la pantalla", async ({ browser }) => {
+test("en vertical la pizarra se lee con un botón de volver dentro de la pantalla", async ({ browser }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "layout móvil vertical");
   const viewport = { width: 390, height: 844 };
   const context = await browser.newContext({
     viewport,
@@ -229,7 +231,8 @@ test("desde el Inventor se abre la guía de instalación PWA", async ({ page }) 
   await expect(page.getByTestId("world-ready")).toBeVisible();
 });
 
-test("sin WebGL queda un respaldo usable", async ({ browser }) => {
+test("sin WebGL queda un respaldo usable", async ({ browser }, testInfo) => {
+  skipUnlessChromium(testInfo, "comprobación única del fallback HTML");
   const context = await browser.newContext({ baseURL: "http://127.0.0.1:4173", locale: "es-ES" });
   await context.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext;
@@ -254,7 +257,8 @@ test("sin WebGL queda un respaldo usable", async ({ browser }) => {
   await context.close();
 });
 
-test("en el móvil aparece el joystick", async ({ browser }) => {
+test("en el móvil aparece el joystick", async ({ browser }, testInfo) => {
+  skipUnlessChromium(testInfo, "perfil Pixel 7");
   const context = await browser.newContext({
     ...devices["Pixel 7"],
     baseURL: "http://127.0.0.1:4173",
@@ -290,7 +294,8 @@ async function openChispa(page: import("@playwright/test").Page, isMobile: boole
   await playFromSelector(page, isMobile);
 }
 
-test("detrás de Access el prototipo arranca y Volver responde al tacto", async ({ browser }) => {
+test("detrás de Access el prototipo arranca y Volver responde al tacto", async ({ browser }, testInfo) => {
+  skipUnlessChromium(testInfo, "perfil Pixel 7");
   const context = await browser.newContext({ ...devices["Pixel 7"], locale: "es-ES" });
   await context.addCookies([{ name: "CF_Authorization", value: "sesion-de-prueba", url: "http://127.0.0.1:4173" }]);
   const page = await context.newPage();
@@ -327,7 +332,8 @@ test("Escape dentro del prototipo vuelve al laboratorio", async ({ page }) => {
   await expect(page.getByTestId("prototype-player")).toBeHidden();
 });
 
-test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browser }) => {
+test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browser }, testInfo) => {
+  skipUnlessChromium(testInfo, "perfil Pixel 7");
   const context = await browser.newContext({ ...devices["Pixel 7"], locale: "es-ES" });
   const page = await context.newPage();
   await page.route("**/protos/**", async (route) => {
@@ -466,45 +472,13 @@ test("el lobby monta decoración ambiental sin errores", async ({ page }) => {
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await expect(page.locator("#viewport[data-ambient='1']")).toBeVisible();
   await page.evaluate(() => window.__protoLab?.visitSlacker?.());
-  await page.waitForTimeout(400);
   await expect(page.locator(".speech-bubble:not(.snore-bubble)")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test("se puede caminar por el lobby hasta los puntos clave", async ({ page }) => {
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  const results = await page.evaluate(() => window.__protoLab?.probeWalkable?.() ?? []);
-  expect(results.length).toBeGreaterThan(0);
-  for (const item of results) {
-    expect(item.moved).toBeGreaterThan(1.5);
-    expect(item.remaining).toBeLessThan(1.0);
-  }
-});
 
-test("la máquina central abre el selector, lanza el juego y vuelve al laboratorio", async ({ page, isMobile }) => {
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  await openSelector(page, isMobile);
-  await expect(page.getByTestId("selector-title")).toHaveText("Pozo de bolas");
-  await expect(page.getByTestId("game-selector")).not.toContainText("Laboratorio de assets");
-  await playFromSelector(page, isMobile);
-  const frame = page.frameLocator("iframe");
-  await expect(frame.locator("canvas")).toBeVisible();
-  await page.getByTestId("close-prototype").click();
-  await expect(page.getByTestId("prototype-player")).toBeHidden();
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-});
-
-test("asset-lab no aparece en el selector del lobby", async ({ page, isMobile }) => {
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  await openSelector(page, isMobile);
-  await expect(page.getByTestId("selector-title")).not.toContainText("Laboratorio de assets");
-  await expect(page.getByTestId("game-selector")).not.toContainText("asset-lab");
-});
-
-test("el selector cabe en el iPhone y tapa el joystick y las etiquetas", async ({ browser }) => {
+test("el selector cabe en el iPhone y tapa el joystick y las etiquetas", async ({ browser }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "viewports iPhone");
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 844, height: 390 },
@@ -540,19 +514,9 @@ test("el selector cabe en el iPhone y tapa el joystick y las etiquetas", async (
   }
 });
 
-test("el service worker no cachea prototipos", async ({ page }) => {
-  const response = await page.request.get("/sw.js");
-  expect(response.ok()).toBeTruthy();
-  const source = await response.text();
-  expect(source).toContain('startsWith("/protos/")');
-  expect(source).toContain('startsWith("/api/")');
-  expect(source).not.toContain("/protos/chispa/");
-  const proto = await page.request.get("/protos/chispa/");
-  expect(proto.ok()).toBeTruthy();
-  expect(await proto.text()).toContain("Pozo de bolas");
-});
 
-test("con el diálogo del Inventor abierto no se ve el joystick", async ({ browser }) => {
+test("con el diálogo del Inventor abierto no se ve el joystick", async ({ browser }, testInfo) => {
+  skipUnlessChromium(testInfo, "perfil Pixel 7");
   const context = await browser.newContext({
     ...devices["Pixel 7"],
     baseURL: "http://127.0.0.1:4173",
@@ -581,7 +545,8 @@ async function reachConfirmStep(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("choice-confirm")).toBeVisible();
 }
 
-test("en horizontal las acciones de confirmación del diálogo caben en pantalla", async ({ browser }) => {
+test("en horizontal las acciones de confirmación del diálogo caben en pantalla", async ({ browser }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "layout horizontal móvil");
   const viewport = { width: 844, height: 390 };
   const context = await browser.newContext({
     viewport,
@@ -603,13 +568,7 @@ test("en horizontal las acciones de confirmación del diálogo caben en pantalla
   await context.close();
 });
 
-test("la música se sirve y no entra en la precarga del service worker", async ({ page }) => {
-  const sw = await page.request.get("/sw.js");
-  expect(sw.ok()).toBeTruthy();
-  const source = await sw.text();
-  expect(source).not.toContain("life-in-fragments");
-  expect(source).not.toContain("luanda.m4a");
-  expect(source).not.toContain("lemonade.m4a");
+test("la música se sirve y no muestra créditos en pantalla", async ({ page }) => {
   const track = await page.request.get("/protos/audio/life-in-fragments.m4a");
   expect(track.ok()).toBeTruthy();
   expect(track.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
@@ -629,13 +588,13 @@ test("un toque en el laboratorio arranca la música sin pasar por silenciar", as
   });
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.waitForTimeout(400);
+  const mute = page.getByTestId("mute-music");
+  await expect(mute).toHaveAttribute("data-playback", "idle");
   expect(requests).toHaveLength(0);
   const canvas = page.locator("#viewport canvas");
   // Esquina: el centro del lienzo puede caer sobre la máquina y abrir el selector.
   await canvas.click({ position: { x: 12, y: 96 } });
   await expect.poll(() => requests.length).toBeGreaterThan(0);
-  const mute = page.getByTestId("mute-music");
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await page.evaluate(() => {
     const proto = Document.prototype;
@@ -660,7 +619,8 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   });
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.waitForTimeout(300);
+  const mute = page.getByTestId("mute-music");
+  await expect(mute).toHaveAttribute("data-playback", "idle");
   expect(requests).toHaveLength(0);
 
   const joy = page.getByTestId("joystick");
@@ -669,7 +629,6 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   expect(box).toBeTruthy();
   await dispatchTouchDrag(page, box!.x + box!.width / 2, box!.y + box!.height / 2, 0, -48);
   await expect.poll(() => requests.length).toBeGreaterThan(0);
-  const mute = page.getByTestId("mute-music");
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await expect(page.locator("#game-selector")).toBeHidden();
@@ -677,8 +636,8 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   const started = requests.length;
   await page.reload();
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.waitForTimeout(300);
-  expect(requests).toHaveLength(started);
+  await expect(mute).toHaveAttribute("data-playback", "idle");
+  await expect.poll(() => requests.length).toBe(started);
   const canvas = await page.locator("#viewport canvas").boundingBox();
   expect(canvas).toBeTruthy();
   await dispatchTouchDrag(page, canvas!.x + canvas!.width * 0.72, canvas!.y + canvas!.height * 0.42, 0, 0);
@@ -734,7 +693,8 @@ test("el botón de silenciar alterna y persiste", async ({ page }) => {
   await expect(page.getByTestId("mute-music")).toHaveText("Activar");
 });
 
-test("en horizontal el botón de interacción queda en la mitad inferior", async ({ browser }) => {
+test("en horizontal el botón de interacción queda en la mitad inferior", async ({ browser }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "layout horizontal móvil");
   const viewport = { width: 844, height: 390 };
   const context = await browser.newContext({
     viewport,

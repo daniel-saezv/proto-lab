@@ -1,12 +1,19 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const ci = !!process.env.CI;
+const ciProject = process.argv.find((arg) => arg.startsWith("--project="))?.slice("--project=".length);
+/** En CI, Chromium con SwiftShader satura un runner de 2 vCPU si hay 2 mundos WebGL a la vez. */
+const ciWorkers = ci ? (ciProject === "webkit-iphone" ? 2 : 1) : undefined;
+
 export default defineConfig({
   testDir: "e2e",
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  fullyParallel: false,
-  workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  fullyParallel: true,
+  workers: ciWorkers,
+  retries: ci ? 1 : 0,
+  reportSlowTests: { max: 5, threshold: 15_000 },
+  reporter: ci ? [["list"], ["github"]] : "list",
   use: {
     baseURL: "http://127.0.0.1:4173",
     locale: "es-ES",
@@ -15,7 +22,7 @@ export default defineConfig({
   webServer: {
     command: "pnpm preview",
     url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !ci,
     timeout: 120_000,
   },
   projects: [
