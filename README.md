@@ -8,7 +8,7 @@ Producción: [https://proto-lab-3k6.pages.dev](https://proto-lab-3k6.pages.dev).
 
 Entras al laboratorio, caminas y te acercas a una máquina. Al usarla, el prototipo ocupa la pantalla en un `iframe` con `sandbox="allow-scripts"` (sin navegación de la ventana superior). Volver cierra el juego y regresas al mundo.
 
-El Inventor pregunta, resume y pide confirmación. Al confirmar, una Pages Function crea una issue en este repositorio. El texto del amigo va citado como petición de producto. Solo el dueño (@daniel-saezv) añade la etiqueta `aprobado`. Eso avisa al Grok Bot; el bot comprueba en GitHub que la puso el dueño, marca la issue como `en-curso` y lanza un agente de Cursor. El agente abre un pull request con preview. El merge lo hace el dueño a mano.
+El Inventor pregunta, resume y pide confirmación. Al confirmar, una Pages Function crea una issue en este repositorio. El texto del amigo va citado como petición de producto. Eso avisa al Grok Bot para que el dueño pueda revisarla en el chat. Solo el dueño (@daniel-saezv) añade la etiqueta `aprobado`; entonces el bot comprueba en GitHub que la puso el dueño, marca la issue como `en-curso` y lanza un agente de Cursor. El agente abre un pull request con preview. El merge lo hace el dueño a mano.
 
 ## Desarrollo
 
@@ -75,7 +75,7 @@ La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/pr
    - `GROKBOT_WEBHOOK_URL`: la URL del webhook.
    - `GROKBOT_WEBHOOK_AUTH`: el valor completo de la cabecera `Authorization`, tal como lo muestra el panel del Grok Bot. No lleva el prefijo `Bearer` añadido por el workflow.
 
-   Si faltan, el workflow [`.github/workflows/aprobado-webhook.yml`](.github/workflows/aprobado-webhook.yml) no falla: deja un aviso y no envía nada. Solo corre cuando el dueño pone `aprobado`. Una etiqueta puesta por otra cuenta no dispara el aviso.
+   Si faltan, el workflow [`.github/workflows/aprobado-webhook.yml`](.github/workflows/aprobado-webhook.yml) no falla: deja un aviso y no envía nada. Corre al abrir una issue y cuando el dueño pone `aprobado`. Otras etiquetas o un `aprobado` de otra cuenta no disparan el aviso de aprobación.
 
 ## Instalar la PWA
 

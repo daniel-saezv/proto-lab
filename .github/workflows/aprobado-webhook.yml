@@ -1,19 +1,19 @@
-name: Aviso de aprobado
+name: Aviso al Grok Bot
 
 on:
   issues:
-    types: [labeled]
+    types: [opened, labeled]
 
 permissions: {}
 
 concurrency:
-  group: aprobado-${{ github.event.issue.number }}
+  group: grokbot-${{ github.event.issue.number }}-${{ github.event.action }}
   cancel-in-progress: false
 
 jobs:
   avisar:
     name: Avisar al Grok Bot
-    if: github.event.label.name == 'aprobado' && github.event.sender.login == 'daniel-saezv'
+    if: github.event.action == 'opened' || (github.event.action == 'labeled' && github.event.label.name == 'aprobado' && github.event.sender.login == 'daniel-saezv')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -22,6 +22,7 @@ jobs:
           WEBHOOK_URL: ${{ secrets.GROKBOT_WEBHOOK_URL }}
           WEBHOOK_AUTH: ${{ secrets.GROKBOT_WEBHOOK_AUTH }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_EVENT_ACTION: ${{ github.event.action }}
         run: |
           set -euo pipefail
           if [ -z "${WEBHOOK_URL}" ] || [ -z "${WEBHOOK_AUTH}" ]; then
@@ -34,7 +35,18 @@ jobs:
               exit 0
               ;;
           esac
-          payload=$(printf '{"repo":"daniel-saezv/proto-lab","issue":%s,"label":"aprobado"}' "${ISSUE_NUMBER}")
+          case "${GITHUB_EVENT_ACTION}" in
+            opened)
+              payload=$(printf '{"repo":"daniel-saezv/proto-lab","issue":%s,"event":"nueva"}' "${ISSUE_NUMBER}")
+              ;;
+            labeled)
+              payload=$(printf '{"repo":"daniel-saezv/proto-lab","issue":%s,"event":"aprobado","label":"aprobado"}' "${ISSUE_NUMBER}")
+              ;;
+            *)
+              echo "::notice::Acción de issue no reconocida. No se envía el aviso."
+              exit 0
+              ;;
+          esac
           curl --fail --silent --show-error --max-time 20 \
             --request POST \
             --header "Authorization: ${WEBHOOK_AUTH}" \
