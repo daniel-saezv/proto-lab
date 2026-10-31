@@ -12,7 +12,7 @@ Una propuesta nueva puede crear `protos/<slug-nuevo>/` con su propio `package.js
 
 Una iteración trabaja en el prototipo indicado y actualiza su `proto.json`: sube `version` y añade una entrada en `history` con versión, fecha y una nota breve de qué cambió. La versión actual tiene que figurar en el historial.
 
-La etiqueta `aprobado` solo la pone el dueño (@daniel-saezv). El workflow [`.github/workflows/aprobado-webhook.yml`](.github/workflows/aprobado-webhook.yml) solo entonces avisa al Grok Bot, con el número de issue y nada del texto. El bot vuelve a comprobar en GitHub que la puso el dueño, añade `en-curso` y lanza un agente de Cursor. Ese agente abre un pull request con preview. El merge lo hace una persona. Si la etiqueta la pone otra cuenta, el workflow no hace nada.
+La etiqueta `aprobado` solo la pone el dueño (@daniel-saezv). El workflow [`.github/workflows/aprobado-webhook.yml`](.github/workflows/aprobado-webhook.yml) avisa al Grok Bot al abrir una issue (`event: nueva`, solo el número) y cuando el dueño pone `aprobado` (`event: aprobado`; nunca manda título, cuerpo ni otro texto). En la aprobación el bot vuelve a comprobar en GitHub que la etiqueta la puso el dueño, añade `en-curso` y lanza un agente de Cursor. Ese agente abre un pull request con preview. El merge lo hace una persona. Otras etiquetas o un `aprobado` de otra cuenta no disparan el aviso de aprobación.
 
 ## Stack y estructura
 
@@ -77,7 +77,7 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 - Binding opcional: KV `PROPOSALS`. Sin él no hay límite diario; la Function lo documenta así y sigue creando la issue.
 - No definir `ALLOW_DEV_AUTH` en Pages.
 
-El único workflow que mira issues es el aviso de `aprobado` (arriba). No implementa la propuesta ni lee el título o el cuerpo. Hacen falta dos secretos del repositorio, sin valores en el código: `GROKBOT_WEBHOOK_URL` y `GROKBOT_WEBHOOK_AUTH` (el valor entero de `Authorization`, sin que el workflow le anteponga `Bearer`). Si faltan, el job termina en aviso y no falla.
+El único workflow que mira issues es el aviso al Grok Bot (arriba): al crear una issue y al etiquetar `aprobado` por el dueño. No implementa la propuesta ni lee el título o el cuerpo. Hacen falta dos secretos del repositorio, sin valores en el código: `GROKBOT_WEBHOOK_URL` y `GROKBOT_WEBHOOK_AUTH` (el valor entero de `Authorization`, sin que el workflow le anteponga `Bearer`). Si faltan, el job termina en aviso y no falla.
 
 Siguiente paso, fuera de esta versión: una Function de solo lectura que liste el estado de las propuestas para un tablón dentro del laboratorio.
 
