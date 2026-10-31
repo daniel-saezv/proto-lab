@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "id": "b2222222-2222-4222-8222-222222222222",
+      "short_id": "b2222222",
+      "environment": "preview",
+      "created_on": "2026-10-21T08:00:00.000000Z",
+      "deployment_trigger": {
+        "metadata": {
+          "branch": "feature/pagination-test",
+          "commit_hash": "cccccccccccccccccccccccccccccccccccccccc",
+          "commit_message": "page 2"
+        }
+      },
+      "latest_stage": { "name": "deploy", "status": "success" },
+      "aliases": []
+    }
+  ],
+  "result_info": {
+    "count": 1,
+    "page": 2,
+    "per_page": 25,
+    "total_count": 3,
+    "total_pages": 2
+  }
+}

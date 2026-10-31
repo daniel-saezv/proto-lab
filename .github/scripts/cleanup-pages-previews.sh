@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cleanup-pages-api.sh
+source "${SCRIPT_DIR}/cleanup-pages-api.sh"
+
 CF_API_BASE="https://api.cloudflare.com/client/v4"
 PROJECT="${CF_PAGES_PROJECT:-proto-lab}"
 PRODUCTION_BRANCH="${PRODUCTION_BRANCH:-main}"
@@ -12,6 +16,14 @@ MODE="${CLEANUP_MODE:?CLEANUP_MODE requerido}"
 DRY_RUN="${DRY_RUN:-false}"
 MAX_AGE_DAYS="${MAX_AGE_DAYS:-14}"
 TARGET_BRANCH="${TARGET_BRANCH:-}"
+CURRENT_STEP="inicio"
+
+on_fatal() {
+  local code=$?
+  echo "::error::Abortado en paso «${CURRENT_STEP}» (línea ${BASH_LINENO[0]}, código ${code})." >&2
+  exit "${code}"
+}
+trap on_fatal ERR
 
 if [ -z "${CF_ACCOUNT_ID:-}" ] || [ -z "${CF_API_TOKEN:-}" ]; then
   echo "::notice::Faltan secretos CLOUDFLARE_ACCOUNT_ID o CLOUDFLARE_API_TOKEN. No se borra nada."
@@ -20,51 +32,27 @@ fi
 
 auth_header="Authorization: Bearer ${CF_API_TOKEN}"
 
-cf_api_error_detail() {
-  local body_file="$1"
-  jq -r '
-    if type == "object" then
-      ([.errors[]? | "\(.code // "?"): \(.message // "sin mensaje")"] + [.messages[]?.message // empty])
-      | map(select(. != null and . != ""))
-      | unique
-      | join("; ")
-    else
-      empty
-    end
-  ' "${body_file}" 2>/dev/null || true
-}
-
-cf_fail_api() {
-  local http_code="$1"
-  local body_file="$2"
-  local context="$3"
-  local detail
-  detail=$(cf_api_error_detail "${body_file}")
-  if [ -z "${detail}" ]; then
-    if jq -e . "${body_file}" >/dev/null 2>&1; then
-      detail="sin mensaje de error en el cuerpo JSON"
-    else
-      detail="cuerpo no JSON (¿HTML o respuesta truncada?)"
-    fi
-  fi
-  echo "::error::Cloudflare API (${context}): HTTP ${http_code} — ${detail}"
-  exit 1
-}
-
 api_get_to_file() {
   local url="$1"
   local out_file="$2"
   local context="$3"
-  local http_code
+  local http_code err_file
+
   http_code=$(curl --silent --show-error --location --max-time 120 \
     --write-out '%{http_code}' \
     --header "${auth_header}" \
     --header 'Accept: application/json' \
     --output "${out_file}" \
     "${url}") || {
-    echo "::error::Petición GET fallida (red) — ${context}."
+    echo "::error::Paso «${context}»: petición GET fallida (red)." >&2
     exit 1
   }
+
+  if ! [[ "${http_code}" =~ ^[0-9]{3}$ ]]; then
+    echo "::error::Paso «${context}»: código HTTP no válido «${http_code}»." >&2
+    exit 1
+  fi
+
   if [ "${http_code}" -lt 200 ] || [ "${http_code}" -ge 300 ]; then
     cf_fail_api "${http_code}" "${out_file}" "${context}"
   fi
@@ -113,56 +101,52 @@ deployment_environment() {
   jq -r '.environment // empty'
 }
 
-merge_preview_page_into() {
-  local acc_file="$1"
-  local page_file="$2"
-  local merged
-  merged=$(mktemp)
-  jq -s '.[0] + (.[1].result // [])' "${acc_file}" "${page_file}" >"${merged}"
-  mv "${merged}" "${acc_file}"
-}
-
-list_preview_deployments_json() {
+list_preview_deployments_to_file() {
+  local out_file="$1"
   local acc_file page_file encoded_project url page total_pages context
+
+  CURRENT_STEP="listar previews (inicializar)"
   acc_file=$(mktemp)
   echo '[]' >"${acc_file}"
   page=1
   total_pages=1
   encoded_project=$(jq -rn --arg p "${PROJECT}" '$p|@uri')
   page_file=$(mktemp)
+
   while [ "${page}" -le "${total_pages}" ]; do
-    context="listar previews página ${page}"
-    url="${CF_API_BASE}/accounts/${CF_ACCOUNT_ID}/pages/projects/${encoded_project}/deployments?env=preview&per_page=50&page=${page}"
+    context="listar previews env=preview page=${page} per_page=${CF_PAGES_LIST_PER_PAGE}"
+    CURRENT_STEP="${context}"
+    url=$(cf_build_deployments_list_url "${CF_API_BASE}" "${CF_ACCOUNT_ID}" "${encoded_project}" "preview" "${page}")
     api_get_to_file "${url}" "${page_file}" "${context}"
-    if [ "$(jq -r '.success // false' "${page_file}")" != "true" ]; then
-      cf_fail_api "200" "${page_file}" "${context} (success=false)"
-    fi
-    merge_preview_page_into "${acc_file}" "${page_file}"
-    total_pages=$(jq -r '.result_info.total_pages // 1' "${page_file}")
+    cf_assert_list_page "${page_file}" "${context}"
+    cf_merge_list_page_into "${acc_file}" "${page_file}" "${context} (merge)"
+    total_pages=$(cf_read_total_pages "${page_file}" "${context} (paginación)")
     page=$((page + 1))
   done
+
+  mv "${acc_file}" "${out_file}"
   rm -f "${page_file}"
-  cat "${acc_file}"
-  rm -f "${acc_file}"
 }
 
 current_production_deployment_id() {
-  local encoded_project url response_file id
+  local encoded_project url response_file id context err_file
   encoded_project=$(jq -rn --arg p "${PROJECT}" '$p|@uri')
-  url="${CF_API_BASE}/accounts/${CF_ACCOUNT_ID}/pages/projects/${encoded_project}/deployments?env=production&per_page=10&page=1"
+  context="listar producción env=production page=1 per_page=${CF_PAGES_LIST_PER_PAGE}"
+  CURRENT_STEP="${context}"
+  url=$(cf_build_deployments_list_url "${CF_API_BASE}" "${CF_ACCOUNT_ID}" "${encoded_project}" "production" "1")
   response_file=$(mktemp)
-  api_get_to_file "${url}" "${response_file}" "listar producción"
-  id=$(
-    jq -r --arg branch "${PRODUCTION_BRANCH}" '
-      (.result // [])
-      | map(select(.environment == "production"))
-      | map(select((.deployment_trigger.metadata.branch // .deployment_trigger_metadata.branch // "") == $branch))
-      | map(select(.latest_stage.status == "success"))
-      | sort_by(.created_on) | reverse
-      | .[0].id // empty
-    ' "${response_file}"
-  )
-  rm -f "${response_file}"
+  api_get_to_file "${url}" "${response_file}" "${context}"
+  cf_assert_list_page "${response_file}" "${context}"
+  err_file=$(mktemp)
+  id=$(jq -r --arg branch "${PRODUCTION_BRANCH}" '
+    (.result // [])
+    | map(select(.environment == "production"))
+    | map(select((.deployment_trigger.metadata.branch // .deployment_trigger_metadata.branch // "") == $branch))
+    | map(select(.latest_stage.status == "success"))
+    | sort_by(.created_on) | reverse
+    | .[0].id // empty
+  ' "${response_file}" 2>"${err_file}") || cf_fail_jq "${context} (elegir producción)" "${err_file}"
+  rm -f "${err_file}" "${response_file}"
   echo "${id}"
 }
 
@@ -184,13 +168,17 @@ load_open_pr_branches() {
   fi
   local page=1
   while true; do
-    local response
+    local response err_file count
+    err_file=$(mktemp)
     response=$(curl --silent --show-error --max-time 60 \
       --header "Authorization: Bearer ${GH_TOKEN}" \
       --header 'Accept: application/vnd.github+json' \
       "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100&page=${page}") || break
-    local count
-    count=$(echo "${response}" | jq 'length')
+    count=$(echo "${response}" | jq 'length' 2>"${err_file}") || {
+      rm -f "${err_file}"
+      break
+    }
+    rm -f "${err_file}"
     if [ "${count}" -eq 0 ]; then
       break
     fi
@@ -253,7 +241,7 @@ should_delete() {
   case "${MODE}" in
     pr-closed)
       if [ -z "${TARGET_BRANCH}" ]; then
-        echo "::error::TARGET_BRANCH vacío en modo pr-closed."
+        echo "::error::TARGET_BRANCH vacío en modo pr-closed." >&2
         exit 1
       fi
       [ "${branch}" = "${TARGET_BRANCH}" ]
@@ -272,7 +260,7 @@ should_delete() {
       return 0
       ;;
     *)
-      echo "::error::Modo desconocido: ${MODE}"
+      echo "::error::Modo desconocido: ${MODE}" >&2
       exit 1
       ;;
   esac
@@ -291,11 +279,14 @@ log_action() {
 }
 
 main() {
-  echo "Modo=${MODE} dry_run=${DRY_RUN} proyecto=${PROJECT} max_age_days=${MAX_AGE_DAYS}"
+  local deployments_file total err_file
+
+  echo "Modo=${MODE} dry_run=${DRY_RUN} proyecto=${PROJECT} max_age_days=${MAX_AGE_DAYS} per_page=${CF_PAGES_LIST_PER_PAGE}"
   if [ "${MODE}" = "pr-closed" ]; then
     echo "Rama objetivo (PR cerrada): ${TARGET_BRANCH}"
   fi
 
+  CURRENT_STEP="identificar despliegue de producción"
   PROTECTED_PRODUCTION_ID=$(current_production_deployment_id)
   if [ -n "${PROTECTED_PRODUCTION_ID}" ]; then
     echo "Despliegue de producción actual protegido: ${PROTECTED_PRODUCTION_ID}"
@@ -304,6 +295,7 @@ main() {
   fi
 
   if [ "${MODE}" = "sweep" ] || [ "${MODE}" = "purge-all-previews" ]; then
+    CURRENT_STEP="cargar ramas remotas y PRs abiertas"
     load_remote_branches
     load_open_pr_branches
     open_count=$(wc -l <"${OPEN_PR_BRANCHES_FILE}" | tr -d ' ')
@@ -311,8 +303,13 @@ main() {
     echo "Ramas remotas: ${remote_count}; ramas con PR abierta: ${open_count}"
   fi
 
-  deployments=$(list_preview_deployments_json)
-  total=$(echo "${deployments}" | jq 'length')
+  deployments_file=$(mktemp)
+  list_preview_deployments_to_file "${deployments_file}"
+
+  CURRENT_STEP="contar previews listados"
+  err_file=$(mktemp)
+  total=$(jq -r 'length' "${deployments_file}" 2>"${err_file}") || cf_fail_jq "contar previews" "${err_file}"
+  rm -f "${err_file}"
   echo "Previews listados: ${total}"
 
   deleted=0
@@ -320,6 +317,7 @@ main() {
   failed=0
   pending=0
 
+  CURRENT_STEP="evaluar y borrar previews"
   while IFS= read -r dep; do
     [ -z "${dep}" ] && continue
     if should_delete "${dep}"; then
@@ -352,7 +350,9 @@ main() {
     else
       skipped=$((skipped + 1))
     fi
-  done < <(echo "${deployments}" | jq -c '.[]')
+  done < <(jq -c '.[]' "${deployments_file}")
+
+  rm -f "${deployments_file}"
 
   if [ "${DRY_RUN}" = "true" ]; then
     echo "Resumen dry-run: borraría=${pending} omitidos=${skipped} (total previews=${total})"
