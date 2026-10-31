@@ -9,7 +9,7 @@ export const LABEL_APROBADO = "aprobado";
 export const LABEL_EN_CURSO = "en-curso";
 
 /** Prefijo de claves KV para la respuesta del tablón (distinto del rate limit). */
-export const STATUS_CACHE_KEY = "proposal-status:v1:all";
+export const STATUS_CACHE_KEY = "proposal-status:v2:all";
 
 /** TTL de la caché del tablón en segundos (entre 60 y 300). */
 export const STATUS_CACHE_TTL_SECONDS = 120;

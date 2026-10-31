@@ -1,5 +1,15 @@
 import Phaser from "phaser";
-import { COLORS, MAX_TIER, RADII, dropCooldown, dropKind, mergeOutcome, mergePoints, type DropKind } from "./rules";
+import {
+  COLORS,
+  MAX_TIER,
+  RADII,
+  dropCooldown,
+  dropKind,
+  goldMergeMultiplier,
+  mergeOutcome,
+  mergePoints,
+  type DropKind,
+} from "./rules";
 
 type Hud = {
   setScore: (score: number) => void;
@@ -20,6 +30,8 @@ type Ball = {
   radius: number;
   pending: boolean;
   bomb: boolean;
+  gold: boolean;
+  ice: boolean;
 };
 
 type Spark = {
@@ -30,7 +42,7 @@ type Spark = {
   max: number;
 };
 
-type TextureKind = "normal" | "wild" | "bomb";
+type TextureKind = "normal" | "wild" | "bomb" | "gold" | "ice";
 
 function shade(hex: string, amount: number): string {
   const value = Number.parseInt(hex.slice(1), 16);
@@ -96,14 +108,18 @@ class PlayScene extends Phaser.Scene {
   private freeSparks: Spark[] = [];
   private queue: Array<[Ball, Ball]> = [];
   private bombQueue: Ball[] = [];
+  private iceQueue: Ball[] = [];
   private preview!: Phaser.GameObjects.Image;
   private guide!: Phaser.GameObjects.Graphics;
   private bin!: Phaser.GameObjects.Graphics;
   private feverVeil!: Phaser.GameObjects.Rectangle;
+  private flash!: Phaser.GameObjects.Rectangle;
   private aimX = 270;
   private nextTier = 0;
   private nextWild = false;
   private nextBomb = false;
+  private nextGold = false;
+  private nextIce = false;
   private dropIndex = 0;
   private score = 0;
   private combo = 1;
@@ -182,10 +198,13 @@ class PlayScene extends Phaser.Scene {
     this.freeSparks = [];
     this.queue = [];
     this.bombQueue = [];
+    this.iceQueue = [];
     this.dropIndex = 0;
     this.nextTier = 0;
     this.nextWild = false;
     this.nextBomb = false;
+    this.nextGold = false;
+    this.nextIce = false;
     this.floaters = 0;
     this.queuedDrop = false;
     this.aiming = false;
@@ -210,12 +229,13 @@ class PlayScene extends Phaser.Scene {
     this.drawBin(width, height);
     this.buildWalls(width, height);
     this.feverVeil = this.add.rectangle(width / 2, height / 2, width, height, 0xff4d8d, 0).setDepth(1);
+    this.flash = this.add.rectangle(width / 2, height / 2, width, height, 0xffffff, 0).setDepth(11);
 
     this.preview = this.add.image(this.aimX, DROP_Y, "ball-0").setDepth(4);
     this.guide = this.add.graphics().setDepth(3);
     this.prepareNext(true);
-    this.spawnBall(width / 2 - 150, height - 90, 0, false, false, false);
-    this.spawnBall(width / 2 + 150, height - 96, 0, false, false, false);
+    this.spawnBall(width / 2 - 150, height - 90, 0, false, false, false, false, false);
+    this.spawnBall(width / 2 + 150, height - 96, 0, false, false, false, false, false);
 
     this.matter.world.off("collisionstart", this.onCollide);
     this.matter.world.on("collisionstart", this.onCollide);
@@ -267,9 +287,13 @@ class PlayScene extends Phaser.Scene {
     if (!this.reduced) this.feverVeil.setAlpha(fever ? 0.1 + Math.sin(now / 90) * 0.04 : 0);
     else this.feverVeil.setAlpha(fever ? 0.08 : 0);
     this.flushBombs();
+    this.flushIce();
     this.flushMerges();
     this.drawGuide();
     this.preview.setPosition(this.aimX, DROP_Y);
+    const spin = this.nextWild || this.nextGold;
+    if (spin && !this.reduced) this.preview.setAngle((now / 16) % 360);
+    else this.preview.setAngle(0);
     if (fever && !this.reduced) {
       const pulse = 1 + Math.sin(now / 70) * 0.06;
       const radius = this.nextRadius();
@@ -283,6 +307,8 @@ class PlayScene extends Phaser.Scene {
     for (let tier = 0; tier <= MAX_TIER; tier += 1) this.addTexture(`ball-${tier}`, tier, "normal");
     this.addTexture("ball-wild", 2, "wild");
     this.addTexture("ball-bomb", 2, "bomb");
+    this.addTexture("ball-gold", 2, "gold");
+    this.addTexture("ball-ice", 2, "ice");
   }
 
   private addTexture(key: string, tier: number, kind: TextureKind): void {
@@ -308,6 +334,16 @@ class PlayScene extends Phaser.Scene {
       gradient.addColorStop(0.35, "#ff7a18");
       gradient.addColorStop(0.72, "#3a2418");
       gradient.addColorStop(1, "#1a120c");
+    } else if (kind === "gold") {
+      gradient.addColorStop(0, "#fffef0");
+      gradient.addColorStop(0.28, "#ffe566");
+      gradient.addColorStop(0.62, "#ffb703");
+      gradient.addColorStop(1, "#c97800");
+    } else if (kind === "ice") {
+      gradient.addColorStop(0, "#f0ffff");
+      gradient.addColorStop(0.35, "#9ef0ff");
+      gradient.addColorStop(0.72, "#4db8ff");
+      gradient.addColorStop(1, "#1a4a7a");
     } else {
       const color = COLORS[tier] ?? "#ffffff";
       gradient.addColorStop(0, "#ffffff");
@@ -329,6 +365,27 @@ class PlayScene extends Phaser.Scene {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("!", center, center + rad * 0.04);
+    } else if (kind === "gold") {
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.beginPath();
+      ctx.moveTo(center, center - rad * 0.55);
+      for (let i = 1; i < 5; i += 1) {
+        const angle = -Math.PI / 2 + (i * Math.PI * 2) / 5;
+        const inner = i % 2 === 0 ? rad * 0.22 : rad * 0.5;
+        ctx.lineTo(center + Math.cos(angle) * inner, center + Math.sin(angle) * inner);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else if (kind === "ice") {
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = Math.max(2, rad * 0.08);
+      for (let i = 0; i < 6; i += 1) {
+        const angle = (Math.PI * i) / 3;
+        ctx.beginPath();
+        ctx.moveTo(center, center);
+        ctx.lineTo(center + Math.cos(angle) * rad * 0.55, center + Math.sin(angle) * rad * 0.55);
+        ctx.stroke();
+      }
     } else {
       ctx.fillStyle = "rgba(255,255,255,0.55)";
       ctx.beginPath();
@@ -371,12 +428,14 @@ class PlayScene extends Phaser.Scene {
   }
 
   private nextRadius(): number {
-    if (this.nextBomb || this.nextWild) return RADII[2];
+    if (this.nextBomb || this.nextWild || this.nextGold || this.nextIce) return RADII[2];
     return RADII[this.nextTier] ?? RADII[0];
   }
 
   private nextLabel(): string {
     if (this.nextBomb) return "Siguiente: bomba";
+    if (this.nextGold) return "Siguiente: oro x3";
+    if (this.nextIce) return "Siguiente: hielo";
     if (this.nextWild) return "Siguiente: arcoíris";
     return this.nextTier === 0 ? "Siguiente: pequeña" : "Siguiente: mediana";
   }
@@ -385,11 +444,24 @@ class PlayScene extends Phaser.Scene {
     if (!first) this.dropIndex += 1;
     let kind: DropKind = dropKind(this.dropIndex);
     const quiet = !first && this.game.loop.time - this.lastSpark > QUIET_MS;
-    if (quiet && kind === "normal") kind = this.dropIndex % 2 === 0 ? "wild" : "bomb";
+    if (quiet && kind === "normal") {
+      const pick = this.dropIndex % 4;
+      kind = pick === 0 ? "wild" : pick === 1 ? "bomb" : pick === 2 ? "gold" : "ice";
+    }
     this.nextWild = kind === "wild";
     this.nextBomb = kind === "bomb";
-    this.nextTier = this.nextWild || this.nextBomb ? 2 : this.dropIndex % 5 === 4 ? 1 : 0;
-    const key = this.nextBomb ? "ball-bomb" : this.nextWild ? "ball-wild" : `ball-${this.nextTier}`;
+    this.nextGold = kind === "gold";
+    this.nextIce = kind === "ice";
+    this.nextTier = this.nextWild || this.nextBomb || this.nextGold || this.nextIce ? 2 : this.dropIndex % 5 === 4 ? 1 : 0;
+    const key = this.nextBomb
+      ? "ball-bomb"
+      : this.nextGold
+        ? "ball-gold"
+        : this.nextIce
+          ? "ball-ice"
+          : this.nextWild
+            ? "ball-wild"
+            : `ball-${this.nextTier}`;
     this.preview.setTexture(key);
     const radius = this.nextRadius();
     this.preview.setDisplaySize(radius * 2, radius * 2);
@@ -411,10 +483,12 @@ class PlayScene extends Phaser.Scene {
     const tier = this.nextTier;
     const wild = this.nextWild;
     const bomb = this.nextBomb;
+    const gold = this.nextGold;
+    const ice = this.nextIce;
     const radius = this.nextRadius();
     const cx = this.clampX(x, radius);
-    this.spawnBall(cx, DROP_Y, tier, true, wild, bomb);
-    this.synth.blip(bomb ? 140 : wild ? 520 : 240 + tier * 36, 0.08, 0.06, bomb ? "square" : "triangle");
+    this.spawnBall(cx, DROP_Y, tier, true, wild, bomb, gold, ice);
+    this.synth.blip(bomb ? 140 : ice ? 680 : gold ? 420 : wild ? 520 : 240 + tier * 36, 0.08, 0.06, bomb ? "square" : "triangle");
     buzz(bomb ? 18 : 8);
     const fever = now < this.feverUntil;
     this.lockUntil = now + dropCooldown(fever);
@@ -425,14 +499,23 @@ class PlayScene extends Phaser.Scene {
     const safe = Phaser.Math.Clamp(tier, 0, MAX_TIER);
     const radius = RADII[safe] ?? RADII[0];
     const y = 430;
-    this.spawnBall(this.scale.width / 2 - radius + 1, y, safe, false, false, false);
-    this.spawnBall(this.scale.width / 2 + radius - 6, y, safe, false, false, false);
+    this.spawnBall(this.scale.width / 2 - radius + 1, y, safe, false, false, false, false, false);
+    this.spawnBall(this.scale.width / 2 + radius - 6, y, safe, false, false, false, false, false);
   }
 
-  private spawnBall(x: number, y: number, tier: number, falling: boolean, wild: boolean, bomb: boolean): Ball | null {
+  private spawnBall(
+    x: number,
+    y: number,
+    tier: number,
+    falling: boolean,
+    wild: boolean,
+    bomb: boolean,
+    gold: boolean,
+    ice: boolean,
+  ): Ball | null {
     if (this.balls.length >= MAX_BALLS) return null;
-    const radius = bomb || wild ? RADII[2] : (RADII[tier] ?? RADII[0]);
-    const key = bomb ? "ball-bomb" : wild ? "ball-wild" : `ball-${tier}`;
+    const radius = bomb || wild || gold || ice ? RADII[2] : (RADII[tier] ?? RADII[0]);
+    const key = bomb ? "ball-bomb" : gold ? "ball-gold" : ice ? "ball-ice" : wild ? "ball-wild" : `ball-${tier}`;
     const image = this.matter.add.image(x, y, key);
     image.setDisplaySize(radius * 2, radius * 2);
     image.setCircle(radius);
@@ -444,8 +527,12 @@ class PlayScene extends Phaser.Scene {
     if (falling) {
       image.setVelocity((Math.random() - 0.5) * 1.4, 6.2);
       image.setAngularVelocity((Math.random() - 0.5) * 0.12);
+      if (!this.reduced) {
+        image.setScale(0.82);
+        this.tweens.add({ targets: image, scaleX: 1, scaleY: 1, duration: 180, ease: "Back.easeOut" });
+      }
     }
-    const ball: Ball = { image, tier, wild, born: this.game.loop.time, danger: 0, radius, pending: false, bomb };
+    const ball: Ball = { image, tier, wild, born: this.game.loop.time, danger: 0, radius, pending: false, bomb, gold, ice };
     this.balls.push(ball);
     return ball;
   }
@@ -460,7 +547,13 @@ class PlayScene extends Phaser.Scene {
       ball.pending = true;
       this.bombQueue.push(ball);
     }
-    if (!a || !b || a.bomb || b.bomb || a.pending || b.pending || a === b) return;
+    for (const ball of [a, b]) {
+      if (!ball?.ice || ball.pending) continue;
+      if (now - ball.born < 120) continue;
+      ball.pending = true;
+      this.iceQueue.push(ball);
+    }
+    if (!a || !b || a.bomb || b.bomb || a.ice || b.ice || a.pending || b.pending || a === b) return;
     const same = a.tier === b.tier && !a.wild && !b.wild;
     const wild = a.wild || b.wild;
     if (!same && !wild) return;
@@ -475,6 +568,15 @@ class PlayScene extends Phaser.Scene {
     for (const bomb of pending) {
       if (!this.balls.includes(bomb)) continue;
       this.detonate(bomb);
+    }
+  }
+
+  private flushIce(): void {
+    if (this.over || this.iceQueue.length === 0) return;
+    const pending = this.iceQueue.splice(0);
+    for (const ice of pending) {
+      if (!this.balls.includes(ice)) continue;
+      this.shatterIce(ice);
     }
   }
 
@@ -511,6 +613,43 @@ class PlayScene extends Phaser.Scene {
     if (!this.reduced) this.cameras.main.shake(200, 0.016);
   }
 
+  private shatterIce(ball: Ball): void {
+    const now = this.game.loop.time;
+    const x = ball.image.x;
+    const y = ball.image.y;
+    this.removeBall(ball);
+    this.lastSpark = now;
+    const fever = now < this.feverUntil;
+    const gained = 120 * (fever ? 2 : 1);
+    this.score += gained;
+    if (this.score > bestScore) {
+      bestScore = this.score;
+      this.hud.setBest(bestScore);
+    }
+    this.hud.setScore(this.score);
+    const reach = 130;
+    for (const other of this.balls) {
+      const dx = other.image.x - x;
+      const dy = other.image.y - y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > reach) continue;
+      const falloff = 1 - dist / reach;
+      const vx = other.image.body?.velocity.x ?? 0;
+      const vy = other.image.body?.velocity.y ?? 0;
+      other.image.setVelocity(vx * (1 - 0.55 * falloff), vy * (1 - 0.55 * falloff));
+    }
+    if (!this.reduced) {
+      this.time.timeScale = 0.55;
+      this.slowUntil = now + 520;
+    }
+    this.burst(x, y, 0x9ef0ff, 14);
+    this.mergeRing(x, y, 0x9ef0ff);
+    this.floatText(x, y - 12, "¡HIELO!", 40);
+    this.floatText(x, y - 52, `+${gained}`, 28);
+    this.synth.blip(520, 0.14, 0.06, "sine");
+    buzz(14);
+  }
+
   private merge(a: Ball, b: Ball): void {
     const now = this.game.loop.time;
     this.combo = now - this.lastMerge < COMBO_MS ? this.combo + 1 : 1;
@@ -531,7 +670,9 @@ class PlayScene extends Phaser.Scene {
         buzz([12, 24, 16]);
       }
     }
-    const gained = mergePoints(outcome.tier, this.combo, outcome.mega) * (fever ? 2 : 1);
+    const gainedBase = mergePoints(outcome.tier, this.combo, outcome.mega) * (fever ? 2 : 1);
+    const golden = a.gold || b.gold;
+    const gained = golden ? Math.round(gainedBase * goldMergeMultiplier()) : gainedBase;
     this.score += gained;
     if (this.score > bestScore) {
       bestScore = this.score;
@@ -540,12 +681,12 @@ class PlayScene extends Phaser.Scene {
     this.hud.setScore(this.score);
     this.hud.setCombo(this.combo, 1);
     if (!outcome.mega) {
-      const born = this.spawnBall(x, y, outcome.tier, false, false, false);
+      const born = this.spawnBall(x, y, outcome.tier, false, false, false, false, false);
       const pop = -2.6 - Math.min(this.combo, 5) * 0.45;
       born?.image.setVelocity((Math.random() - 0.5) * 2.4, pop);
     }
     this.shove(x, y, (outcome.mega ? 7.5 : 3.4) + Math.min(this.combo, 8) * 0.65);
-    this.juice(x, y, outcome.tier, outcome.mega, gained);
+    this.juice(x, y, outcome.tier, outcome.mega, gained, golden);
   }
 
   private shove(x: number, y: number, power: number): void {
@@ -563,11 +704,14 @@ class PlayScene extends Phaser.Scene {
     }
   }
 
-  private juice(x: number, y: number, tier: number, mega: boolean, gained: number): void {
+  private juice(x: number, y: number, tier: number, mega: boolean, gained: number, golden = false): void {
     const punch = Math.min(this.combo, 8);
     const burst = Math.min(22, (mega ? 14 : 7) + punch * 2);
-    this.burst(x, y, mega ? 0xfff1a8 : Number.parseInt((COLORS[tier] ?? "#ffffff").slice(1), 16), burst);
-    this.floatText(x, y - 10, mega ? "¡MEGA!" : `+${gained}`, mega ? 48 : 26 + punch * 2);
+    const tint = mega ? 0xfff1a8 : golden ? 0xffe566 : Number.parseInt((COLORS[tier] ?? "#ffffff").slice(1), 16);
+    this.burst(x, y, tint, burst);
+    this.mergeRing(x, y, tint);
+    if (!this.reduced && (mega || punch >= 3)) this.screenFlash(mega ? 0.22 : 0.08);
+    this.floatText(x, y - 10, mega ? "¡MEGA!" : golden ? `+${gained} oro` : `+${gained}`, mega ? 48 : 26 + punch * 2);
     if (this.combo > 1) this.floatText(x, y - 52, `x${this.combo}`, 32 + punch);
     const pitch = 340 * Math.pow(1.16, tier) * (1 + (this.combo - 1) * 0.07);
     this.synth.blip(pitch, mega ? 0.22 : 0.1, mega ? 0.1 : 0.07, mega ? "triangle" : "sine");
@@ -578,6 +722,30 @@ class PlayScene extends Phaser.Scene {
       this.time.timeScale = mega ? 0.62 : Math.max(0.82, 0.96 - punch * 0.015);
       this.slowUntil = this.game.loop.time + (mega ? 70 : 28);
     }
+  }
+
+  private mergeRing(x: number, y: number, color: number): void {
+    if (this.reduced) return;
+    const ring = this.add.circle(x, y, 10, color, 0).setStrokeStyle(4, color, 0.9).setDepth(9);
+    this.tweens.add({
+      targets: ring,
+      scaleX: 6,
+      scaleY: 6,
+      alpha: 0,
+      duration: 420,
+      ease: "Cubic.easeOut",
+      onComplete: () => ring.destroy(),
+    });
+  }
+
+  private screenFlash(strength: number): void {
+    this.flash.setAlpha(strength);
+    this.tweens.add({
+      targets: this.flash,
+      alpha: 0,
+      duration: 220,
+      ease: "Cubic.easeOut",
+    });
   }
 
   private burst(x: number, y: number, color: number, count: number): void {
@@ -795,13 +963,16 @@ const hud: Hud = {
   },
   setCombo(value, left = 0) {
     const on = value >= 2;
-    combo.hidden = !on;
-    meter.hidden = !on;
+    combo.classList.toggle("is-live", on);
+    combo.setAttribute("aria-hidden", on ? "false" : "true");
+    meter.classList.toggle("is-live", on);
+    meter.setAttribute("aria-hidden", on ? "false" : "true");
     combo.textContent = on ? `Combo x${value}` : "";
     meterFill.style.transform = `scaleX(${Math.max(0, Math.min(1, left))})`;
   },
   setFever(on) {
-    fever.hidden = !on;
+    fever.classList.toggle("is-live", on);
+    fever.setAttribute("aria-hidden", on ? "false" : "true");
     document.body.classList.toggle("fever", on);
   },
   setNext(label) {

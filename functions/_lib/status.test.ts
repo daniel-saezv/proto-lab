@@ -8,6 +8,7 @@ import { escapeDisplayText, extractSlug, issueMentionsPattern, stripIssueTitlePr
 import { prFromBodyMention, pickLinkedPullRequest } from "./status/issue-pr";
 import { resolvePhase } from "./status/phases";
 import { buildProposalStatus } from "./status/aggregate";
+import { BOARD_VISIBLE_MS, isIssueVisibleOnBoard } from "./status/board-visibility";
 import { ciSnapshotFromRun, pickPreviewDeployment, publicPreviewUrl, resetCiWorkflowCacheForTests } from "./status/github";
 
 const EMAIL = "amigo@example.com";
@@ -206,6 +207,31 @@ describe("CI y preview", () => {
   });
 });
 
+describe("visibilidad del tablón", () => {
+  const nowMs = Date.parse("2026-03-02T12:00:00.000Z");
+
+  it("deja pasar issues abiertas", () => {
+    expect(isIssueVisibleOnBoard({ state: "open", state_reason: null, closed_at: null }, nowMs)).toBe(true);
+  });
+
+  it("oculta cerradas sin completar", () => {
+    expect(
+      isIssueVisibleOnBoard({ state: "closed", state_reason: "not_planned", closed_at: "2026-03-02T10:00:00Z" }, nowMs),
+    ).toBe(false);
+  });
+
+  it("mantiene completadas recientes y descarta las antiguas", () => {
+    const fresh = { state: "closed" as const, state_reason: "completed", closed_at: "2026-03-02T11:00:00.000Z" };
+    expect(isIssueVisibleOnBoard(fresh, nowMs)).toBe(true);
+    const stale = {
+      state: "closed" as const,
+      state_reason: "completed",
+      closed_at: new Date(nowMs - BOARD_VISIBLE_MS - 1).toISOString(),
+    };
+    expect(isIssueVisibleOnBoard(stale, nowMs)).toBe(false);
+  });
+});
+
 describe("buildProposalStatus con mocks", () => {
   it("marca partial si GitHub falla parcialmente", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
@@ -238,5 +264,72 @@ describe("buildProposalStatus con mocks", () => {
     const result = await buildProposalStatus({ GITHUB_STATUS_TOKEN: TOKEN }, { fetchImpl });
     expect(result.items[0]?.phase).toBe("recibida");
     expect(result.partial).toBe(false);
+  });
+
+  it("no pide timeline de issues cerradas fuera del tablón", async () => {
+    const now = new Date("2026-03-02T12:00:00.000Z");
+    const timelineCalls: number[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/issues?") && url.includes("state=open")) {
+        return new Response(
+          JSON.stringify([
+            {
+              number: 10,
+              title: "[propuesta] Activa",
+              body: "<!-- proto-lab: peticion-de-usuario -->\n",
+              state: "open",
+              labels: [{ name: "propuesta" }],
+              updated_at: "2026-03-02T00:00:00Z",
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/issues?") && url.includes("state=closed")) {
+        expect(url).toContain("since=");
+        return new Response(
+          JSON.stringify([
+            {
+              number: 11,
+              title: "[propuesta] Descartada",
+              body: "<!-- proto-lab: peticion-de-usuario -->\n",
+              state: "closed",
+              state_reason: "not_planned",
+              closed_at: "2026-03-01T00:00:00Z",
+              labels: [{ name: "propuesta" }],
+              updated_at: "2026-03-01T00:00:00Z",
+            },
+            {
+              number: 12,
+              title: "[propuesta] Publicada hace tiempo",
+              body: "<!-- proto-lab: peticion-de-usuario -->\n",
+              state: "closed",
+              state_reason: "completed",
+              closed_at: "2026-02-01T00:00:00Z",
+              labels: [{ name: "propuesta" }],
+              updated_at: "2026-02-01T00:00:00Z",
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/pulls")) return new Response(JSON.stringify([]), { status: 200 });
+      if (url.includes("/timeline")) {
+        const match = url.match(/\/issues\/(\d+)\/timeline/);
+        if (match) timelineCalls.push(Number(match[1]));
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes("/actions/workflows/ci.yml")) {
+        return new Response(JSON.stringify({ id: 99 }), { status: 200 });
+      }
+      if (url.includes("/actions/workflows/99/runs")) {
+        return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+      }
+      return new Response("fail", { status: 500 });
+    });
+    const result = await buildProposalStatus({ GITHUB_STATUS_TOKEN: TOKEN }, { fetchImpl, now });
+    expect(result.items.map((i) => i.number)).toEqual([10]);
+    expect(timelineCalls).toEqual([10]);
   });
 });

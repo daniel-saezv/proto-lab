@@ -51,6 +51,9 @@ import {
 } from "./navigation";
 import { DEBUG_MARKERS, VIEWPOINTS, viewpointById } from "./viewpoints";
 import type { CatalogEntry } from "./types";
+import { createWhiteboardStatus, type WhiteboardStatusController } from "./whiteboard-status";
+import { bindWhiteboardMesh } from "./world-whiteboard";
+import type { ProposalStatusItem } from "./proposals-status-api";
 
 const PALETTE = {
   floor: 0x46547a,
@@ -83,6 +86,7 @@ export type WorldHandle = {
   setInputEnabled: (enabled: boolean) => void;
   setArcadeHighlight: (index: number) => void;
   setSelectorOpen: (open: boolean) => void;
+  setProposalBoardItems: (items: ProposalStatusItem[], partial: boolean) => void;
   dispose: () => void;
 };
 
@@ -107,8 +111,8 @@ export function startWorld(options: {
   onE2eReady?: () => void;
   onTalk: () => void;
   onOpenSelector: () => void;
-  onOpenBoard: () => void;
   onTarget: (label: string | null) => void;
+  onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
 }): WorldHandle {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -205,9 +209,16 @@ export function startWorld(options: {
   addWallTrim();
   const hangingLights: PointLight[] = [];
   addCeiling(hangingLights);
+  addMoon();
   const nameplates = new Map<string, HTMLElement>();
   const highlightRings = new Map<string, Mesh>();
-  addChalkboard(options.prototypes);
+  const lobbyWhiteboard = createWhiteboardStatus({
+    reducedMotion: reduced,
+    onSummaryChange: (summary) => {
+      options.viewport.dataset.whiteboardItems = summary;
+    },
+  });
+  addChalkboard(lobbyWhiteboard);
   addBench();
   addLamp();
 
@@ -309,7 +320,7 @@ export function startWorld(options: {
       collider: arcadeSpot.collider,
       label: "Usar la máquina",
     },
-    { id: "chalkboard", kind: "npc", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 2.35, collider: LAYOUT.chalkboard.collider, label: "Ver el tablón" },
+    { id: "chalkboard", kind: "npc", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 0, collider: LAYOUT.chalkboard.collider, label: "" },
     { id: "bench", kind: "npc", x: LAYOUT.bench.x, z: LAYOUT.bench.z, radius: 0, collider: LAYOUT.bench.collider, label: "" },
     ...ambient.colliders.map((item) => ({
       id: item.id,
@@ -324,7 +335,6 @@ export function startWorld(options: {
 
   addRangeRing("inventor", LAYOUT.inventor.x, LAYOUT.inventor.z, PALETTE.amber);
   addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
-  addRangeRing("chalkboard", LAYOUT.chalkboard.x, LAYOUT.chalkboard.z, 0x8fd8ff);
 
   let yaw = 0.15;
   let pitch = 0.15;
@@ -440,6 +450,7 @@ export function startWorld(options: {
       material.opacity = reduced ? 0.92 : 0.58 + Math.sin(frame * 4) * 0.28;
     }
     ambient.tick(frame, dt, player.position, bass, mid);
+    lobbyWhiteboard.tick(now);
 
     if (!selectorOpen && options.prototypes.length > 1 && !reduced) {
       idleElapsed += dt;
@@ -524,7 +535,6 @@ export function startWorld(options: {
     const spot = currentSpot();
     if (!spot || !inputEnabled) return;
     if (spot.kind === "npc" && spot.id === "inventor") options.onTalk();
-    if (spot.kind === "npc" && spot.id === "chalkboard") options.onOpenBoard();
     if (spot.kind === "machine" && spot.id === "arcade") options.onOpenSelector();
   }
 
@@ -598,6 +608,7 @@ export function startWorld(options: {
 
   requestAnimationFrame(loop);
   options.onReady();
+  options.onWhiteboardReady?.(lobbyWhiteboard);
   if (options.e2e) {
     const debugGroup = new Group();
     debugGroup.name = "shot-debug";
@@ -671,6 +682,9 @@ export function startWorld(options: {
       inputEnabled = enabled;
       targetLabel = "\0";
     },
+    setProposalBoardItems(items: ProposalStatusItem[], partial: boolean) {
+      lobbyWhiteboard.setItems(items, partial);
+    },
     dispose() {
       running = false;
       input.dispose();
@@ -681,6 +695,7 @@ export function startWorld(options: {
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
       disposeScreenMap();
+      lobbyWhiteboard.dispose();
     },
   };
 
@@ -690,6 +705,13 @@ export function startWorld(options: {
 
   function cameraDistance(): number {
     return camera.aspect < 0.9 ? 6.4 : 3.8;
+  }
+
+  function addMoon() {
+    const moon = new Mesh(geo(new SphereGeometry(0.45, 16, 12)), new MeshBasicMaterial({ color: PALETTE.moon }));
+    materials.push(moon.material);
+    moon.position.set(-4.5, 4.2, -7);
+    scene.add(moon);
   }
 
   function addCeiling(lights: PointLight[]) {
@@ -837,16 +859,18 @@ export function startWorld(options: {
     highlightRings.set(id, ring);
   }
 
-  function addChalkboard(entries: CatalogEntry[]) {
+  function addChalkboard(whiteboard: WhiteboardStatusController) {
     box(scene, 3.45, 0.12, 0.08, -4.6, 2.48, -7.3, PALETTE.trim, false);
     box(scene, 3.45, 0.12, 0.08, -4.6, 0.64, -7.3, PALETTE.trim, false);
     box(scene, 0.12, 1.95, 0.08, -6.28, 1.55, -7.3, PALETTE.trim, false);
     box(scene, 0.12, 1.95, 0.08, -2.92, 1.55, -7.3, PALETTE.trim, false);
-    const board = new Mesh(geo(new PlaneGeometry(3.1, 1.7)), new MeshBasicMaterial({ map: chalkboardTexture(entries) }));
-    materials.push(board.material);
+    const material = new MeshBasicMaterial({ map: whiteboard.texture });
+    materials.push(material);
+    const board = new Mesh(geo(new PlaneGeometry(3.1, 1.7)), material);
     board.position.set(-4.6, 1.55, -7.33);
     board.userData.interactId = "chalkboard";
     scene.add(board);
+    bindWhiteboardMesh(board, whiteboard, (item) => materials.push(item));
     const label = new Group();
     label.position.set(-4.6, 0, -7.2);
     scene.add(label);
@@ -1084,26 +1108,6 @@ function cabinetSideTexture(side: number): CanvasTexture {
   context.beginPath();
   context.arc(128, 290, 28, 0, Math.PI * 2);
   context.fill();
-  return texture;
-}
-
-function chalkboardTexture(entries: CatalogEntry[]): CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 360;
-  const context = canvas.getContext("2d");
-  if (!context) return new CanvasTexture(canvas);
-  context.fillStyle = "#1d3f36";
-  context.fillRect(0, 0, 640, 360);
-  context.fillStyle = "#f4efe4";
-  context.font = "700 42px sans-serif";
-  context.fillText("Proto Lab", 36, 70);
-  context.font = "28px sans-serif";
-  entries.slice(0, 6).forEach((entry, index) => {
-    context.fillText(`· ${entry.title}`, 36, 130 + index * 36);
-  });
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
   return texture;
 }
 
