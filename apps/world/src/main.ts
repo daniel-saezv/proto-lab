@@ -103,6 +103,7 @@ const overlay = createOverlay(
     world?.setSuspended(false);
     resumeFallbackWhiteboardLoop();
     music.setPaused(document.visibilityState !== "visible");
+    music.restorePlayback();
     statusPoller.refresh();
   },
   {
@@ -123,6 +124,7 @@ const overlay = createOverlay(
 function openPrototype(entry: CatalogEntry) {
   world?.setSuspended(true);
   stopFallbackWhiteboardLoop();
+  music.releasePlayback();
   overlay.open(entry);
 }
 
