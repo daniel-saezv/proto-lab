@@ -14,6 +14,7 @@ import {
   playbackAfterGesture,
   playbackOutputLive,
   playbackRejection,
+  shouldResumeLobbyMusic,
   shouldRouteMediaElement,
   toggleMusicMuted,
   writeBandEnergies,
@@ -67,6 +68,13 @@ describe("música ambiental", () => {
     const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../index.html"), "utf8");
     expect(html.toLowerCase()).not.toContain("credit");
     expect(html.toLowerCase()).not.toContain("crédito");
+  });
+
+  it("reanuda la música del lobby al cerrar el prototipo solo si procede", () => {
+    expect(shouldResumeLobbyMusic({ muted: false, paused: false, visible: true })).toBe(true);
+    expect(shouldResumeLobbyMusic({ muted: true, paused: false, visible: true })).toBe(false);
+    expect(shouldResumeLobbyMusic({ muted: false, paused: true, visible: true })).toBe(false);
+    expect(shouldResumeLobbyMusic({ muted: false, paused: false, visible: false })).toBe(false);
   });
 
   it("reintenta el audio en el siguiente gesto si el anterior no pudo sonar", () => {

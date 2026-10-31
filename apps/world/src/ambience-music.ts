@@ -65,10 +65,24 @@ export type MusicHandle = {
   isMuted: () => boolean;
   /** play() y resume() en el turno del gesto. Se puede llamar desde el joystick o el lienzo. */
   unlock: () => void;
-  /** Empieza la descarga de la pista. No bloquea el primer fotograma. */
+  /** Empieza la descarga de la pista. No bloquea el primer fotogramo. */
   prime: () => void;
+  /** Fundido, parada y liberación de la pista mientras un prototipo ocupa el overlay. */
+  releasePlayback: () => void;
+  /** Vuelve a cargar y sonar tras cerrar el prototipo si el usuario no la silenció. */
+  restorePlayback: () => void;
   dispose: () => void;
 };
+
+/** Si conviene reanudar Luanda al cerrar el overlay del prototipo. */
+export function shouldResumeLobbyMusic(input: {
+  muted: boolean;
+  paused: boolean;
+  visible: boolean;
+}): boolean {
+  if (input.muted || input.paused || !input.visible) return false;
+  return true;
+}
 
 /**
  * Un gesto solo cuenta si de verdad hay que llamar a play() y resume().
@@ -129,11 +143,13 @@ type LoopVoice = {
 /**
  * Luanda en bucle, con fundido al entrar y al salir.
  * Nada suena hasta el primer gesto. El silencio queda en localStorage.
- * Abrir un prototipo no pasa por aquí: el lobby no pausa la música.
+ * Al abrir un prototipo se libera la pista (`releasePlayback`); al cerrar vuelve si procede.
  */
 export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageLike = localStorage): MusicHandle {
   let muted = isMusicMuted(storage);
   let paused = false;
+  let heldForPrototype = false;
+  let releaseGeneration = 0;
   let armed = false;
   let sounded = false;
   let primed = false;
@@ -172,7 +188,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   function wantsAudio(): boolean {
-    return !muted && !paused && document.visibilityState === "visible";
+    return !muted && !paused && !heldForPrototype && document.visibilityState === "visible";
   }
 
   function audible(): boolean {
@@ -518,6 +534,70 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     notePlayback();
   }
 
+  function teardownGraph(): void {
+    stopLoopVoices();
+    buffer = null;
+    pendingBytes = null;
+    bytesPromise = null;
+    decoding = false;
+    primed = false;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      audio.remove();
+      audio = null;
+    }
+    source = null;
+    sourceFailed = false;
+    if (ctx) ctx.removeEventListener("statechange", onContextState);
+    void ctx?.close();
+    ctx = null;
+    master = null;
+    analyser = null;
+    elementGain = null;
+    bins = null;
+  }
+
+  function releasePlayback(): void {
+    heldForPrototype = true;
+    playGeneration += 1;
+    releaseGeneration += 1;
+    const generation = releaseGeneration;
+    clearLoopTimer();
+    usingBuffer = false;
+    ramp(0, MUSIC_FADE_OUT_S);
+    sounded = false;
+    paintPlayback();
+    cancelStop();
+    stopTimer = window.setTimeout(() => {
+      stopTimer = null;
+      if (generation !== releaseGeneration) return;
+      resumeOffset = captureOffset();
+      if (audio && !audio.paused) audio.pause();
+      stopLoopVoices();
+      teardownGraph();
+    }, MUSIC_FADE_OUT_S * 1000);
+  }
+
+  function restorePlayback(): void {
+    if (!heldForPrototype) return;
+    const resume = shouldResumeLobbyMusic({
+      muted,
+      paused,
+      visible: document.visibilityState === "visible",
+    });
+    heldForPrototype = false;
+    releaseGeneration += 1;
+    cancelStop();
+    if (!resume) {
+      paintPlayback();
+      return;
+    }
+    if (!armed) return;
+    startOutput();
+  }
+
   function silence(): void {
     playGeneration += 1;
     const generation = playGeneration;
@@ -573,6 +653,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   function unlock(): void {
+    if (heldForPrototype) return;
     const decision = playbackAfterGesture({
       muted,
       paused,
@@ -585,6 +666,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   function sync(): void {
+    if (heldForPrototype) return;
     if (!wantsAudio()) {
       silence();
       return;
@@ -643,6 +725,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     isMuted: () => muted,
     unlock,
     prime,
+    releasePlayback,
+    restorePlayback,
     dispose() {
       button.removeEventListener("click", onClick);
       const capture: AddEventListenerOptions = { capture: true };

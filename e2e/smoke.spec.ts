@@ -87,7 +87,7 @@ test("el tablón en la pizarra 3D refleja el estado simulado", async ({ page }) 
   await waitForLobbyWhiteboard(page);
 });
 
-test("con un prototipo abierto el lobby deja de renderizar y la música sigue", async ({ page }, testInfo) => {
+test("con un prototipo abierto el lobby deja de renderizar y la música se libera", async ({ page }, testInfo) => {
   skipUnlessChromium(testInfo, "el contador de frames se comprueba una sola vez");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
@@ -98,7 +98,7 @@ test("con un prototipo abierto el lobby deja de renderizar y la música sigue", 
   await page.evaluate(() => window.__protoLab?.openPrototype?.("chispa"));
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
   await expect(page.locator("#viewport")).toHaveAttribute("data-render-suspended", "1");
-  await expect(page.getByTestId("mute-music")).toHaveAttribute("data-playback", "playing");
+  await expect.poll(async () => page.getByTestId("mute-music").getAttribute("data-playback")).not.toBe("playing");
   const frozen = await page.evaluate(() => window.__protoLab?.renderFrame?.() ?? -1);
   await page.evaluate(
     () =>
@@ -109,7 +109,7 @@ test("con un prototipo abierto el lobby deja de renderizar y la música sigue", 
   expect(await page.evaluate(() => window.__protoLab?.renderFrame?.() ?? -1)).toBe(frozen);
   await page.getByTestId("close-prototype").click();
   await expect(page.locator("#viewport")).toHaveAttribute("data-render-suspended", "0");
-  await expect(page.getByTestId("mute-music")).toHaveAttribute("data-playback", "playing");
+  await expect.poll(async () => page.getByTestId("mute-music").getAttribute("data-playback")).toBe("playing");
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.renderFrame?.() ?? 0)).toBeGreaterThan(frozen);
 });
 
