@@ -1,4 +1,5 @@
 import { shapeStick } from "./locomotion";
+import { attachTouchControls, type TouchControlsHandle } from "./touch-controls";
 
 export type InputHandle = {
   read: () => { forward: number; right: number; lookX: number; lookY: number };
@@ -8,21 +9,32 @@ export type InputHandle = {
 
 export function attachInput(options: {
   canvas: HTMLElement;
-  joystick: HTMLElement;
-  knob: HTMLElement;
   isBlocked: () => boolean;
-  /** En el turno de touchend/pointerup, antes de cualquier otra cosa. */
   onGesture?: () => void;
+  onSurfaceTap?: (clientX: number, clientY: number) => void;
+  touch?: {
+    zoneMove: HTMLElement;
+    zoneLook: HTMLElement;
+    activeMarker: HTMLElement;
+  };
 }): InputHandle {
   const keys = new Set<string>();
-  let joyForward = 0;
-  let joyRight = 0;
-  let joyActive = false;
   let dragging = false;
   let lastX = 0;
   let lastY = 0;
   let lookX = 0;
   let lookY = 0;
+
+  const touchControls: TouchControlsHandle | null = options.touch
+    ? attachTouchControls({
+        zoneMove: options.touch.zoneMove,
+        zoneLook: options.touch.zoneLook,
+        activeMarker: options.touch.activeMarker,
+        isBlocked: options.isBlocked,
+        onGesture: options.onGesture,
+        onSurfaceTap: options.onSurfaceTap,
+      })
+    : null;
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (isTyping(event.target) || options.isBlocked()) return;
@@ -33,22 +45,18 @@ export function attachInput(options: {
   };
   const onBlur = () => {
     keys.clear();
-    joyActive = false;
     dragging = false;
-    joyForward = 0;
-    joyRight = 0;
-    options.knob.style.transform = "translate(-50%, -50%)";
   };
 
   const onPointerDown = (event: PointerEvent) => {
-    if (options.isBlocked() || event.button !== 0) return;
+    if (options.touch || options.isBlocked() || event.button !== 0) return;
     dragging = true;
     lastX = event.clientX;
     lastY = event.clientY;
     options.canvas.setPointerCapture?.(event.pointerId);
   };
   const onPointerMove = (event: PointerEvent) => {
-    if (!dragging || options.isBlocked()) return;
+    if (options.touch || !dragging || options.isBlocked()) return;
     lookX += event.clientX - lastX;
     lookY += event.clientY - lastY;
     lastX = event.clientX;
@@ -62,38 +70,6 @@ export function attachInput(options: {
     dragging = false;
   };
 
-  const onJoyDown = (event: PointerEvent) => {
-    if (options.isBlocked()) return;
-    joyActive = true;
-    options.joystick.setPointerCapture(event.pointerId);
-    moveJoy(event);
-  };
-  const onJoyMove = (event: PointerEvent) => {
-    if (!joyActive) return;
-    moveJoy(event);
-  };
-  const onJoyUp = () => {
-    onGesture();
-    joyActive = false;
-    joyForward = 0;
-    joyRight = 0;
-    options.knob.style.transform = "translate(-50%, -50%)";
-  };
-
-  function moveJoy(event: PointerEvent) {
-    const rect = options.joystick.getBoundingClientRect();
-    const dx = event.clientX - (rect.left + rect.width / 2);
-    const dy = event.clientY - (rect.top + rect.height / 2);
-    const max = rect.width / 2 - 10;
-    const mag = Math.hypot(dx, dy) || 1;
-    const clamped = Math.min(mag, max);
-    const nx = dx / mag;
-    const ny = dy / mag;
-    options.knob.style.transform = `translate(calc(-50% + ${nx * clamped}px), calc(-50% + ${ny * clamped}px))`;
-    joyRight = (nx * clamped) / max;
-    joyForward = -(ny * clamped) / max;
-  }
-
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", onBlur);
@@ -103,14 +79,10 @@ export function attachInput(options: {
   options.canvas.addEventListener("pointerup", onPointerUp);
   options.canvas.addEventListener("pointercancel", onPointerUp);
   options.canvas.addEventListener("touchend", onGesture, gestureCapture);
-  options.joystick.addEventListener("pointerdown", onJoyDown);
-  options.joystick.addEventListener("pointermove", onJoyMove);
-  options.joystick.addEventListener("pointerup", onJoyUp);
-  options.joystick.addEventListener("pointercancel", onJoyUp);
-  options.joystick.addEventListener("touchend", onGesture, gestureCapture);
 
   return {
     read() {
+      touchControls?.syncEnabled();
       if (options.isBlocked()) return { forward: 0, right: 0, lookX: 0, lookY: 0 };
       let forward = 0;
       let right = 0;
@@ -118,11 +90,16 @@ export function attachInput(options: {
       if (keys.has("s") || keys.has("arrowdown")) forward -= 1;
       if (keys.has("d") || keys.has("arrowright")) right += 1;
       if (keys.has("a") || keys.has("arrowleft")) right -= 1;
-      if (joyActive) {
-        const shaped = shapeStick(joyRight, joyForward);
-        forward = shaped.y;
-        right = shaped.x;
+
+      if (touchControls) {
+        const move = touchControls.readMovement();
+        forward = move.forward;
+        right = move.right;
+        const look = touchControls.readLook();
+        lookX = look.lookX;
+        lookY = look.lookY;
       }
+
       const length = Math.hypot(forward, right);
       if (length > 1) {
         forward /= length;
@@ -135,20 +112,15 @@ export function attachInput(options: {
       lookY = 0;
     },
     dispose() {
+      touchControls?.dispose();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
-      const gestureCapture: AddEventListenerOptions = { capture: true };
       options.canvas.removeEventListener("pointerdown", onPointerDown);
       options.canvas.removeEventListener("pointermove", onPointerMove);
       options.canvas.removeEventListener("pointerup", onPointerUp);
       options.canvas.removeEventListener("pointercancel", onPointerUp);
       options.canvas.removeEventListener("touchend", onGesture, gestureCapture);
-      options.joystick.removeEventListener("pointerdown", onJoyDown);
-      options.joystick.removeEventListener("pointermove", onJoyMove);
-      options.joystick.removeEventListener("pointerup", onJoyUp);
-      options.joystick.removeEventListener("pointercancel", onJoyUp);
-      options.joystick.removeEventListener("touchend", onGesture, gestureCapture);
     },
   };
 }

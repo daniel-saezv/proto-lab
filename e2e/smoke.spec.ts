@@ -291,7 +291,7 @@ test("sin WebGL queda un respaldo usable", async ({ browser }, testInfo) => {
   await context.close();
 });
 
-test("en el móvil aparece el joystick", async ({ browser }, testInfo) => {
+test("en el móvil el joystick dinámico aparece al tocar", async ({ browser }, testInfo) => {
   skipUnlessChromium(testInfo, "perfil Pixel 7");
   const context = await browser.newContext({
     ...devices["Pixel 7"],
@@ -301,8 +301,32 @@ test("en el móvil aparece el joystick", async ({ browser }, testInfo) => {
   const page = await context.newPage();
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await expect(page.getByTestId("joystick")).toBeVisible();
-  await expect(page.getByTestId("hint")).toContainText("Joystick");
+  await expect(page.getByTestId("joystick")).toBeHidden();
+  await expect(page.getByTestId("hint")).toContainText("Toca a la izquierda");
+  const viewport = page.viewportSize();
+  expect(viewport).toBeTruthy();
+  const x = Math.floor(viewport!.width * 0.22);
+  const y = Math.floor(viewport!.height * 0.72);
+  await page.locator("#touch-zone-move").dispatchEvent("pointerdown", {
+    clientX: x,
+    clientY: y,
+    button: 0,
+    buttons: 1,
+    pointerId: 1,
+    pointerType: "touch",
+    isPrimary: true,
+  });
+  await expect(page.getByTestId("touch-controls")).toHaveAttribute("data-active", "true");
+  await page.locator("#touch-zone-move").dispatchEvent("pointerup", {
+    clientX: x,
+    clientY: y,
+    button: 0,
+    buttons: 0,
+    pointerId: 1,
+    pointerType: "touch",
+    isPrimary: true,
+  });
+  await expect(page.getByTestId("touch-controls")).not.toHaveAttribute("data-active", "true");
   await context.close();
 });
 
@@ -559,13 +583,13 @@ test("con el diálogo del Inventor abierto no se ve el joystick", async ({ brows
   const page = await context.newPage();
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await expect(page.getByTestId("joystick")).toBeVisible();
+  await expect(page.getByTestId("joystick")).toBeHidden();
   await openInventorDialogue(page);
   await expect(page.getByTestId("joystick")).toBeHidden();
   await expect(page.getByTestId("interact")).toBeHidden();
   await page.getByTestId("choice-bye").click();
   await expect(page.getByTestId("dialogue")).toBeHidden();
-  await expect(page.getByTestId("joystick")).toBeVisible();
+  await expect(page.getByTestId("joystick")).toBeHidden();
   await context.close();
 });
 
@@ -615,7 +639,8 @@ test("la música se sirve y no muestra créditos en pantalla", async ({ page }) 
   expect(bodyText.toLowerCase()).not.toContain("crédito");
 });
 
-test("un toque en el laboratorio arranca la música sin pasar por silenciar", async ({ page }) => {
+test("un toque en el laboratorio arranca la música sin pasar por silenciar", async ({ page }, testInfo) => {
+  skipUnlessChromium(testInfo, "clic de ratón en el lienzo");
   const requests: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes(".m4a")) requests.push(request.url());
@@ -645,8 +670,8 @@ test("un toque en el laboratorio arranca la música sin pasar por silenciar", as
   await expect(mute).toHaveAttribute("data-playback", "playing");
 });
 
-test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un botón", async ({ page, browserName }) => {
-  test.skip(browserName !== "webkit", "el gesto táctil se comprueba en WebKit iPhone");
+test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un botón", async ({ page }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "gesto táctil iOS");
   const requests: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes(".m4a")) requests.push(request.url());
@@ -656,11 +681,9 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   const mute = page.getByTestId("mute-music");
   await expect(mute).toHaveAttribute("data-playback", "idle");
 
-  const joy = page.getByTestId("joystick");
-  await expect(joy).toBeVisible();
-  const box = await joy.boundingBox();
-  expect(box).toBeTruthy();
-  await dispatchTouchDrag(page, box!.x + box!.width / 2, box!.y + box!.height / 2, 0, -48);
+  const viewport = page.viewportSize();
+  expect(viewport).toBeTruthy();
+  await dispatchTouchDrag(page, viewport!.width * 0.22, viewport!.height * 0.72, 0, -48);
   await expect.poll(() => requests.length).toBeGreaterThan(0);
   expect(requests.every((url) => url.includes("luanda.m4a"))).toBe(true);
   await expect(mute).toHaveAttribute("data-playback", "playing");

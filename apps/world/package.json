@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "nipplejs": "^1.0.4",
     "three": "0.187.0"
   },
   "devDependencies": {

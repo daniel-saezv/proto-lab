@@ -32,8 +32,10 @@ const interact = must<HTMLButtonElement>("#interact");
 const muteMusic = must<HTMLButtonElement>("#mute-music");
 const music = createAmbienceMusic(muteMusic);
 const boardBack = must<HTMLButtonElement>("#board-back");
-const joystick = must("#joystick");
-const knob = must("#knob");
+const touchControls = must("#touch-controls");
+const touchZoneMove = must("#touch-zone-move");
+const touchZoneLook = must("#touch-zone-look");
+const joystickMarker = must("#joystick");
 const dialogueRoot = must("#dialogue");
 const selectorRoot = must("#game-selector");
 const installHelpRoot = must("#install-help");
@@ -43,10 +45,10 @@ const boardPreviews = must("#board-previews");
 
 const touch = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 hint.textContent = touch
-  ? "Joystick a la izquierda, arrastra para mirar"
+  ? "Toca a la izquierda para caminar y a la derecha para mirar"
   : "WASD para caminar, arrastra el ratón para mirar, E para usar";
 if (touch) {
-  joystick.hidden = false;
+  touchControls.hidden = false;
   shell.classList.add("has-joystick");
 }
 
@@ -315,8 +317,9 @@ async function bootWorld() {
       viewport,
       labels,
       prototypes: visiblePrototypes,
-      joystick,
-      knob,
+      touchControls: touch
+        ? { zoneMove: touchZoneMove, zoneLook: touchZoneLook, activeMarker: joystickMarker }
+        : undefined,
       e2e,
       perf,
       batch,
