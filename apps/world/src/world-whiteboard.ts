@@ -1,5 +1,5 @@
 import type { Material, Mesh, PlaneGeometry } from "three";
-import type { WhiteboardStatusController } from "./whiteboard-status";
+import type { WhiteboardStatusController } from "./whiteboard-status-types";
 
 /** Enganche mínimo entre la escena 3D y el tablón dinámico. */
 export type LobbyWhiteboardBinding = {
