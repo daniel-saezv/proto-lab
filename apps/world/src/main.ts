@@ -1,7 +1,8 @@
 import { createAmbienceMusic } from "./ambience-music";
 import { sendProposal } from "./api";
-import { renderPreviewActions } from "./board-preview";
 import catalogFile from "./generated/catalog.json";
+import { LAB_ROOT_HREF, type BoardNavAction, type BoardUiSnapshot } from "./proposals-board-actions";
+import { renderBoardControls } from "./proposals-board-a11y";
 import { createDialogue } from "./dialogue";
 import { createGameSelector } from "./game-selector";
 import { createInstallHelp, type DeferredInstallPrompt } from "./install-help";
@@ -32,6 +33,7 @@ const interact = must<HTMLButtonElement>("#interact");
 const muteMusic = must<HTMLButtonElement>("#mute-music");
 const music = createAmbienceMusic(muteMusic);
 const boardBack = must<HTMLButtonElement>("#board-back");
+const boardA11y = must("#board-a11y");
 const touchControls = must("#touch-controls");
 const touchZoneMove = must("#touch-zone-move");
 const touchZoneLook = must("#touch-zone-look");
@@ -41,7 +43,6 @@ const selectorRoot = must("#game-selector");
 const installHelpRoot = must("#install-help");
 const stage = must("#stage");
 const fallback = must("#fallback");
-const boardPreviews = must("#board-previews");
 
 const touch = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 hint.textContent = touch
@@ -59,7 +60,6 @@ let lobbyWhiteboard: WhiteboardStatusController | null = null;
 let fallbackWhiteboard: WhiteboardStatusController | null = null;
 let fallbackAnimFrame = 0;
 let latestProposalStatus: { items: ProposalStatusItem[]; partial: boolean } | null = null;
-let fallbackPreviews: HTMLElement | null = null;
 let fallbackLoopOn = false;
 
 function blockWorldInput() {
@@ -103,7 +103,6 @@ const overlay = createOverlay(
     world?.setSuspended(false);
     resumeFallbackWhiteboardLoop();
     music.setPaused(document.visibilityState !== "visible");
-    syncPreviewActions();
     statusPoller.refresh();
   },
   {
@@ -125,7 +124,6 @@ function openPrototype(entry: CatalogEntry) {
   world?.setSuspended(true);
   stopFallbackWhiteboardLoop();
   overlay.open(entry);
-  syncPreviewActions();
 }
 
 const statusPoller = createProposalStatusPoller({
@@ -156,17 +154,40 @@ function applyProposalStatus(items: ProposalStatusItem[], partial: boolean) {
   latestProposalStatus = { items, partial };
   lobbyWhiteboard?.setItems(items, partial);
   fallbackWhiteboard?.setItems(items, partial);
-  syncPreviewActions();
 }
 
-function syncPreviewActions() {
-  const items = latestProposalStatus?.items ?? [];
-  if (fallbackPreviews) {
-    const count = renderPreviewActions(fallbackPreviews, items);
-    fallbackPreviews.hidden = count === 0;
+function performBoardAction(action: BoardNavAction) {
+  if (action.kind === "preview" || action.kind === "lab-root") {
+    window.open(action.href, "_blank", "noopener,noreferrer");
+    return;
   }
-  const count = renderPreviewActions(boardPreviews, items);
-  boardPreviews.hidden = !(viewingBoard && count > 0 && !overlay.isOpen());
+  const entry = visiblePrototypes.find((item) => item.slug === action.slug);
+  if (!entry) {
+    window.open(LAB_ROOT_HREF, "_blank", "noopener,noreferrer");
+    return;
+  }
+  world?.exitWhiteboard();
+  openPrototype(entry);
+}
+
+function activeBoard(): WhiteboardStatusController | null {
+  return lobbyWhiteboard ?? fallbackWhiteboard;
+}
+
+function syncBoardControls(ui: BoardUiSnapshot) {
+  const focusInside = boardA11y.contains(document.activeElement);
+  renderBoardControls(boardA11y, ui, {
+    onRow: (number) => activeBoard()?.selectRow(number),
+    onBack: () => activeBoard()?.clearSelection(),
+    onAction: (action) => performBoardAction(action),
+  });
+  if (focusInside && ui.interactive) {
+    boardA11y.querySelector<HTMLElement>('[tabindex="0"]')?.focus({ preventScroll: true });
+  }
+}
+
+function focusBoardControl() {
+  boardA11y.querySelector<HTMLElement>('[tabindex="0"]')?.focus({ preventScroll: true });
 }
 
 function flushProposalStatusToBoards() {
@@ -227,15 +248,42 @@ const selector = createGameSelector({
 interact.addEventListener("click", () => world?.interact());
 boardBack.addEventListener("click", () => world?.exitWhiteboard());
 
+function boardArrowKey(key: string): boolean {
+  return key === "ArrowUp" || key === "ArrowDown" || key === "Home" || key === "End";
+}
+
 window.addEventListener("keydown", (event) => {
   if (selector.handleKey(event)) return;
   if (installHelp.handleKey(event)) return;
+  const reading = world?.isViewingWhiteboard() ?? false;
+  const fallbackBoard = !world ? fallbackWhiteboard : null;
+  if ((reading || fallbackBoard) && boardArrowKey(event.key)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.repeat) return;
+    const handled = reading ? world?.handleBoardKey(event.key) : fallbackBoard?.handleKey(event.key);
+    if (handled) focusBoardControl();
+    return;
+  }
   if (event.key === "Escape") {
     if (overlay.isOpen()) overlay.close();
-    else if (world?.isViewingWhiteboard()) world.exitWhiteboard();
-    else if (installHelp.isOpen()) installHelp.close();
+    else if (reading) {
+      if (!world?.clearBoardSelection()) world?.exitWhiteboard();
+    } else if (fallbackBoard?.clearSelection()) {
+      focusBoardControl();
+    } else if (installHelp.isOpen()) installHelp.close();
     else if (selector.isOpen()) selector.close();
     else if (dialogue.isOpen()) dialogue.close();
+    return;
+  }
+  if ((reading || fallbackBoard) && (event.key === "Enter" || event.key === " ") && event.target !== boardBack) {
+    if (event.target instanceof Node && boardA11y.contains(event.target)) return;
+    if (event.repeat) return;
+    const handled = reading ? world?.handleBoardKey(event.key) : fallbackBoard?.handleKey(event.key);
+    if (handled) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
     return;
   }
   if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen()) return;
@@ -285,10 +333,9 @@ async function mountFallback() {
     onTalk: () => dialogue.open(),
     onInstallHelp: () => installHelp.open(),
     onPlay: (entry) => openPrototype(entry),
-    onPreviews: (container) => {
-      fallbackPreviews = container;
-      syncPreviewActions();
-    },
+    knownSlugs: visiblePrototypes.map((entry) => entry.slug),
+    onBoardUi: syncBoardControls,
+    onBoardAction: performBoardAction,
     onWhiteboardReady: (controller) => {
       fallbackWhiteboard = controller;
       startFallbackWhiteboardLoop();
@@ -366,8 +413,9 @@ async function bootWorld() {
         document.body.classList.toggle("reading-board", open);
         boardBack.hidden = !open;
         if (open) interact.hidden = true;
-        syncPreviewActions();
       },
+      onBoardUi: syncBoardControls,
+      onBoardAction: performBoardAction,
       onWhiteboardReady: (controller) => {
         lobbyWhiteboard = controller;
         flushProposalStatusToBoards();

@@ -2,6 +2,7 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { defineConfig, type Plugin, type HtmlTagDescriptor } from "vite";
+import { headersForPath, parsePagesHeaders, sealPagesHeaders } from "../../scripts/pages-headers.mjs";
 
 const worldDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(worldDir, "../..");
@@ -20,6 +21,20 @@ const MIME: Record<string, string> = {
   ".m4a": "audio/mp4",
   ".md": "text/plain; charset=utf-8",
 };
+
+function applyPagesHeaders(): Plugin {
+  const rules = parsePagesHeaders(readFileSync(resolve(worldDir, "public/_headers"), "utf8"));
+  return {
+    name: "proto-lab-pages-headers",
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = (req.url ?? "/").split("?")[0] || "/";
+        sealPagesHeaders(res, headersForPath(rules, pathname));
+        next();
+      });
+    },
+  };
+}
 
 function allowPrototypeCors(): Plugin {
   return {
@@ -115,6 +130,7 @@ function devApi(): Plugin {
           CF_ACCOUNT_ID: process.env.CF_ACCOUNT_ID,
           CF_PAGES_PROJECT: process.env.CF_PAGES_PROJECT,
           ALLOW_DEV_AUTH: process.env.ALLOW_DEV_AUTH,
+          CF_ACCESS_AUD: process.env.CF_ACCESS_AUD,
         };
         let response: Response;
         if (url === "/api/proposals/status") {
@@ -195,5 +211,5 @@ export default defineConfig({
   server: {
     fs: { allow: [repoRoot] },
   },
-  plugins: [devApi(), serveProtos(), allowPrototypeCors(), preloadWorldChunk()],
+  plugins: [devApi(), serveProtos(), allowPrototypeCors(), applyPagesHeaders(), preloadWorldChunk()],
 });

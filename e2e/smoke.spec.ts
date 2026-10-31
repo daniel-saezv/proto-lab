@@ -132,26 +132,181 @@ test("ver la pizarra encuadra la cámara y vuelve sin abrir un diálogo", async 
   expect(framed!.y).toBeCloseTo(1.55, 1);
   expect(framed!.z).toBeGreaterThan(-7.2);
   expect(framed!.z).toBeLessThan(-3);
-  const preview = page.getByTestId("board-preview");
-  await expect(preview).toHaveCount(1);
-  await expect(preview).toBeVisible();
-  await expect(preview).toHaveText("Probar la preview");
-  await expect(preview).toHaveAttribute("href", "https://preview-test.proto-lab-3k6.pages.dev/");
-  await expect(preview).toHaveAttribute("target", "_blank");
-  await expect(preview).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.getByTestId("board-preview")).toHaveCount(0);
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-interactive", "1");
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-screen", "list");
   const back = page.getByTestId("board-back");
   await expect(back).toBeVisible();
   await expect(back).toHaveText("Volver");
   await back.click();
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
   await expect(back).toBeHidden();
-  await expect(preview).toBeHidden();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-interactive", "0");
   await expect(interact).toHaveText("Ver la pizarra");
   await page.keyboard.press("e");
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await page.keyboard.press("Escape");
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
+});
+
+test("la pizarra fijada elige una propuesta y enseña la acción de su estado", async ({ page }, testInfo) => {
+  skipUnlessChromium(testInfo, "selección en el tablón");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route("**/api/proposals/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        partial: false,
+        items: [
+          {
+            number: 7,
+            title: "Cometa lunar",
+            kind: "propuesta",
+            slug: null,
+            phase: "recibida",
+            updatedAt: "2026-03-01T00:00:00Z",
+          },
+          {
+            number: 8,
+            title: "Chispas más rápidas",
+            kind: "iteracion",
+            slug: "chispa",
+            phase: "preview_lista",
+            updatedAt: "2026-03-02T00:00:00Z",
+            previewUrl: "https://preview-test.proto-lab-3k6.pages.dev",
+          },
+          {
+            number: 9,
+            title: "Ya en el lab",
+            kind: "iteracion",
+            slug: "chispa",
+            phase: "publicada",
+            updatedAt: "2026-03-03T00:00:00Z",
+            previewUrl: "https://proto-lab-3k6.pages.dev",
+          },
+          {
+            number: 10,
+            title: "Sin carpeta",
+            kind: "propuesta",
+            slug: null,
+            phase: "publicada",
+            updatedAt: "2026-03-04T00:00:00Z",
+            previewUrl: "https://proto-lab-3k6.pages.dev",
+          },
+        ],
+      }),
+    });
+  });
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("chalkboard"));
+  await page.getByTestId("interact").click();
+  const viewport = page.locator("#viewport");
+  await expect(viewport).toHaveAttribute("data-board-interactive", "1");
+  await expect(viewport).toHaveAttribute("data-whiteboard-items", "7,8,9,10");
+  await expect(viewport).toHaveAttribute("data-board-screen", "list");
+
+  async function clickBoard(zone: "row" | "back" | "action", number?: number) {
+    const point = await page.evaluate(
+      ({ zone, number }) => window.__protoLab?.boardPoint?.(zone, number) ?? null,
+      { zone, number },
+    );
+    expect(point, zone).toBeTruthy();
+    await page.locator("#viewport canvas").click({ position: { x: point!.x, y: point!.y } });
+  }
+
+  await clickBoard("row", 7);
+  await expect(viewport).toHaveAttribute("data-board-screen", "detail");
+  await expect(viewport).toHaveAttribute("data-board-selected", "7");
+  await expect(viewport).toHaveAttribute("data-board-action", "");
+  await expect(page.getByTestId("board-action")).toHaveCount(0);
+  await expect.poll(() => page.getByTestId("board-detail-phase").textContent()).toBe("Propuesta. Recibida");
+  await page.keyboard.press("Escape");
+  await expect(viewport).toHaveAttribute("data-board-screen", "list");
+  await expect(viewport).toHaveAttribute("data-board-view", "1");
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(viewport).toHaveAttribute("data-board-selected", "8");
+  await expect(viewport).toHaveAttribute("data-board-action", "preview");
+  await expect(viewport).toHaveAttribute("data-board-action-label", "Probar la preview");
+  const preview = page.getByTestId("board-action");
+  await expect(preview).toHaveAttribute("href", "https://preview-test.proto-lab-3k6.pages.dev/");
+  await expect(preview).toHaveAttribute("target", "_blank");
+  await expect(preview).toHaveAttribute("rel", "noopener noreferrer");
+  await page.evaluate(() => {
+    const opened: string[] = [];
+    window.open = (url) => {
+      opened.push(String(url));
+      return null;
+    };
+    (window as unknown as { __opened?: string[] }).__opened = opened;
+  });
+  await clickBoard("action");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __opened?: string[] }).__opened ?? [])).toEqual([
+    "https://preview-test.proto-lab-3k6.pages.dev/",
+  ]);
+
+  await clickBoard("back");
+  await expect(viewport).toHaveAttribute("data-board-screen", "list");
+  await clickBoard("row", 10);
+  await expect(viewport).toHaveAttribute("data-board-action", "lab-root");
+  await expect(viewport).toHaveAttribute("data-board-action-label", "Ver en el lab");
+  await expect(page.getByTestId("board-action")).toHaveAttribute("href", "https://proto-lab-3k6.pages.dev/");
+  await page.evaluate(() => {
+    const opened: string[] = [];
+    window.open = (url) => {
+      opened.push(String(url));
+      return null;
+    };
+    (window as unknown as { __opened?: string[] }).__opened = opened;
+  });
+  await clickBoard("action");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __opened?: string[] }).__opened ?? [])).toEqual([
+    "https://proto-lab-3k6.pages.dev/",
+  ]);
+
+  await page.keyboard.press("Escape");
+  await expect(viewport).toHaveAttribute("data-board-screen", "list");
+  await clickBoard("row", 9);
+  await expect(viewport).toHaveAttribute("data-board-action", "lab-prototype");
+  await expect(viewport).toHaveAttribute("data-board-action-label", "Ver en el lab");
+  await clickBoard("action");
+  await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
+});
+
+test("en el iPhone la acción de la pizarra cabe en el dedo", async ({ page }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "zona táctil en vertical");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("chalkboard"));
+  await page.getByTestId("interact").tap();
+  const viewport = page.locator("#viewport");
+  await expect(viewport).toHaveAttribute("data-board-interactive", "1");
+  await expect(viewport).toHaveAttribute("data-whiteboard-items", "7,8");
+  const row = await page.evaluate(() => window.__protoLab?.boardPoint?.("row", 8) ?? null);
+  expect(row).toBeTruthy();
+  await page.locator("#viewport canvas").tap({ position: { x: row!.x, y: row!.y } });
+  await expect(viewport).toHaveAttribute("data-board-action-label", "Probar la preview");
+  const box = await page.evaluate(() => window.__protoLab?.boardBox?.("action") ?? null);
+  const back = await page.evaluate(() => window.__protoLab?.boardBox?.("back") ?? null);
+  expect(box).toBeTruthy();
+  expect(back).toBeTruthy();
+  const size = page.viewportSize();
+  expect(size).toBeTruthy();
+  for (const target of [box!, back!]) {
+    expect(target.width).toBeGreaterThanOrEqual(44);
+    expect(target.height).toBeGreaterThanOrEqual(44);
+    expect(target.x).toBeGreaterThanOrEqual(-1);
+    expect(target.y).toBeGreaterThanOrEqual(-1);
+    expect(target.x + target.width).toBeLessThanOrEqual(size!.width + 1);
+    expect(target.y + target.height).toBeLessThanOrEqual(size!.height + 1);
+  }
 });
 
 test("en vertical la pizarra se lee con un botón de volver dentro de la pantalla", async ({ browser }, testInfo) => {
@@ -807,4 +962,44 @@ test("Sugerir mejora abre una iteración del prototipo abierto", async ({ page, 
     title: "Más contraste",
     slug: "chispa",
   });
+});
+
+test("CSP, audio y el JS con hash del prototipo no se pisan", async ({ page }) => {
+  const home = await page.request.get("/");
+  expect(home.ok()).toBeTruthy();
+  const csp = home.headers()["content-security-policy"] ?? "";
+  expect(csp).toContain("frame-src blob:");
+  expect(csp).toContain("frame-ancestors 'self'");
+  expect(csp).toContain("media-src 'self'");
+  expect(home.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(home.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(home.headers()["permissions-policy"] ?? "").toContain("camera=()");
+  expect(home.headers()["cache-control"] ?? "").toMatch(/no-cache/);
+
+  const manifest = await page.request.get("/manifest.webmanifest");
+  expect(manifest.ok()).toBeTruthy();
+  expect(manifest.headers()["cache-control"] ?? "").toMatch(/no-cache/);
+
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+
+  const audio = await page.request.get("/protos/audio/luanda.m4a");
+  expect(audio.ok()).toBeTruthy();
+  expect(audio.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
+  const audioCache = audio.headers()["cache-control"] ?? "";
+  expect(audioCache).toMatch(/immutable/);
+  expect(audioCache).not.toMatch(/no-cache/);
+
+  const proto = await page.request.get("/protos/chispa/");
+  expect(proto.ok()).toBeTruthy();
+  expect(proto.headers()["cache-control"] ?? "").toMatch(/no-cache/);
+  const src = (await proto.text()).match(/src="([^"]+\.js)"/)?.[1];
+  expect(src).toBeTruthy();
+  const assetPath = new URL(src!, "http://127.0.0.1:4173/protos/chispa/").pathname;
+  const asset = await page.request.get(assetPath);
+  expect(asset.ok()).toBeTruthy();
+  const assetCache = asset.headers()["cache-control"] ?? "";
+  expect(assetCache).toMatch(/immutable/);
+  expect(assetCache).not.toMatch(/no-cache/);
 });

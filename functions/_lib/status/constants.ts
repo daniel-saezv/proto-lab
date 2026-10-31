@@ -9,10 +9,16 @@ export const LABEL_APROBADO = "aprobado";
 export const LABEL_EN_CURSO = "en-curso";
 
 /** Prefijo de claves KV para la respuesta del tablón (distinto del rate limit). */
-export const STATUS_CACHE_KEY = "proposal-status:v2:all";
+export const STATUS_CACHE_KEY = "proposal-status:v3:all";
 
-/** TTL de la caché del tablón en segundos (entre 60 y 300). */
+/** Ventana en la que una respuesta buena se sirve sin volver a GitHub. */
 export const STATUS_CACHE_TTL_SECONDS = 120;
+
+/**
+ * El valor sigue en KV más tiempo para poder devolver el último tablón bueno
+ * si GitHub falla. No se reescribe con un fallo.
+ */
+export const STATUS_CACHE_STORE_SECONDS = 24 * 60 * 60;
 
 export const STATUS_TITLE_MAX = 80;
 

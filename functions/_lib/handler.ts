@@ -1,4 +1,6 @@
 import { readAccessEmail } from "./access";
+import { jsonResponse } from "./http";
+import { deleteStatusCache } from "./status/cache";
 import {
   LIMITS,
   buildIssue,
@@ -10,11 +12,13 @@ import {
 export type KvLike = {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete?(key: string): Promise<void>;
 };
 
 export type ProposalEnv = {
   GITHUB_TOKEN?: string;
   ALLOW_DEV_AUTH?: string;
+  CF_ACCESS_AUD?: string;
   PROPOSALS?: KvLike;
 };
 
@@ -28,13 +32,7 @@ const ISSUE_URL = /^https:\/\/github\.com\/daniel-saezv\/proto-lab\/issues\/\d+$
 const ISSUES_ENDPOINT = "https://api.github.com/repos/daniel-saezv/proto-lab/issues";
 
 function json(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
-  });
+  return jsonResponse(status, body);
 }
 
 async function createGitHubIssue(
@@ -48,8 +46,9 @@ async function createGitHubIssue(
   let labels = [...issue.labels];
 
   for (let attempt = 0; attempt < labels.length; attempt += 1) {
-    const response = await fetchImpl(ISSUES_ENDPOINT, {
+      const response = await fetchImpl(ISSUES_ENDPOINT, {
       method: "POST",
+      redirect: "manual",
       headers: {
         authorization: `Bearer ${token}`,
         accept: "application/vnd.github+json",
@@ -67,7 +66,7 @@ async function createGitHubIssue(
       return { ok: true, issueUrl, issueNumber };
     }
 
-    const detail = await response.text().catch(() => "");
+    const detail = (await response.text().catch(() => "")).slice(0, 2_000);
     const missingLabel = response.status === 422 && /label/i.test(detail) && labels.length > 1;
     if (missingLabel) {
       labels = labels.slice(0, -1);
@@ -84,9 +83,18 @@ export async function handleProposal(request: Request, env: ProposalEnv, options
     return json(405, { ok: false, error: "method", message: "Solo se aceptan propuestas por POST." });
   }
 
-  const email = readAccessEmail(request, env);
+  const email = await readAccessEmail(request, env, options.fetchImpl ?? fetch);
   if (!email) {
     return json(401, { ok: false, error: "unauthorized", message: "No hay una sesión de Cloudflare Access." });
+  }
+
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return json(400, { ok: false, error: "validation", message: "La nota tiene que ir en JSON." });
+  }
+  const declared = Number(request.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > LIMITS.maxBodyBytes) {
+    return json(400, { ok: false, error: "validation", message: "La nota es demasiado larga." });
   }
 
   const rawText = await request.text();
@@ -153,6 +161,7 @@ export async function handleProposal(request: Request, env: ProposalEnv, options
     } catch {
       // La issue ya existe. Un fallo al contar no debe hacer creer al amigo que no se envió.
     }
+    await deleteStatusCache(env.PROPOSALS);
   }
 
   return json(201, { ok: true, issueUrl: created.issueUrl, issueNumber: created.issueNumber });

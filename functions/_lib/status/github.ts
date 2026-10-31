@@ -1,4 +1,5 @@
-import { CI_WORKFLOW_FILE, PREVIEW_HOST_SUFFIX, PRODUCTION_HOST, REPO_NAME, REPO_OWNER } from "./constants";
+import { PREVIEW_HOST_SUFFIX, PRODUCTION_HOST } from "./constants";
+import { readTextLimited } from "../read-limited";
 
 export type GitHubFetch = typeof fetch;
 
@@ -13,11 +14,6 @@ export type GitHubIssue = {
   updated_at: string;
 };
 
-export type FetchProposalIssuesOptions = {
-  /** ISO 8601; solo en el listado de issues cerradas. */
-  closedSince?: string;
-};
-
 export type GitHubPull = {
   number: number;
   body: string;
@@ -28,111 +24,11 @@ export type GitHubPull = {
   head: { ref: string; sha: string };
 };
 
-function ghHeaders(token: string): HeadersInit {
-  return {
-    authorization: `Bearer ${token}`,
-    accept: "application/vnd.github+json",
-    "user-agent": "proto-lab",
-    "x-github-api-version": "2022-11-28",
-  };
-}
-
-export async function fetchProposalIssues(
-  token: string,
-  fetchImpl: GitHubFetch,
-  options: FetchProposalIssuesOptions = {},
-): Promise<GitHubIssue[]> {
-  const items: GitHubIssue[] = [];
-  for (const state of ["open", "closed"] as const) {
-    let page = 1;
-    for (;;) {
-      let url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?labels=propuesta&state=${state}&per_page=100&page=${page}&sort=updated&direction=desc`;
-      if (state === "closed" && options.closedSince) {
-        url += `&since=${encodeURIComponent(options.closedSince)}`;
-      }
-      const response = await fetchImpl(url, { headers: ghHeaders(token) });
-      if (!response.ok) throw new Error("issues");
-      const batch = (await response.json()) as GitHubIssue[];
-      if (!Array.isArray(batch) || batch.length === 0) break;
-      for (const issue of batch) {
-        if ("pull_request" in issue && (issue as { pull_request?: unknown }).pull_request) continue;
-        items.push(issue);
-      }
-      if (batch.length < 100) break;
-      page += 1;
-    }
-  }
-  return items;
-}
-
-export async function fetchIssueTimeline(
-  token: string,
-  issueNumber: number,
-  fetchImpl: GitHubFetch,
-): Promise<unknown[]> {
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues/${issueNumber}/timeline`;
-  const response = await fetchImpl(url, {
-    headers: { ...ghHeaders(token), accept: "application/vnd.github.mockingbird-preview+json" },
-  });
-  if (!response.ok) throw new Error("timeline");
-  const data = await response.json();
-  return Array.isArray(data) ? data : [];
-}
-
-export async function fetchAllPullRequests(token: string, fetchImpl: GitHubFetch): Promise<GitHubPull[]> {
-  const items: GitHubPull[] = [];
-  for (const state of ["open", "closed"] as const) {
-    let page = 1;
-    for (;;) {
-      const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/pulls?state=${state}&per_page=100&page=${page}&sort=updated&direction=desc`;
-      const response = await fetchImpl(url, { headers: ghHeaders(token) });
-      if (!response.ok) throw new Error("pulls");
-      const batch = (await response.json()) as GitHubPull[];
-      if (!Array.isArray(batch) || batch.length === 0) break;
-      items.push(...batch);
-      if (batch.length < 100) break;
-      page += 1;
-    }
-  }
-  return items;
-}
-
 export type WorkflowRun = {
   status: string | null;
   conclusion: string | null;
   head_sha: string;
 };
-
-let workflowIdCache: number | null = null;
-
-export function resetCiWorkflowCacheForTests(): void {
-  workflowIdCache = null;
-}
-
-async function resolveCiWorkflowId(token: string, fetchImpl: GitHubFetch): Promise<number | null> {
-  if (workflowIdCache != null) return workflowIdCache;
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${CI_WORKFLOW_FILE}`;
-  const response = await fetchImpl(url, { headers: ghHeaders(token) });
-  if (!response.ok) return null;
-  const data = (await response.json()) as { id?: number };
-  if (typeof data.id === "number") workflowIdCache = data.id;
-  return workflowIdCache;
-}
-
-export async function fetchCiForHeadSha(
-  token: string,
-  headSha: string,
-  fetchImpl: GitHubFetch,
-): Promise<WorkflowRun | null> {
-  const workflowId = await resolveCiWorkflowId(token, fetchImpl);
-  if (workflowId == null) return null;
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${workflowId}/runs?head_sha=${encodeURIComponent(headSha)}&per_page=5`;
-  const response = await fetchImpl(url, { headers: ghHeaders(token) });
-  if (!response.ok) return null;
-  const data = (await response.json()) as { workflow_runs?: WorkflowRun[] };
-  const runs = data.workflow_runs ?? [];
-  return runs[0] ?? null;
-}
 
 export function ciSnapshotFromRun(run: WorkflowRun | null): import("./phases").CiSnapshot {
   if (!run) return { state: "none" };
@@ -164,14 +60,17 @@ export async function fetchPagesDeployments(
 ): Promise<PagesDeployment[]> {
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${encodeURIComponent(project)}/deployments?per_page=25`;
   const response = await fetchImpl(url, {
+    method: "GET",
+    redirect: "manual",
     headers: {
       authorization: `Bearer ${token}`,
+      accept: "application/json",
       "content-type": "application/json",
     },
   });
-  if (!response.ok) throw new Error("pages");
-  const data = (await response.json()) as { result?: PagesDeployment[] };
-  return data.result ?? [];
+  if (response.status !== 200) throw new Error("pages");
+  const data = JSON.parse(await readTextLimited(response, 1_500_000)) as { result?: PagesDeployment[] };
+  return Array.isArray(data.result) ? data.result : [];
 }
 
 export function pickPreviewDeployment(
