@@ -14,6 +14,9 @@ export type WhiteboardStatusController = {
   setInteractive: (on: boolean) => void;
   /** UV de Three (v hacia arriba). */
   pointerAt: (u: number, v: number) => void;
+  /** Resalta la zona bajo el puntero. Solo tiene efecto con la vista fijada. */
+  hoverAt: (u: number, v: number) => void;
+  clearHover: () => void;
   handleKey: (key: string) => boolean;
   selectRow: (number: number) => void;
   /** True si había un detalle y se ha vuelto a la lista. */

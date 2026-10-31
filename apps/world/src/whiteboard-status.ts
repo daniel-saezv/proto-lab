@@ -16,16 +16,20 @@ import {
   revealRowProgress,
 } from "./proposals-board-chalk";
 import {
+  chalkMarkProgress,
   detailActionRect,
   detailBackRect,
   hitBoard,
+  MARK_DRAW_MS,
   paintDetailBoard,
   paintListAffordances,
   paintListIncoming,
   paintListOutgoing,
   rowHitRect,
+  type BoardHit,
   type BoardRect,
   type ChalkAppearance,
+  type DetailEmphasis,
 } from "./proposals-board-detail";
 import {
   boardDataSignature,
@@ -86,6 +90,9 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   const lastPhase = new Map<number, ProposalStatusItem["phase"]>();
   const highlightUntil = new Map<number, number>();
   const session = new BoardSession();
+  let hover: BoardHit | null = null;
+  const markStart = new Map<string, number>();
+  let hotSignature = "";
   let knownSlugs = options.knownSlugs ?? [];
   let uiSignature = "";
 
@@ -173,14 +180,77 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     paintRetryChalk(ctx, nowMs, WHITEBOARD_WIDTH - 42, WHITEBOARD_HEIGHT - 28);
   }
 
-  function paintAffordances() {
+  function markIdOf(hit: BoardHit | null): string | null {
+    if (!hit) return null;
+    return hit.zone === "row" ? `row:${hit.number}` : hit.zone;
+  }
+
+  function hotIds(): string[] {
+    const ids: string[] = [];
+    if (session.screen === "list") {
+      if (session.focus?.zone === "row") ids.push(`row:${session.focus.number}`);
+      if (hover?.zone === "row") ids.push(`row:${hover.number}`);
+    } else {
+      if (session.focus?.zone === "back" || session.focus?.zone === "action") ids.push(session.focus.zone);
+      if (hover?.zone === "back" || hover?.zone === "action") ids.push(hover.zone);
+    }
+    return [...new Set(ids)];
+  }
+
+  function syncMarks(nowMs: number) {
+    if (session.screen === "detail" && hover?.zone === "row") hover = null;
+    if (session.screen === "list" && hover && hover.zone !== "row") hover = null;
+    const ids = hotIds();
+    const signature = ids.join("|");
+    if (signature === hotSignature) return;
+    hotSignature = signature;
+    for (const id of [...markStart.keys()]) {
+      if (!ids.includes(id)) markStart.delete(id);
+    }
+    for (const id of ids) {
+      if (!markStart.has(id)) markStart.set(id, nowMs);
+    }
+  }
+
+  function markProgress(id: string, nowMs: number): number {
+    const start = markStart.get(id);
+    if (start == null) return 0;
+    return chalkMarkProgress(nowMs - start, reducedMotion);
+  }
+
+  function marksSettled(nowMs: number): boolean {
+    if (reducedMotion || markStart.size === 0) return true;
+    for (const start of markStart.values()) {
+      if (nowMs - start < MARK_DRAW_MS) return false;
+    }
+    return true;
+  }
+
+  function resetMarks() {
+    hover = null;
+    markStart.clear();
+    hotSignature = "";
+  }
+
+  function detailEmphasis(nowMs: number): DetailEmphasis {
+    return {
+      back: markStart.has("back") ? markProgress("back", nowMs) : null,
+      action: markStart.has("action") ? markProgress("action", nowMs) : null,
+    };
+  }
+
+  function paintAffordances(nowMs: number) {
     if (!session.interactive || session.screen !== "list" || session.isMoving()) return;
-    paintListAffordances(ctx, layouts, session.focus);
+    syncMarks(nowMs);
+    paintListAffordances(ctx, layouts, paintRows, (number) => {
+      const id = `row:${number}`;
+      return markStart.has(id) ? markProgress(id, nowMs) : null;
+    });
   }
 
   function fullRedraw(nowMs: number) {
     layouts = paintWhiteboard(ctx, listModel(nowMs));
-    paintAffordances();
+    paintAffordances(nowMs);
     paintRetryIfNeeded(nowMs);
     texture.needsUpdate = true;
   }
@@ -193,6 +263,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     }
     const action = boardNavAction(item, knownSlugs);
     const date = formatBoardDate(item.updatedAt);
+    syncMarks(nowMs);
     paintDetailBoard(
       ctx,
       {
@@ -201,9 +272,9 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
         meta: [kindDetailLabel(item.kind), date].filter((part): part is string => Boolean(part)).join(" · "),
         phaseLabel: phaseDetailLabel(item.phase),
         actionLabel: action?.label ?? null,
-        focused: session.focus?.zone === "action" ? "action" : session.focus?.zone === "back" ? "back" : null,
       },
       appearance,
+      detailEmphasis(nowMs),
     );
     paintRetryIfNeeded(nowMs);
     texture.needsUpdate = true;
@@ -297,13 +368,19 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     texture.needsUpdate = true;
   }
 
-  function pointerAt(u: number, v: number) {
-    if (!session.interactive || (phase !== "live" && phase !== "empty")) return;
+  function hitFromUv(u: number, v: number): BoardHit | null {
     const x = u * WHITEBOARD_WIDTH;
     const y = (1 - v) * WHITEBOARD_HEIGHT;
     const item = selectedItem();
     const hasAction = session.screen === "detail" && item != null && boardNavAction(item, knownSlugs) != null;
-    const hit = hitBoard(x, y, session.screen, layouts, hasAction);
+    return hitBoard(x, y, session.screen, layouts, hasAction);
+  }
+
+  function pointerAt(u: number, v: number) {
+    if (!session.interactive || (phase !== "live" && phase !== "empty")) return;
+    const hit = hitFromUv(u, v);
+    const item = selectedItem();
+    const hasAction = session.screen === "detail" && item != null && boardNavAction(item, knownSlugs) != null;
     if (!hit) return;
     const now = performance.now();
     const result = session.pointer(
@@ -321,6 +398,26 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     if (result.handled) afterInput(now);
   }
 
+  function hoverAt(u: number, v: number) {
+    if (!session.interactive || (phase !== "live" && phase !== "empty")) return;
+    const hit = hitFromUv(u, v);
+    if (markIdOf(hover) === markIdOf(hit)) return;
+    hover = hit;
+    const now = performance.now();
+    syncMarks(now);
+    if (session.isMoving()) return;
+    repaint(now);
+  }
+
+  function clearHover() {
+    if (!hover) return;
+    hover = null;
+    const now = performance.now();
+    syncMarks(now);
+    if (!session.interactive || session.isMoving()) return;
+    if (phase === "live" || phase === "empty") repaint(now);
+  }
+
   if (options.attachTo) {
     let downX = 0;
     let downY = 0;
@@ -331,9 +428,20 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
       downY = event.clientY;
       dragged = false;
     });
+    function fallbackUv(event: PointerEvent): { u: number; v: number } | null {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+      const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+      return { u: x / canvas.width, v: 1 - y / canvas.height };
+    }
     canvas.addEventListener("pointermove", (event) => {
       if (Math.hypot(event.clientX - downX, event.clientY - downY) > 10) dragged = true;
+      const uv = fallbackUv(event);
+      if (!uv) clearHover();
+      else hoverAt(uv.u, uv.v);
     });
+    canvas.addEventListener("pointerleave", () => clearHover());
     canvas.addEventListener("pointerup", (event) => {
       if (event.button !== 0 || dragged) return;
       const rect = canvas.getBoundingClientRect();
@@ -404,12 +512,15 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
       }
     },
     setInteractive(on: boolean) {
+      if (!on) resetMarks();
       const changed = session.setInteractive(on, rowNumbers());
       if (!changed) return;
       if (phase === "live" || phase === "empty") repaint(performance.now());
       publishUi();
     },
     pointerAt,
+    hoverAt,
+    clearHover,
     selectRow(number: number) {
       if (!session.interactive || (phase !== "live" && phase !== "empty")) return;
       const now = performance.now();
@@ -472,6 +583,13 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
         return;
       }
 
+      if (session.interactive && !marksSettled(nowMs)) {
+        if (nowMs - lastAnimDraw < ANIM_FRAME_MS) return;
+        lastAnimDraw = nowMs;
+        repaint(nowMs);
+        return;
+      }
+
       if (session.screen === "detail") return;
       if (reducedMotion || phase !== "live") return;
       paintRows.length = 0;
@@ -488,12 +606,13 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
         if (!layout) continue;
         paintWhiteboardRowTrack(ctx, layout, row, pulseT, reducedMotion);
       }
-      paintAffordances();
+      paintAffordances(nowMs);
       texture.needsUpdate = true;
     },
     needsAnimation() {
       if (phase === "loading" || phase === "reveal") return true;
       if (session.interactive && session.isMoving()) return true;
+      if (session.interactive && !marksSettled(performance.now())) return true;
       if (fetchError) return true;
       if (session.screen === "detail") return false;
       if (reducedMotion || phase !== "live") return false;

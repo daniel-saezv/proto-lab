@@ -477,6 +477,13 @@ export function startWorld(options: {
   });
   renderer.domElement.addEventListener("pointermove", (event) => {
     if (Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY) > 8) pointerDragged = true;
+    if (boardPhase !== "hold") return;
+    const uv = boardSurfaceUv(event.clientX, event.clientY);
+    if (!uv) lobbyWhiteboard.clearHover();
+    else lobbyWhiteboard.hoverAt(uv.u, uv.v);
+  });
+  renderer.domElement.addEventListener("pointerleave", () => {
+    lobbyWhiteboard.clearHover();
   });
   renderer.domElement.addEventListener("pointerup", onClick);
   renderer.domElement.addEventListener("webglcontextlost", (event) => event.preventDefault());
