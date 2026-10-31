@@ -112,8 +112,11 @@ export function startWorld(options: {
   viewport: HTMLElement;
   labels: HTMLElement;
   prototypes: CatalogEntry[];
-  joystick: HTMLElement;
-  knob: HTMLElement;
+  touchControls?: {
+    zoneMove: HTMLElement;
+    zoneLook: HTMLElement;
+    activeMarker: HTMLElement;
+  };
   e2e: boolean;
   onReady: () => void;
   onE2eReady?: () => void;
@@ -380,12 +383,14 @@ export function startWorld(options: {
   const boardLookTo = new Vector3();
   const boardLook = new Vector3();
 
+  let handlePrimaryTap: (clientX: number, clientY: number) => void = () => {};
+
   const input = attachInput({
     canvas: renderer.domElement,
-    joystick: options.joystick,
-    knob: options.knob,
     isBlocked: () => !inputEnabled,
     onGesture: options.onGesture,
+    onSurfaceTap: (clientX, clientY) => handlePrimaryTap(clientX, clientY),
+    touch: options.touchControls,
   });
 
   function resize() {
@@ -631,7 +636,24 @@ export function startWorld(options: {
 
   function onClick(event: PointerEvent) {
     if (event.button !== 0 || pointerDragged) return;
-    const hitId = rayHitId(event);
+    handlePrimaryTap(event.clientX, event.clientY);
+  }
+
+  function rayHitIdAt(clientX: number, clientY: number): string | null {
+    const bounds = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((clientX - bounds.left) / bounds.width) * 2 - 1;
+    pointer.y = -((clientY - bounds.top) / bounds.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(scene.children, true);
+    for (const hit of hits) {
+      const id = interactId(hit.object);
+      if (id) return id;
+    }
+    return null;
+  }
+
+  handlePrimaryTap = (clientX, clientY) => {
+    const hitId = rayHitIdAt(clientX, clientY);
     if (boardPhase !== "idle") {
       if (hitId !== "chalkboard") beginLeaveBoard();
       return;
@@ -646,20 +668,7 @@ export function startWorld(options: {
     if (!spot) return;
     const distance = Math.hypot(player.position.x - spot.x, player.position.z - spot.z);
     if (distance <= spot.radius) interact();
-  }
-
-  function rayHitId(event: PointerEvent): string | null {
-    const bounds = renderer.domElement.getBoundingClientRect();
-    pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
-    pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
-    raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(scene.children, true);
-    for (const hit of hits) {
-      const id = interactId(hit.object);
-      if (id) return id;
-    }
-    return null;
-  }
+  };
 
   function publishBoardView(open: boolean) {
     options.viewport.dataset.boardView = open ? "1" : "0";

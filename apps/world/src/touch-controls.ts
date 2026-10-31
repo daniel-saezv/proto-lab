@@ -1,0 +1,177 @@
+import { create } from "nipplejs";
+import { lookRatesFromStickVector, movementFromStickVector, shouldIgnoreTouchAt } from "./touch-map";
+
+type NippleCollection = ReturnType<typeof create>;
+
+export type TouchControlsHandle = {
+  readMovement: () => { forward: number; right: number };
+  readLook: () => { lookX: number; lookY: number };
+  syncEnabled: () => void;
+  reposition: () => void;
+  dispose: () => void;
+};
+
+const NIPPLE_OPTS = {
+  mode: "dynamic" as const,
+  multitouch: true,
+  maxNumberOfJoysticks: 1,
+  size: 112,
+  threshold: 0.08,
+  fadeTime: 120,
+  color: { front: "#ffb703", back: "rgba(255, 255, 255, 0.08)" },
+  restOpacity: 0.35,
+};
+
+export function attachTouchControls(options: {
+  zoneMove: HTMLElement;
+  zoneLook: HTMLElement;
+  activeMarker: HTMLElement;
+  isBlocked: () => boolean;
+  onGesture?: () => void;
+  onSurfaceTap?: (clientX: number, clientY: number) => void;
+}): TouchControlsHandle {
+  let moveForward = 0;
+  let moveRight = 0;
+  let lookX = 0;
+  let lookY = 0;
+  let activeSticks = 0;
+  let zonesEnabled = true;
+
+  const tapState = { down: false, x: 0, y: 0, moved: false, side: null as "move" | "look" | null };
+
+  const gestureCapture: AddEventListenerOptions = { capture: true };
+  const onGesture = () => options.onGesture?.();
+
+  function setMarkerVisible(visible: boolean) {
+    options.activeMarker.hidden = !visible;
+    const root = options.zoneMove.closest("#touch-controls");
+    if (visible) root?.setAttribute("data-active", "true");
+    else root?.removeAttribute("data-active");
+  }
+
+  function bumpActive(delta: number) {
+    activeSticks = Math.max(0, activeSticks + delta);
+    setMarkerVisible(activeSticks > 0);
+  }
+
+  function bindTapZone(zone: HTMLElement, side: "move" | "look") {
+    const onDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      if (!zonesEnabled || options.isBlocked() || shouldIgnoreTouchAt(event.clientX, event.clientY)) return;
+      tapState.down = true;
+      tapState.x = event.clientX;
+      tapState.y = event.clientY;
+      tapState.moved = false;
+      tapState.side = side;
+    };
+    const onMove = (event: PointerEvent) => {
+      if (!tapState.down || tapState.side !== side) return;
+      if (Math.hypot(event.clientX - tapState.x, event.clientY - tapState.y) > 10) tapState.moved = true;
+    };
+    const onUp = (event: PointerEvent) => {
+      onGesture();
+      if (!tapState.down || tapState.side !== side) return;
+      tapState.down = false;
+      if (!tapState.moved && !options.isBlocked()) {
+        options.onSurfaceTap?.(event.clientX, event.clientY);
+      }
+      tapState.side = null;
+    };
+    zone.addEventListener("pointerdown", onDown);
+    zone.addEventListener("pointermove", onMove);
+    zone.addEventListener("pointerup", onUp);
+    zone.addEventListener("pointercancel", onUp);
+    zone.addEventListener("touchend", onGesture, gestureCapture);
+    return () => {
+      zone.removeEventListener("pointerdown", onDown);
+      zone.removeEventListener("pointermove", onMove);
+      zone.removeEventListener("pointerup", onUp);
+      zone.removeEventListener("pointercancel", onUp);
+      zone.removeEventListener("touchend", onGesture, gestureCapture);
+    };
+  }
+
+  const unbindMoveTap = bindTapZone(options.zoneMove, "move");
+  const unbindLookTap = bindTapZone(options.zoneLook, "look");
+
+  function wireMove(collection: NippleCollection) {
+    collection.on("start", () => bumpActive(1));
+    collection.on("end", () => {
+      bumpActive(-1);
+      moveForward = 0;
+      moveRight = 0;
+    });
+    collection.on("move", (evt: { data: { vector: { x: number; y: number } } }) => {
+      if (options.isBlocked()) return;
+      const { forward, right } = movementFromStickVector(evt.data.vector.x, evt.data.vector.y);
+      moveForward = forward;
+      moveRight = right;
+    });
+  }
+
+  function wireLook(collection: NippleCollection) {
+    collection.on("start", () => bumpActive(1));
+    collection.on("end", () => {
+      bumpActive(-1);
+      lookX = 0;
+      lookY = 0;
+    });
+    collection.on("move", (evt: { data: { vector: { x: number; y: number } } }) => {
+      if (options.isBlocked()) return;
+      const rates = lookRatesFromStickVector(evt.data.vector.x, evt.data.vector.y);
+      lookX = rates.lookX;
+      lookY = rates.lookY;
+    });
+  }
+
+  const moveCollection = create({ ...NIPPLE_OPTS, zone: options.zoneMove });
+  const lookCollection = create({ ...NIPPLE_OPTS, zone: options.zoneLook });
+  wireMove(moveCollection);
+  wireLook(lookCollection);
+
+  const resizeObserver = new ResizeObserver(() => {
+    moveCollection.reposition();
+    lookCollection.reposition();
+  });
+  resizeObserver.observe(options.zoneMove);
+  resizeObserver.observe(options.zoneLook);
+
+  return {
+    readMovement() {
+      if (options.isBlocked()) return { forward: 0, right: 0 };
+      return { forward: moveForward, right: moveRight };
+    },
+    readLook() {
+      if (options.isBlocked()) return { lookX: 0, lookY: 0 };
+      return { lookX, lookY };
+    },
+    syncEnabled() {
+      const en = !options.isBlocked();
+      if (en === zonesEnabled) return;
+      zonesEnabled = en;
+      const pe = en ? "auto" : "none";
+      options.zoneMove.style.pointerEvents = pe;
+      options.zoneLook.style.pointerEvents = pe;
+      if (!en) {
+        moveForward = 0;
+        moveRight = 0;
+        lookX = 0;
+        lookY = 0;
+        activeSticks = 0;
+        setMarkerVisible(false);
+      }
+    },
+    reposition() {
+      moveCollection.reposition();
+      lookCollection.reposition();
+    },
+    dispose() {
+      unbindMoveTap();
+      unbindLookTap();
+      resizeObserver.disconnect();
+      moveCollection.destroy();
+      lookCollection.destroy();
+      setMarkerVisible(false);
+    },
+  };
+}
