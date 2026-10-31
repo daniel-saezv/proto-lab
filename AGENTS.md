@@ -66,7 +66,7 @@ Comandos comprobados en este repositorio (Node 22.23, pnpm 12.17.0):
 - Pasada visual del lobby: con `pnpm dev` o `pnpm preview` en marcha, `pnpm shots -- --out shots --prefix antes` (y el mismo comando con `--prefix despues`). Usa los encuadres fijos de `apps/world/src/viewpoints.ts` (aparición, Inventor, arcade, cuatro rincones y cenital) en escritorio 1280×800, iPhone 390×844 y 844×390, abre el selector en la arcade y compone una sola hoja de contacto. `--debug` añade una cenital con anillos en Inventor, arcade y pizarra. `SHOTS_URL` fuerza la base; si no hay servidor, arranca `pnpm dev`. La carpeta `shots/` no se versiona.
 - Typecheck: `pnpm typecheck`
 - Tests unitarios: `pnpm test:unit`
-- Tests e2e (solo CI; los agentes no lo ejecutan en local): `pnpm test:e2e` tras `pnpm build`; Playwright arranca `pnpm preview` en el puerto 4173; proyectos `chromium` y `webkit-iphone` en paralelo. Ver **Pruebas E2E sostenibles**.
+- Tests e2e: `pnpm test:e2e` tras `pnpm build`; Playwright arranca `pnpm preview` en el puerto 4173; proyectos `chromium` y `webkit-iphone` en paralelo. Cuándo conviene en local vs dejarlo a la CI: **Pruebas E2E sostenibles**.
 - Arranque de producción local: `pnpm preview` → `http://127.0.0.1:4173`
 - Arranque con recarga: `pnpm dev` → laboratorio en el puerto 5173, sirviendo los prototipos ya construidos
 
@@ -74,8 +74,8 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 
 ## Pruebas E2E sostenibles
 
-- Los agentes **no** ejecutan Playwright ni e2e en su entorno (`pnpm test:e2e`, `playwright test`, specs sueltos). Antes del push final solo corren `pnpm typecheck`, `pnpm test:unit` y `pnpm build`. El e2e va **solo en CI**.
-- Tras el commit final del PR (sin `[skip ci]`), espera el resultado de la CI. Si falla el e2e, lee el log o el informe del job, corrige, vuelve a pushear y repite hasta que quede verde.
+- Para validar un cambio de desarrollo habitual, prioriza en local `pnpm typecheck`, `pnpm test:unit` y `pnpm build`, deja que la CI ejecute Playwright y revisa el resultado del PR. Si el e2e falla, lee el log o el informe del job, corrige, vuelve a pushear y repite hasta que la CI quede verde.
+- Ejecutar Playwright en local encaja cuando ayuda a una tarea concreta: investigar un fallo, flakiness o lentitud del e2e, capturas, depurar un spec u otras tareas puntuales. En esos casos, lanza solo los specs que necesites (`pnpm exec playwright test <spec>` tras `pnpm build`; evita la suite entera salvo que sea imprescindible).
 - Si un job o una run tarda más del **doble** de lo habitual (Chromium ~2,5–3 min, WebKit ~1,5 min), no te limites a esperar o re-lanzar: investiga (regresión, import o estilo roto, `?e2e=1` sin aplicar, timeouts) y arréglalo o explícalo en el PR.
 - Prioriza tests unitarios para lógica pura; reserva e2e al cableado en un navegador real (`/?e2e=1` activa render ligero: sin sombras ni antialias, `pixelRatio` 1 y animaciones decorativas reducidas; no afecta al uso normal).
 - Añade como mucho **1–2** tests e2e nuevos por cambio; extiende flujos existentes cuando puedas.
@@ -150,9 +150,9 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: exige `Cf-Access-A
 
 ## Cursor Cloud specific instructions
 
-El `install` de `.cursor/environment.json` instala dependencias con pnpm y los navegadores Chromium y WebKit de Playwright (CI y scripts como `pnpm previews`; los agentes no lanzan e2e). Es idempotente.
+El `install` de `.cursor/environment.json` instala dependencias con pnpm y los navegadores Chromium y WebKit de Playwright (CI, `pnpm previews` y depuración puntual de e2e). Es idempotente.
 
-Para probar en la nube: `pnpm typecheck`, `pnpm test:unit` y `pnpm build`; opcional `pnpm preview` (4173) o `pnpm dev` (5173). El e2e del PR corre solo en GitHub Actions; ver **Pruebas E2E sostenibles**.
+Para probar en la nube: `pnpm typecheck`, `pnpm test:unit` y `pnpm build`; opcional `pnpm preview` (4173) o `pnpm dev` (5173). Playwright local según **Pruebas E2E sostenibles**; la suite completa del PR en GitHub Actions.
 
 Secretos en Cursor, sin valores:
 

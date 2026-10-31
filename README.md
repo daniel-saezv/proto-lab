@@ -25,7 +25,7 @@ pnpm preview
 
 `pnpm preview` sirve el sitio en `http://127.0.0.1:4173`. `pnpm dev` regenera el catálogo, construye los prototipos y arranca el laboratorio con recarga.
 
-`pnpm test:unit` ejecuta Vitest sobre el laboratorio (tablón, catálogo, navegación, validación alineada con la Function, etc.) y tests de `functions/_lib`. `pnpm test:e2e` (Playwright en CI; los agentes no lo ejecutan en local, ver [`AGENTS.md`](AGENTS.md)) abre el mundo, completa una propuesta con la Function simulada y lanza el prototipo de ejemplo. `pnpm typecheck` comprueba los tipos.
+`pnpm test:unit` ejecuta Vitest sobre el laboratorio (tablón, catálogo, navegación, validación alineada con la Function, etc.) y tests de `functions/_lib`. `pnpm test:e2e` abre el mundo, completa una propuesta con la Function simulada y lanza el prototipo de ejemplo (flujo habitual en CI; cuándo conviene en local: [`AGENTS.md`](AGENTS.md)). `pnpm typecheck` comprueba los tipos.
 
 ### Commits en pull requests
 
