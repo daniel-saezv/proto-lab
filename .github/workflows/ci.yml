@@ -86,45 +86,54 @@ jobs:
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile && pnpm exec playwright install ${{ matrix.browser }}
 
-  e2e:
-    name: E2E (${{ matrix.project }})
+  # Chromium en runners de 2 vCPU va a 1 worker (SwiftShader). Partir el proyecto
+  # en shards baja el reloj de pared: el grupo en serie de private-assets ocupa
+  # un shard entero y no comparte máquina con el test de cámara.
+  # La imagen oficial de Playwright no compensa: la caché de navegadores ya
+  # acierta y bajarla costaría más que los ~15 s de install-deps.
+  e2e-chromium:
+    name: E2E (chromium ${{ matrix.shard }}/6)
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - project: chromium
-            browser: chromium
-          - project: webkit-iphone
-            browser: webkit
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: ./.github/actions/playwright
         with:
-          version: 12.17.0
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Resolver versión de Playwright
-        id: playwright-version
+          browser: chromium
+          project: chromium
+          shard: ${{ matrix.shard }}/6
+
+  # Mantiene el nombre del check obligatorio. Queda pendiente hasta que
+  # terminan los shards; la duración que muestra GitHub es solo esta compuerta.
+  e2e-chromium-gate:
+    name: E2E (chromium)
+    needs: e2e-chromium
+    if: >-
+      always() &&
+      (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
+      needs.e2e-chromium.result != 'cancelled' &&
+      needs.e2e-chromium.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resultado de los shards
         run: |
-          version=$(grep -E "^  '@playwright/test@" pnpm-lock.yaml | head -1 | sed -E "s/^  '@playwright\\/test@([0-9.]+)':/\1/")
-          test -n "$version"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
-        id: playwright-cache
+          echo "shards=${{ needs.e2e-chromium.result }}"
+          test "${{ needs.e2e-chromium.result }}" = "success"
+
+  e2e-webkit:
+    name: E2E (webkit-iphone)
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/playwright
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ matrix.browser }}
-      - run: pnpm install --frozen-lockfile
-      - name: Instalar navegador Playwright (miss)
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
-      - name: Instalar dependencias del sistema (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps ${{ matrix.browser }}
-      - run: pnpm build
-      - run: pnpm exec playwright test --project=${{ matrix.project }}
+          browser: webkit
+          project: webkit-iphone

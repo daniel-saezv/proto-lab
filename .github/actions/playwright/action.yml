@@ -1,0 +1,64 @@
+name: Playwright en CI
+description: Restaura el navegador cacheado en main, instala dependencias del sistema y ejecuta un proyecto.
+
+inputs:
+  browser:
+    description: chromium o webkit
+    required: true
+  project:
+    description: Nombre del proyecto de Playwright
+    required: true
+  shard:
+    description: Shard current/total. Vacío para ejecutar el proyecto entero.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6.1.0
+      with:
+        version: 12.17.0
+    - uses: actions/setup-node@v7.1.0
+      with:
+        node-version: 22
+        cache: pnpm
+    - name: Resolver versión de Playwright
+      id: playwright-version
+      shell: bash
+      run: |
+        version=$(grep -E "^  '@playwright/test@" pnpm-lock.yaml | head -1 | sed -E "s/^  '@playwright\\/test@([0-9.]+)':/\1/")
+        test -n "$version"
+        echo "version=${version}" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v6
+      id: playwright-cache
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ inputs.browser }}
+    - name: Instalar dependencias
+      shell: bash
+      run: pnpm install --frozen-lockfile
+    - name: Instalar navegador Playwright (miss)
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: pnpm exec playwright install --with-deps ${{ inputs.browser }}
+    - name: Instalar dependencias del sistema (cache hit)
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: pnpm exec playwright install-deps ${{ inputs.browser }}
+    - name: Build
+      shell: bash
+      run: pnpm build
+    - name: Tests
+      shell: bash
+      run: |
+        case "${{ inputs.browser }}" in
+          chromium|webkit) ;;
+          *) echo "navegador no soportado" >&2; exit 1 ;;
+        esac
+        shard="${{ inputs.shard }}"
+        if [ -n "$shard" ]; then
+          pnpm exec playwright test --project="${{ inputs.project }}" --shard="$shard"
+        else
+          pnpm exec playwright test --project="${{ inputs.project }}"
+        fi

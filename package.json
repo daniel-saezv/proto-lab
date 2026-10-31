@@ -9,7 +9,7 @@
   "scripts": {
     "generate": "node scripts/generate-catalog.mjs",
     "dev": "pnpm generate && pnpm --filter @proto-lab/chispa --filter @proto-lab/asset-lab build && pnpm --filter @proto-lab/world dev",
-    "build": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa --filter @proto-lab/asset-lab build && node scripts/assemble.mjs",
+    "build": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa --filter @proto-lab/asset-lab build && node scripts/assemble.mjs && node scripts/revision-audio.mjs",
     "preview": "pnpm --filter @proto-lab/world preview",
     "typecheck": "pnpm generate && pnpm --filter @proto-lab/world --filter @proto-lab/chispa --filter @proto-lab/asset-lab typecheck && tsc -p functions/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
     "test:unit": "pnpm generate && vitest run",

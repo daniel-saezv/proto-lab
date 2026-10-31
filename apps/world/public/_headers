@@ -23,5 +23,11 @@
   Cache-Control: no-cache
   Access-Control-Allow-Origin: *
 
+# Las reglas se heredan: hay que soltar el no-cache de /protos/* para que
+# el max-age largo no se concatene. El nombre con hash lo pone el build.
+/protos/audio/*.m4a
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+
 /api/*
   Cache-Control: no-store

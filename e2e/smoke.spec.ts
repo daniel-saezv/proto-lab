@@ -653,7 +653,7 @@ test("un toque en el laboratorio arranca la música sin pasar por silenciar", as
   // Esquina: el centro del lienzo puede caer sobre la máquina y abrir el selector.
   await canvas.click({ position: { x: 12, y: 96 } });
   await expect.poll(() => requests.length).toBeGreaterThan(0);
-  expect(requests.every((url) => url.includes("luanda.m4a"))).toBe(true);
+  expect(requests.every((url) => /\/luanda(?:\.[0-9a-f]{8})?\.m4a/.test(url))).toBe(true);
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await page.evaluate(() => {
     const proto = Document.prototype;
@@ -685,7 +685,7 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   expect(viewport).toBeTruthy();
   await dispatchTouchDrag(page, viewport!.width * 0.22, viewport!.height * 0.72, 0, -48);
   await expect.poll(() => requests.length).toBeGreaterThan(0);
-  expect(requests.every((url) => url.includes("luanda.m4a"))).toBe(true);
+  expect(requests.every((url) => /\/luanda(?:\.[0-9a-f]{8})?\.m4a/.test(url))).toBe(true);
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await expect(page.locator("#game-selector")).toBeHidden();

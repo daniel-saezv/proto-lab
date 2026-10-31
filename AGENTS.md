@@ -84,7 +84,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Reutiliza helpers en `e2e/helpers.ts`, rutas simuladas del `beforeEach` y `/?e2e=1`.
 - Tests con viewport o dispositivo fijo (`Pixel 7`, iPhone, `isMobile` manual) solo en **un** proyecto Playwright (`chromium` o `webkit-iphone`, según corresponda).
 - Tests solo WebKit para comportamiento Safari/iOS (gestos táctiles, desbloqueo de audio, pantalla completa, safe areas).
-- En CI, `playwright.config.ts` usa **1 worker** en Chromium (SwiftShader compite en runners de 2 vCPU) y **2** en webkit-iphone si el job lo lanza con `--project=webkit-iphone`.
+- En CI, `playwright.config.ts` usa **1 worker** en Chromium (SwiftShader compite en runners de 2 vCPU) y **2** en webkit-iphone si el job lo lanza con `--project=webkit-iphone`. Chromium además va en **6 shards** (ver CI/CD); webkit no se parte.
 - Un test que solo pasa en reintento hay que arreglarlo o quitarlo; no subas reintentos ni timeouts para ocultarlo.
 
 ## Buenas prácticas
@@ -98,6 +98,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Opcional en `proto.json`: `"assets": ["ruta/relativa.png", …]` para imágenes, audio u otros binarios servidos por el puente del laboratorio (ver arriba). No sustituye el JS/CSS embebidos al arrancar.
 - Opcional en `proto.json`: `"hidden": true` excluye el prototipo del selector, la pizarra y el fallback HTML (sigue en el catálogo, build y `/protos/<slug>/` para pruebas).
 - Los prototipos no usan `localStorage`: el iframe aislado no lo permite.
+- Las pistas del lobby (`/protos/audio/*.m4a`) se sirven con caché larga e inmutable. `pnpm build` copia cada archivo a un nombre con hash de contenido y reescribe el bundle para que un cambio de pista cambie la URL. El service worker sigue sin interceptar `/protos/`.
 - Al implementar una iteración, el manifiesto y su historial forman parte del cambio, no un extra opcional.
 
 ## CI/CD
@@ -107,9 +108,11 @@ Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml), en `pull_reques
 En pull request corren en paralelo:
 
 - **`verificar`**: typecheck, tests unitarios y build (sin e2e).
-- **`E2E (chromium)`** y **`E2E (webkit-iphone)`**: instalan dependencias, construyen y ejecutan `playwright test --project=…` (matriz de dos jobs).
+- **`E2E (chromium 1/6)` … `E2E (chromium 6/6)`**: el mismo prepare (caché de navegador que ya acierta desde `main`, `install-deps` solo en hit) y `playwright test --project=chromium --shard=n/6`. Un worker por runner: en los runners de 2 vCPU, SwiftShader se satura si el lobby sigue pintando mientras hay otro WebGL. El grupo en serie de recursos privados no se parte; seis shards lo dejan solo en un job.
+- **`E2E (chromium)`**: compuerta que espera a los seis shards. El nombre del check obligatorio no cambia. Su duración en la UI es solo el arranque de la compuerta; el tiempo real es el del shard más lento.
+- **`E2E (webkit-iphone)`**: un solo job, sin shard, igual que antes.
 
-Checks obligatorios en el PR: **`verificar`**, **`E2E (chromium)`** y **`E2E (webkit-iphone)`**. En push a `main`, además, **`Typecheck y unitarios (main)`** y el job de caché de navegadores Playwright.
+Checks obligatorios en el PR: **`verificar`** (en la UI: `Typecheck, tests y build`), **`E2E (chromium)`** y **`E2E (webkit-iphone)`**. En push a `main`, además, **`Typecheck y unitarios (main)`** y el job de caché de navegadores Playwright.
 
 Convendría añadir un aviso si `dist/` se cuela en el commit y, cuando haya más prototipos, un job que falle si un `proto.json` no pasa el lector del catálogo; hoy ese lector ya corre dentro de `pnpm test:unit` y de `pnpm build`.
 
