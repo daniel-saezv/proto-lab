@@ -22,6 +22,7 @@ Flujo: trabaja en una rama, abre el PR contra `main`, deja evidencia de pruebas 
 
 - Los commits **intermedios** que subas mientras el PR aún no está listo para revisión deben llevar **`[skip ci]`** en el mensaje (convención del repo; también válida para Pages porque no distingue mayúsculas).
 - Solo el **último** commit —el que deja el PR listo para revisión— va **sin** esa marca, para que corran una vez typecheck, tests unitarios, e2e y el preview de Pages.
+- En ese commit final **no pongas en el mensaje** ninguna cadena que GitHub o Pages traten como skip (las listadas abajo), **ni siquiera citándola** para explicar la convención: GitHub busca esas subcadenas en todo el texto del mensaje.
 
 GitHub omite workflows `on: push` / `on: pull_request` si el mensaje del commit empujado, o el **HEAD** del PR, contiene `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` o `[actions skip]` ([Skipping workflow runs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)). Cloudflare Pages omite ese despliegue con `[CI Skip]`, `[CI-Skip]`, `[Skip CI]`, `[Skip-CI]` o `[CF-Pages-Skip]` en el mensaje ([GitHub integration · Skipping a build](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/#skipping-a-build-via-a-commit-message)).
 
