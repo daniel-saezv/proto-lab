@@ -16,6 +16,7 @@ concurrency:
 jobs:
   verificar:
     name: Typecheck, tests y build
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -30,6 +31,65 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test:unit
-      - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm build
-      - run: pnpm test:e2e
+
+  main-push:
+    name: Typecheck y unitarios (main)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test:unit
+
+  e2e:
+    name: E2E (${{ matrix.project }})
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: chromium
+            browser: chromium
+          - project: webkit-iphone
+            browser: webkit
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Resolver versión de Playwright
+        id: playwright-version
+        run: |
+          version=$(grep -E "^  '@playwright/test@" pnpm-lock.yaml | head -1 | sed -E "s/^  '@playwright\\/test@([0-9.]+)':/\1/")
+          test -n "$version"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ matrix.browser }}
+      - run: pnpm install --frozen-lockfile
+      - name: Instalar navegador Playwright (miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+      - name: Instalar dependencias del sistema (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps ${{ matrix.browser }}
+      - run: pnpm build
+      - run: pnpm exec playwright test --project=${{ matrix.project }}
