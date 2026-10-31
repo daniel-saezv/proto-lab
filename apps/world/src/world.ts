@@ -122,6 +122,7 @@ export function startWorld(options: {
   onTarget: (label: string | null) => void;
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
   onBoardView?: (open: boolean) => void;
+  onGesture?: () => void;
 }): WorldHandle {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -379,6 +380,7 @@ export function startWorld(options: {
     joystick: options.joystick,
     knob: options.knob,
     isBlocked: () => !inputEnabled,
+    onGesture: options.onGesture,
   });
 
   function resize() {

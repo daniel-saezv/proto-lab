@@ -652,6 +652,73 @@ test("un toque en el laboratorio arranca la música sin pasar por silenciar", as
   await expect(mute).toHaveAttribute("data-playback", "playing");
 });
 
+test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un botón", async ({ page, browserName }) => {
+  test.skip(browserName !== "webkit", "el gesto táctil se comprueba en WebKit iPhone");
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes(".m4a")) requests.push(request.url());
+  });
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(requests).toHaveLength(0);
+
+  const joy = page.getByTestId("joystick");
+  await expect(joy).toBeVisible();
+  const box = await joy.boundingBox();
+  expect(box).toBeTruthy();
+  await dispatchTouchDrag(page, box!.x + box!.width / 2, box!.y + box!.height / 2, 0, -48);
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  const mute = page.getByTestId("mute-music");
+  await expect(mute).toHaveAttribute("data-playback", "playing");
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.locator("#game-selector")).toBeHidden();
+
+  const started = requests.length;
+  await page.reload();
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(requests).toHaveLength(started);
+  const canvas = await page.locator("#viewport canvas").boundingBox();
+  expect(canvas).toBeTruthy();
+  await dispatchTouchDrag(page, canvas!.x + canvas!.width * 0.72, canvas!.y + canvas!.height * 0.42, 0, 0);
+  await expect.poll(() => requests.length).toBeGreaterThan(started);
+  await expect(mute).toHaveAttribute("data-playback", "playing");
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.locator("#game-selector")).toBeHidden();
+});
+
+async function dispatchTouchDrag(
+  page: import("@playwright/test").Page,
+  x: number,
+  y: number,
+  dx: number,
+  dy: number,
+) {
+  await page.evaluate(
+    ({ x, y, dx, dy }) => {
+      const target = document.elementFromPoint(x, y);
+      if (!(target instanceof Element)) throw new Error("no hay elemento bajo el toque");
+      // WebKit no deja construir Touch; el listener solo necesita el touchend.
+      const fire = (type: string, clientX: number, clientY: number) => {
+        target.dispatchEvent(
+          new TouchEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX,
+            clientY,
+          }),
+        );
+      };
+      fire("touchstart", x, y);
+      if (dx !== 0 || dy !== 0) fire("touchmove", x + dx, y + dy);
+      fire("touchend", x + dx, y + dy);
+    },
+    { x, y, dx, dy },
+  );
+}
+
 test("el botón de silenciar alterna y persiste", async ({ page }) => {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();

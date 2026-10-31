@@ -268,6 +268,7 @@ async function bootWorld() {
         lobbyWhiteboard = controller;
         flushProposalStatusToBoards();
       },
+      onGesture: () => music.unlock(),
     });
   } catch (error) {
     console.error("No se ha podido encender el laboratorio en 3D");

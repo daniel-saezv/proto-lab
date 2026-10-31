@@ -66,6 +66,8 @@ export function writeBandEnergies(bins: ArrayLike<number>, out: { bass: number; 
 export type MusicHandle = {
   setPaused: (paused: boolean) => void;
   isMuted: () => boolean;
+  /** play() y resume() en el turno del gesto. Se puede llamar desde el joystick o el lienzo. */
+  unlock: () => void;
   dispose: () => void;
 };
 
@@ -139,7 +141,6 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   let order: string[] = [];
   let reducedQuery: MediaQueryList | null = null;
   let playGeneration = 0;
-  let recovering = false;
 
   function paint() {
     const sounding = !muted;
@@ -205,6 +206,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     if (order.length === 0) order = shufflePlaylist(AMBIENCE_TRACKS);
     const url = order[trackIndex] ?? AMBIENCE_TRACKS[0];
     if (audio.getAttribute("src") !== url) audio.src = url;
+    if (!source && !sourceFailed) audio.volume = MASTER_LEVEL;
     // play() tiene que llamarse en el mismo turno del gesto, sin await delante.
     const generation = ++playGeneration;
     const pending = audio.play();
@@ -307,14 +309,12 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     if (ctx.state !== "running") {
       sounded = false;
       paintPlayback();
-      if (recovering || !audible()) return;
-      recovering = true;
-      startOutput();
-      recovering = false;
       return;
     }
+    // Conectar aquí, sin otro play(): un play() en la promesa queda fuera del gesto
+    // y en iOS aborta el que sí era válido.
     connectElement();
-    if (audible() && !outputLive()) beginTrack();
+    notePlayback();
   }
 
   function silence(): void {
@@ -326,9 +326,10 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   /**
-   * resume() y play() en el mismo turno del gesto, sin await delante.
-   * Si el contexto aún no corre, el listener de estado vuelve a llamar a play()
-   * cuando ya se puede enrutar. Si el gesto no bastó, el siguiente lo reintenta.
+   * resume() y play() en este mismo turno, sin await delante.
+   * No se vuelve a llamar a play() cuando el contexto pasa a running: esa
+   * llamada ya no es el gesto y en iOS aborta el arranque. El siguiente
+   * gesto reintenta si todavía no suena.
    */
   function startOutput(): void {
     if (!wantsAudio()) {
@@ -337,11 +338,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     }
     ensureGraph();
     if (!ctx || !master || !audio) return;
-    void ctx.resume().then(() => {
-      if (!wantsAudio()) return;
-      connectElement();
-      if (!outputLive()) beginTrack();
-    }).catch(() => {});
+    // resume() y play() en este turno, antes de cualquier await.
+    void ctx.resume().catch(() => {});
     ramp(MASTER_LEVEL, 0.2);
     connectElement();
     if (!audio.paused && !!audio.getAttribute("src") && playbackOutputLive({
@@ -356,6 +354,18 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     beginTrack();
   }
 
+  function unlock(): void {
+    const decision = playbackAfterGesture({
+      muted,
+      paused,
+      visible: document.visibilityState === "visible",
+      sounding: outputLive(),
+    });
+    if (!decision.kick) return;
+    armed = true;
+    startOutput();
+  }
+
   function sync(): void {
     if (!wantsAudio()) {
       silence();
@@ -367,15 +377,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
 
   function onUserGesture(event: Event): void {
     if (event.target instanceof Element && event.target.closest("#mute-music")) return;
-    const decision = playbackAfterGesture({
-      muted,
-      paused,
-      visible: document.visibilityState === "visible",
-      sounding: outputLive(),
-    });
-    if (!decision.kick) return;
-    armed = true;
-    startOutput();
+    unlock();
   }
 
   sampleEnergy = () => {
@@ -406,10 +408,13 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   };
 
   button.addEventListener("click", onClick);
-  window.addEventListener("pointerup", onUserGesture);
-  window.addEventListener("touchend", onUserGesture, { passive: true });
-  window.addEventListener("click", onUserGesture);
-  window.addEventListener("keydown", onUserGesture);
+  // Captura en window: el joystick y el lienzo no pueden tragarse el gesto
+  // con stopPropagation, y iOS solo activa el audio en el turno de estos eventos.
+  const unlockCapture: AddEventListenerOptions = { capture: true };
+  window.addEventListener("pointerup", onUserGesture, unlockCapture);
+  window.addEventListener("touchend", onUserGesture, unlockCapture);
+  window.addEventListener("click", onUserGesture, unlockCapture);
+  window.addEventListener("keydown", onUserGesture, unlockCapture);
   document.addEventListener("visibilitychange", onVisibility);
   paint();
 
@@ -419,12 +424,14 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       sync();
     },
     isMuted: () => muted,
+    unlock,
     dispose() {
       button.removeEventListener("click", onClick);
-      window.removeEventListener("pointerup", onUserGesture);
-      window.removeEventListener("touchend", onUserGesture);
-      window.removeEventListener("click", onUserGesture);
-      window.removeEventListener("keydown", onUserGesture);
+      const unlockCapture: AddEventListenerOptions = { capture: true };
+      window.removeEventListener("pointerup", onUserGesture, unlockCapture);
+      window.removeEventListener("touchend", onUserGesture, unlockCapture);
+      window.removeEventListener("click", onUserGesture, unlockCapture);
+      window.removeEventListener("keydown", onUserGesture, unlockCapture);
       document.removeEventListener("visibilitychange", onVisibility);
       sampleEnergy = () => {
         energy.bass = 0;
