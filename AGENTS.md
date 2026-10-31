@@ -80,6 +80,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Cada prototipo declara sus dependencias en su `package.json`. Phaser no entra en el bundle del laboratorio.
 - Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB).
 - Opcional en `proto.json`: `"assets": ["ruta/relativa.png", …]` para imágenes, audio u otros binarios servidos por el puente del laboratorio (ver arriba). No sustituye el JS/CSS embebidos al arrancar.
+- Opcional en `proto.json`: `"hidden": true` excluye el prototipo del selector, la pizarra y el fallback HTML (sigue en el catálogo, build y `/protos/<slug>/` para pruebas).
 - Los prototipos no usan `localStorage`: el iframe aislado no lo permite.
 - Al implementar una iteración, el manifiesto y su historial forman parte del cambio, no un extra opcional.
 

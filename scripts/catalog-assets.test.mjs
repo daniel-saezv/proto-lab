@@ -1,10 +1,10 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ASSET_LIMITS, normalizeAssetPath, parseManifestAssets } from "./asset-path.mjs";
-import { assertManifest } from "./catalog-lib.mjs";
+import { assertManifest, readCatalog } from "./catalog-lib.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -33,6 +33,18 @@ describe("rutas de assets", () => {
 });
 
 describe("manifiesto con assets", () => {
+  it("falla si hidden no es true", () => {
+    const dir = join(root, "protos/asset-lab");
+    const manifest = JSON.parse(readFileSync(join(dir, "proto.json"), "utf8"));
+    expect(() => assertManifest("asset-lab", { ...manifest, hidden: false }, dir)).toThrow(/hidden/);
+  });
+
+  it("marca hidden en el catálogo", () => {
+    const entries = readCatalog(root);
+    const assetLab = entries.find((entry) => entry.slug === "asset-lab");
+    expect(assetLab?.hidden).toBe(true);
+  });
+
   it("integra assets en assertManifest", () => {
     const dir = join(root, ".tmp-catalog-test");
     rmSync(dir, { recursive: true, force: true });

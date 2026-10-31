@@ -8,7 +8,8 @@ import { createOverlay } from "./overlay";
 import type { CatalogEntry } from "./types";
 import "./style.css";
 
-const prototypes = catalogFile.prototypes as CatalogEntry[];
+const catalogPrototypes = catalogFile.prototypes as CatalogEntry[];
+const visiblePrototypes = catalogPrototypes.filter((entry) => !entry.hidden);
 const params = new URLSearchParams(location.search);
 const e2e = params.get("e2e") === "1";
 const instant = e2e || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -67,7 +68,7 @@ const installHelp = createInstallHelp({
 
 const dialogue = createDialogue({
   root: dialogueRoot,
-  prototypes,
+  prototypes: visiblePrototypes,
   instant,
   submit: sendProposal,
   getNearbySlug: () => world?.getNearbySlug() ?? null,
@@ -86,7 +87,7 @@ let world: import("./world").WorldHandle | null = null;
 
 const selector = createGameSelector({
   root: selectorRoot,
-  prototypes,
+  prototypes: visiblePrototypes,
   onHighlight: (index) => world?.setArcadeHighlight(index),
   onPlay: (entry) => {
     selector.close();
@@ -138,7 +139,7 @@ async function bootWorld() {
   if (!hasWebGL()) {
     showFallback({
       root: fallback,
-      prototypes,
+      prototypes: visiblePrototypes,
       onTalk: () => dialogue.open(),
       onInstallHelp: () => installHelp.open(),
       onPlay: (entry) => overlay.open(entry),
@@ -151,13 +152,26 @@ async function bootWorld() {
     world = module.startWorld({
       viewport,
       labels,
-      prototypes,
+      prototypes: visiblePrototypes,
       joystick,
       knob,
       e2e,
       onReady: () => {
         viewport.dataset.testid = "world-ready";
         finishBoot();
+      },
+      onE2eReady: () => {
+        if (!window.__protoLab) return;
+        window.__protoLab.openPrototype = (slug: string) => {
+          const entry = catalogPrototypes.find((item) => item.slug === slug);
+          if (!entry) throw new Error(`Prototipo desconocido: ${slug}`);
+          if (selector.isOpen()) selector.close();
+          world?.setSelectorOpen(false);
+          inputEnabled = false;
+          world?.setInputEnabled(false);
+          interact.hidden = true;
+          overlay.open(entry);
+        };
       },
       onTalk: () => dialogue.open(),
       onOpenSelector: () => {
@@ -177,7 +191,7 @@ async function bootWorld() {
     console.error("No se ha podido encender el laboratorio en 3D");
     showFallback({
       root: fallback,
-      prototypes,
+      prototypes: visiblePrototypes,
       onTalk: () => dialogue.open(),
       onInstallHelp: () => installHelp.open(),
       onPlay: (entry) => overlay.open(entry),

@@ -7,6 +7,7 @@ interface Window {
     viewpoints?: () => { id: string; label: string }[];
     setViewpoint?: (id: string) => boolean;
     setDebug?: (on: boolean) => void;
+    openPrototype?: (slug: string) => void;
   };
   __chispa?: {
     drop: (x?: number) => void;

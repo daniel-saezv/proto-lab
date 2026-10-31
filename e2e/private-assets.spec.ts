@@ -20,22 +20,19 @@ async function playFromSelector(page: import("@playwright/test").Page, isMobile:
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
 }
 
-async function openAssetLab(page: import("@playwright/test").Page, isMobile: boolean) {
+async function openAssetLab(page: import("@playwright/test").Page) {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await openSelector(page, isMobile);
-  for (let step = 0; step < 4; step += 1) {
-    const title = await page.getByTestId("selector-title").textContent();
-    if (title?.includes("Laboratorio de assets")) break;
-    await page.getByTestId("selector-next").click();
-  }
-  await expect(page.getByTestId("selector-title")).toContainText("Laboratorio de assets");
-  await playFromSelector(page, isMobile);
+  await page.evaluate(() => {
+    if (!window.__protoLab?.openPrototype) throw new Error("openPrototype no disponible");
+    window.__protoLab.openPrototype("asset-lab");
+  });
+  await expect(page.getByTestId("prototype-chrome")).toBeVisible();
 }
 
 test.describe("recursos privados del puente", () => {
   test("canvas, WebGL y Web Audio con blob URLs", async ({ page, isMobile }) => {
-    await openAssetLab(page, isMobile);
+    await openAssetLab(page);
     const frame = page.frameLocator("iframe");
     await expect(frame.getByTestId("lab-title")).toBeVisible();
     await expect.poll(async () => frame.locator("body").getAttribute("data-media-ok")).toBe("1");
@@ -45,7 +42,7 @@ test.describe("recursos privados del puente", () => {
   });
 
   test("CSP presente y bloquea fetch externo", async ({ page, isMobile }) => {
-    await openAssetLab(page, isMobile);
+    await openAssetLab(page);
     const frame = page.frameLocator("iframe");
     await expect.poll(async () => frame.locator("body").getAttribute("data-media-ok")).toBe("1");
     const csp = await frame.locator("body").evaluate(() => window.__assetLab?.cspPresent() ?? false);
@@ -55,7 +52,7 @@ test.describe("recursos privados del puente", () => {
   });
 
   test("rechaza rutas fuera de la lista y con ..", async ({ page, isMobile }) => {
-    await openAssetLab(page, isMobile);
+    await openAssetLab(page);
     const frame = page.frameLocator("iframe");
     await expect.poll(async () => frame.locator("body").getAttribute("data-media-ok")).toBe("1");
     const badListed = await frame.locator("body").evaluate(async () => window.__assetLab?.probeBadAsset("media/ghost.png") ?? "");
@@ -68,11 +65,6 @@ test.describe("recursos privados del puente", () => {
     await page.goto("/?e2e=1");
     await expect(page.getByTestId("world-ready")).toBeVisible();
     await openSelector(page, isMobile);
-    for (let step = 0; step < 4; step += 1) {
-      const title = await page.getByTestId("selector-title").textContent();
-      if (title?.includes("Pozo de bolas")) break;
-      await page.getByTestId("selector-next").click();
-    }
     await playFromSelector(page, isMobile);
     const frame = page.frameLocator("iframe");
     await expect(frame.getByTestId("game-title")).toBeVisible();
@@ -81,7 +73,7 @@ test.describe("recursos privados del puente", () => {
 });
 
 test("mensajes de asset desde otra ventana se ignoran", async ({ page, isMobile }) => {
-  await openAssetLab(page, isMobile);
+  await openAssetLab(page);
   await expect(page.locator("iframe")).toBeVisible();
   await page.evaluate(() => {
     window.postMessage({ source: "proto-lab", type: "asset-request", id: 42, path: "media/pixel.png" }, "*");
@@ -92,7 +84,7 @@ test("mensajes de asset desde otra ventana se ignoran", async ({ page, isMobile 
 });
 
 test("límite de peticiones en el iframe", async ({ page, isMobile }) => {
-  await openAssetLab(page, isMobile);
+  await openAssetLab(page);
   const frame = page.frameLocator("iframe");
   await expect.poll(async () => frame.locator("body").getAttribute("data-media-ok")).toBe("1");
   const overflow = await frame.locator("body").evaluate(async () => {
@@ -128,7 +120,7 @@ test("detrás de Access el puente sigue sirviendo bytes", async ({ browser }) =>
     }
     await route.continue();
   });
-  await openAssetLab(page, true);
+  await openAssetLab(page);
   const frame = page.frameLocator("iframe");
   await expect.poll(async () => frame.locator("body").getAttribute("data-media-ok")).toBe("1");
   await context.close();

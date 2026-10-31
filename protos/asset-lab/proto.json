@@ -14,5 +14,6 @@
       "note": "Comprueba blob URLs del puente en canvas, WebGL y Web Audio."
     }
   ],
-  "assets": ["media/pixel.png", "media/beep.wav"]
+  "assets": ["media/pixel.png", "media/beep.wav"],
+  "hidden": true
 }

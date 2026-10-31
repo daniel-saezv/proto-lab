@@ -56,6 +56,9 @@ export function assertManifest(dirName, manifest, protoDir) {
     if (entry.version === manifest.version) seen = true;
   }
   if (!seen) fail(`${dirName}: el historial tiene que incluir la versión actual`);
+  if (manifest.hidden != null && manifest.hidden !== true) {
+    fail(`${dirName}: hidden solo puede ser true u omitirse`);
+  }
   const assets = parseManifestAssets(dirName, manifest.assets, protoDir);
   return { ...manifest, assets };
 }
@@ -84,6 +87,7 @@ export function readCatalog(repoRoot) {
       history: validated.history,
       href: `/protos/${validated.slug}/`,
       assets: validated.assets ?? [],
+      hidden: validated.hidden === true,
     });
   }
   if (entries.length === 0) fail("no hay prototipos");

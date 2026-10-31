@@ -91,6 +91,7 @@ export function startWorld(options: {
   knob: HTMLElement;
   e2e: boolean;
   onReady: () => void;
+  onE2eReady?: () => void;
   onTalk: () => void;
   onOpenSelector: () => void;
   onTarget: (label: string | null) => void;
@@ -591,6 +592,7 @@ export function startWorld(options: {
         });
       },
     };
+    options.onE2eReady?.();
     options.viewport.dataset.ambient = "1";
   }
 
@@ -999,6 +1001,7 @@ declare global {
       visitSlacker?: () => void;
       visitCorner?: (which: "workshop" | "pinball") => void;
       probeWalkable?: () => { target: { x: number; z: number }; moved: number; remaining: number }[];
+      openPrototype?: (slug: string) => void;
     };
   }
 }
