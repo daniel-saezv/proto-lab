@@ -20,6 +20,8 @@ import {
   Scene,
   SphereGeometry,
   SRGBColorSpace,
+  Texture,
+  TextureLoader,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -29,7 +31,8 @@ import {
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 import { attachInput } from "./input";
 import { addAmbient } from "./ambient";
-import { lobbyBounds, resolvePosition, walkToward, type ColliderSpot } from "./navigation";
+import { drawTitleCard } from "./title-card";
+import { arcadeMachineCollider, lobbyBounds, resolvePosition, walkToward, type ColliderSpot } from "./navigation";
 import type { CatalogEntry } from "./types";
 
 const PALETTE = {
@@ -58,13 +61,14 @@ export type WorldHandle = {
   interact: () => void;
   getNearbySlug: () => string | null;
   setInputEnabled: (enabled: boolean) => void;
+  setArcadeHighlight: (index: number) => void;
+  setSelectorOpen: (open: boolean) => void;
   dispose: () => void;
 };
 
 type Spot = {
   id: string;
-  kind: "npc" | "proto";
-  slug?: string;
+  kind: "npc" | "machine";
   x: number;
   z: number;
   radius: number;
@@ -81,7 +85,7 @@ export function startWorld(options: {
   e2e: boolean;
   onReady: () => void;
   onTalk: () => void;
-  onPlay: (entry: CatalogEntry) => void;
+  onOpenSelector: () => void;
   onTarget: (label: string | null) => void;
 }): WorldHandle {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -173,18 +177,85 @@ export function startWorld(options: {
 
   const ambient = addAmbient({ scene, geo, mat, box, shadows, materials, pulses, reduced });
 
+  const arcadeSpot = arcadeMachineCollider();
+  const arcadeIndex = { current: 0 };
+  let selectorOpen = false;
+  let idleElapsed = 0;
+  const textureLoader = new TextureLoader();
+  let screenTextureDisposable: CanvasTexture | Texture | null = null;
+  let screenLoadToken = 0;
+
   const inventor = buildInventor();
   inventor.position.set(-1.5, 0, -3.4);
   scene.add(inventor);
 
-  const arcades: MeshBasicMaterial[] = [];
-  for (const [index, entry] of options.prototypes.entries()) {
-    const machine = buildArcade(entry);
-    const column = index % 2 === 0 ? 1 : -1;
-    machine.position.set(3.4 + index * 1.6 * column, 0, -1.5 - Math.floor(index / 2) * 1.8);
-    scene.add(machine);
-    arcades.push(...machine.userData.screens);
+  const arcadeScreenMaterial = new MeshBasicMaterial({ color: 0xffffff });
+  materials.push(arcadeScreenMaterial);
+  pulses.push(arcadeScreenMaterial);
+  const arcadeMachine = buildArcadeCabinet(arcadeScreenMaterial);
+  arcadeMachine.position.set(arcadeSpot.x, 0, arcadeSpot.z);
+  arcadeMachine.rotation.y = Math.PI;
+  scene.add(arcadeMachine);
+
+  function disposeScreenMap() {
+    const map = arcadeScreenMaterial.map;
+    if (map && map !== screenTextureDisposable) map.dispose();
+    if (screenTextureDisposable) {
+      screenTextureDisposable.dispose();
+      screenTextureDisposable = null;
+    }
+    arcadeScreenMaterial.map = null;
   }
+
+  function applyTitleCard(entry: CatalogEntry) {
+    disposeScreenMap();
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 320;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    drawTitleCard(context, entry, 512, 320);
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    screenTextureDisposable = texture;
+    arcadeScreenMaterial.map = texture;
+    arcadeScreenMaterial.needsUpdate = true;
+  }
+
+  function setArcadeHighlight(index: number) {
+    if (options.prototypes.length === 0) return;
+    arcadeIndex.current = ((index % options.prototypes.length) + options.prototypes.length) % options.prototypes.length;
+    idleElapsed = 0;
+    const entry = options.prototypes[arcadeIndex.current];
+    if (!entry) return;
+    if (entry.previewHref) {
+      const token = ++screenLoadToken;
+      textureLoader.load(
+        entry.previewHref,
+        (texture) => {
+          if (token !== screenLoadToken) {
+            texture.dispose();
+            return;
+          }
+          disposeScreenMap();
+          texture.colorSpace = SRGBColorSpace;
+          screenTextureDisposable = texture;
+          arcadeScreenMaterial.map = texture;
+          arcadeScreenMaterial.needsUpdate = true;
+        },
+        undefined,
+        () => {
+          if (token !== screenLoadToken) return;
+          applyTitleCard(entry);
+        },
+      );
+    } else {
+      screenLoadToken += 1;
+      applyTitleCard(entry);
+    }
+  }
+
+  setArcadeHighlight(0);
 
   const player = buildPlayer();
   player.position.set(0, 0, 1.7);
@@ -192,19 +263,15 @@ export function startWorld(options: {
 
   const spots: Spot[] = [
     { id: "inventor", kind: "npc", x: -1.5, z: -3.4, radius: 2.25, collider: 0.42, label: "Hablar con el Inventor" },
-    ...options.prototypes.map((entry, index) => {
-      const column = index % 2 === 0 ? 1 : -1;
-      return {
-        id: entry.slug,
-        kind: "proto" as const,
-        slug: entry.slug,
-        x: 3.4 + index * 1.6 * column,
-        z: -1.5 - Math.floor(index / 2) * 1.8,
-        radius: 2.45,
-        collider: 0.65,
-        label: `Jugar a ${entry.title}`,
-      };
-    }),
+    {
+      id: "arcade",
+      kind: "machine",
+      x: arcadeSpot.x,
+      z: arcadeSpot.z,
+      radius: 2.55,
+      collider: arcadeSpot.collider,
+      label: "Usar la máquina",
+    },
     { id: "bench", kind: "npc", x: 0.15, z: -3.15, radius: 0, collider: 0.48, label: "" },
     { id: "crates", kind: "npc", x: 5.85, z: 1.45, radius: 0, collider: 0.42, label: "" },
     { id: "plant", kind: "npc", x: -6, z: 1.3, radius: 0, collider: 0.22, label: "" },
@@ -301,6 +368,14 @@ export function startWorld(options: {
     }
     ambient.tick(frame, dt, player.position);
 
+    if (!selectorOpen && options.prototypes.length > 1 && !reduced) {
+      idleElapsed += dt;
+      if (idleElapsed >= 4.5) {
+        idleElapsed = 0;
+        setArcadeHighlight(arcadeIndex.current + 1);
+      }
+    }
+
     const dist = cameraDistance();
     desired.set(player.position.x - Math.sin(yaw) * dist, 2.55 + pitch, player.position.z + Math.cos(yaw) * dist);
     if (snapped) {
@@ -351,10 +426,7 @@ export function startWorld(options: {
     const spot = currentSpot();
     if (!spot || !inputEnabled) return;
     if (spot.kind === "npc" && spot.id === "inventor") options.onTalk();
-    if (spot.kind === "proto" && spot.slug) {
-      const entry = options.prototypes.find((item) => item.slug === spot.slug);
-      if (entry) options.onPlay(entry);
-    }
+    if (spot.kind === "machine" && spot.id === "arcade") options.onOpenSelector();
   }
 
   function focus(id: string) {
@@ -410,7 +482,7 @@ export function startWorld(options: {
         const start = { x: 0, z: 1.7 };
         const checks = [
           { x: -1.5, z: -2.2 },
-          { x: 3.4, z: -0.2 },
+          { x: 1.2, z: 0.2 },
           { x: -5.5, z: 2.5 },
           { x: 5.5, z: 0.5 },
         ];
@@ -427,12 +499,12 @@ export function startWorld(options: {
     focus,
     interact,
     getNearbySlug() {
-      const near = spots
-        .filter((spot) => spot.kind === "proto")
-        .map((spot) => ({ spot, distance: Math.hypot(player.position.x - spot.x, player.position.z - spot.z) }))
-        .filter((item) => item.distance <= item.spot.radius)
-        .sort((a, b) => a.distance - b.distance)[0];
-      return near?.spot.slug ?? null;
+      return null;
+    },
+    setArcadeHighlight,
+    setSelectorOpen(open: boolean) {
+      selectorOpen = open;
+      if (!open) idleElapsed = 0;
     },
     setInputEnabled(enabled: boolean) {
       inputEnabled = enabled;
@@ -447,7 +519,7 @@ export function startWorld(options: {
       renderer.domElement.remove();
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
-      for (const material of arcades) material.dispose();
+      disposeScreenMap();
     },
   };
 
@@ -558,26 +630,34 @@ export function startWorld(options: {
     return group;
   }
 
-  function buildArcade(entry: CatalogEntry): Group {
+  function buildArcadeCabinet(screenMaterial: MeshBasicMaterial): Group {
     const group = new Group();
-    group.userData.interactId = entry.slug;
-    box(group, 1.16, 1.5, 0.62, 0, 0.86, 0, PALETTE.cabinet);
-    const marquee = new Mesh(geo(new BoxGeometry(1.05, 0.22, 0.66)), new MeshBasicMaterial({ color: PALETTE.amber }));
+    group.userData.interactId = "arcade";
+    box(group, 1.34, 1.72, 0.72, 0, 0.98, 0, PALETTE.cabinet);
+    box(group, 0.18, 1.72, 0.76, -0.78, 0.98, 0, 0x171225);
+    box(group, 0.18, 1.72, 0.76, 0.78, 0.98, 0, 0x171225);
+    const marquee = new Mesh(geo(new BoxGeometry(1.22, 0.26, 0.74)), new MeshBasicMaterial({ color: PALETTE.amber }));
     materials.push(marquee.material);
     pulses.push(marquee.material);
-    marquee.position.set(0, 1.68, 0);
+    marquee.position.set(0, 1.92, 0);
     group.add(marquee);
-    const screenMaterial = new MeshBasicMaterial({ map: screenTexture(entry), color: 0xffffff });
-    materials.push(screenMaterial);
-    pulses.push(screenMaterial);
-    const screen = new Mesh(geo(new PlaneGeometry(0.86, 0.58)), screenMaterial);
-    screen.position.set(0, 1.12, 0.32);
+    const sideLightL = new Mesh(geo(new BoxGeometry(0.08, 1.1, 0.08)), new MeshBasicMaterial({ color: PALETTE.teal }));
+    const sideLightR = sideLightL.clone();
+    materials.push(sideLightL.material, sideLightR.material);
+    pulses.push(sideLightL.material as MeshBasicMaterial, sideLightR.material as MeshBasicMaterial);
+    sideLightL.position.set(-0.72, 1.05, 0.38);
+    sideLightR.position.set(0.72, 1.05, 0.38);
+    group.add(sideLightL, sideLightR);
+    screenMaterial.map = null;
+    const screen = new Mesh(geo(new PlaneGeometry(1.02, 0.68)), screenMaterial);
+    screen.position.set(0, 1.28, 0.37);
     group.add(screen);
-    box(group, 0.7, 0.08, 0.28, 0, 0.62, 0.34, 0x171225);
-    group.userData.screens = [screenMaterial];
-    tag(group, entry.title, 2.05);
+    box(group, 0.82, 0.1, 0.32, 0, 0.68, 0.38, 0x171225);
+    box(group, 0.12, 0.12, 0.12, -0.28, 0.62, 0.4, PALETTE.amber);
+    box(group, 0.12, 0.12, 0.12, 0.28, 0.62, 0.4, PALETTE.amber);
+    tag(group, "Arcade", 2.25);
     group.traverse((child) => {
-      child.userData.interactId = entry.slug;
+      child.userData.interactId = "arcade";
     });
     return group;
   }
@@ -592,30 +672,6 @@ export function startWorld(options: {
     object.position.set(0, y, 0);
     parent.add(object);
   }
-}
-
-function screenTexture(entry: CatalogEntry): CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 320;
-  const context = canvas.getContext("2d");
-  if (!context) return new CanvasTexture(canvas);
-  context.fillStyle = "#101826";
-  context.fillRect(0, 0, 512, 320);
-  context.strokeStyle = "#ffb703";
-  context.lineWidth = 10;
-  context.strokeRect(16, 16, 480, 288);
-  context.fillStyle = "#f6f1e7";
-  context.font = "700 54px sans-serif";
-  context.textAlign = "center";
-  const lines = wrap(context, entry.title, 420);
-  lines.forEach((line, index) => context.fillText(line, 256, 130 + index * 62));
-  context.fillStyle = "#ffb703";
-  context.font = "28px sans-serif";
-  context.fillText(entry.tags.join(" · "), 256, 270);
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  return texture;
 }
 
 function chalkboardTexture(entries: CatalogEntry[]): CanvasTexture {
@@ -636,23 +692,6 @@ function chalkboardTexture(entries: CatalogEntry[]): CanvasTexture {
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   return texture;
-}
-
-function wrap(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let line = "";
-  for (const word of words) {
-    const next = line ? `${line} ${word}` : word;
-    if (context.measureText(next).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = next;
-    }
-  }
-  if (line) lines.push(line);
-  return lines.slice(0, 3);
 }
 
 function interactId(object: Object3D): string | null {

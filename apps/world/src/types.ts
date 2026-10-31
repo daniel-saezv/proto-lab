@@ -12,6 +12,8 @@ export type CatalogEntry = {
   date: string;
   tags: string[];
   cover: string | null;
+  preview: string | null;
+  previewHref: string | null;
   version: string;
   history: HistoryEntry[];
   href: string;

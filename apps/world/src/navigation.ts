@@ -84,14 +84,18 @@ export function lobbyBounds(desktop = true): WorldBounds {
   return { minX: -7.4, maxX: 7.4, minZ: -6.3, maxZ };
 }
 
-export function arcadeCollider(index: number): ColliderSpot {
-  const column = index % 2 === 0 ? 1 : -1;
+export function arcadeMachineCollider(): ColliderSpot {
   return {
-    id: `arcade-${index}`,
-    x: 3.4 + index * 1.6 * column,
-    z: -1.5 - Math.floor(index / 2) * 1.8,
-    collider: 0.65,
+    id: "arcade",
+    x: 0.6,
+    z: -0.35,
+    collider: 0.78,
   };
+}
+
+/** @deprecated Usar arcadeMachineCollider */
+export function arcadeCollider(_index = 0): ColliderSpot {
+  return arcadeMachineCollider();
 }
 
 function clamp(value: number, min: number, max: number): number {

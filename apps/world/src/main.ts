@@ -2,6 +2,7 @@ import { sendProposal } from "./api";
 import catalogFile from "./generated/catalog.json";
 import { createDialogue } from "./dialogue";
 import { showFallback } from "./fallback";
+import { createGameSelector } from "./game-selector";
 import { createOverlay } from "./overlay";
 import type { CatalogEntry } from "./types";
 import "./style.css";
@@ -20,6 +21,7 @@ const interact = must<HTMLButtonElement>("#interact");
 const joystick = must("#joystick");
 const knob = must("#knob");
 const dialogueRoot = must("#dialogue");
+const selectorRoot = must("#game-selector");
 const stage = must("#stage");
 const fallback = must("#fallback");
 
@@ -53,19 +55,47 @@ const dialogue = createDialogue({
 const overlay = createOverlay(stage, () => {
   inputEnabled = true;
   world?.setInputEnabled(true);
+  world?.setSelectorOpen(false);
 });
 
 let world: import("./world").WorldHandle | null = null;
 
+const selector = createGameSelector({
+  root: selectorRoot,
+  prototypes,
+  onHighlight: (index) => world?.setArcadeHighlight(index),
+  onPlay: (entry) => {
+    selector.close();
+    world?.setSelectorOpen(false);
+    inputEnabled = false;
+    world?.setInputEnabled(false);
+    interact.hidden = true;
+    overlay.open(entry);
+  },
+  onOpen: () => {
+    inputEnabled = false;
+    world?.setInputEnabled(false);
+    world?.setSelectorOpen(true);
+    interact.hidden = true;
+  },
+  onClose: () => {
+    inputEnabled = true;
+    world?.setInputEnabled(true);
+    world?.setSelectorOpen(false);
+  },
+});
+
 interact.addEventListener("click", () => world?.interact());
 
 window.addEventListener("keydown", (event) => {
+  if (selector.handleKey(event)) return;
   if (event.key === "Escape") {
     if (overlay.isOpen()) overlay.close();
+    else if (selector.isOpen()) selector.close();
     else if (dialogue.isOpen()) dialogue.close();
     return;
   }
-  if (!inputEnabled || overlay.isOpen() || dialogue.isOpen()) return;
+  if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen()) return;
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
   if (event.key.toLowerCase() === "e" && !event.repeat) {
     event.preventDefault();
@@ -98,14 +128,12 @@ async function bootWorld() {
         finishBoot();
       },
       onTalk: () => dialogue.open(),
-      onPlay: (entry) => {
-        inputEnabled = false;
-        world?.setInputEnabled(false);
-        interact.hidden = true;
-        overlay.open(entry);
+      onOpenSelector: () => {
+        const index = 0;
+        selector.open(index);
       },
       onTarget: (label) => {
-        if (!inputEnabled || dialogue.isOpen() || overlay.isOpen()) {
+        if (!inputEnabled || dialogue.isOpen() || overlay.isOpen() || selector.isOpen()) {
           interact.hidden = true;
           return;
         }

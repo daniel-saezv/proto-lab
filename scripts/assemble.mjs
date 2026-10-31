@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isShellPath, renderServiceWorker } from "./sw.mjs";
@@ -18,6 +18,16 @@ for (const slug of readdirSync(protosDir)) {
     throw new Error(`Falta el build de protos/${slug}. Ejecuta pnpm build.`);
   }
   cpSync(dist, join(out, "protos", slug), { recursive: true });
+  const manifestPath = join(protosDir, slug, "proto.json");
+  if (existsSync(manifestPath)) {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    if (manifest.preview) {
+      const previewFile = join(protosDir, slug, manifest.preview);
+      if (existsSync(previewFile)) {
+        cpSync(previewFile, join(out, "protos", slug, manifest.preview));
+      }
+    }
+  }
 }
 
 const shell = [];

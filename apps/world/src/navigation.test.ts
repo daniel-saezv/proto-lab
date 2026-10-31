@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  arcadeCollider,
+  arcadeMachineCollider,
   lobbyBounds,
   lobbyStaticColliders,
   walkToward,
@@ -8,13 +8,13 @@ import {
 
 describe("navegación del lobby", () => {
   const bounds = lobbyBounds(true);
-  const spots = [...lobbyStaticColliders(), arcadeCollider(0)];
+  const spots = [...lobbyStaticColliders(), arcadeMachineCollider()];
 
   it("permite llegar al Inventor, a la arcade y recorrer el centro", () => {
     const start = { x: 0, z: 1.7 };
     const targets = [
       { x: -1.5, z: -2.2, label: "inventor" },
-      { x: 3.4, z: -0.2, label: "arcade" },
+      { x: 1.2, z: 0.2, label: "arcade" },
       { x: 0, z: -1.5, label: "centro" },
       { x: -5.5, z: 2.5, label: "pasillo izquierdo" },
       { x: 2.5, z: 4.5, label: "pasillo delantero" },
