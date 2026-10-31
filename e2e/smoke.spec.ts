@@ -46,11 +46,11 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
   await expect(page.getByTestId("dialogue")).toBeHidden();
 
   await page.evaluate(() => window.__protoLab?.focus("chispa"));
-  await expect(page.getByTestId("interact")).toHaveText("Jugar a Atrapa la chispa");
+  await expect(page.getByTestId("interact")).toHaveText("Jugar a Pozo de bolas");
   await page.getByTestId("interact").click();
   const frame = page.frameLocator("iframe");
   await expect(page.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
-  await expect(frame.getByTestId("game-title")).toHaveText("Atrapa la chispa");
+  await expect(frame.getByTestId("game-title")).toHaveText("Pozo de bolas");
   await expect(frame.locator("canvas")).toBeVisible();
   await page.getByTestId("close-prototype").click();
   await expect(page.getByTestId("prototype-player")).toBeHidden();
@@ -130,7 +130,7 @@ async function openChispa(page: import("@playwright/test").Page) {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await page.evaluate(() => window.__protoLab?.focus("chispa"));
-  await expect(page.getByTestId("interact")).toHaveText("Jugar a Atrapa la chispa");
+  await expect(page.getByTestId("interact")).toHaveText("Jugar a Pozo de bolas");
   await page.getByTestId("interact").tap();
 }
 
@@ -190,6 +190,20 @@ test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browse
   await context.close();
 });
 
+test("se suelta una bola y dos del mismo tamaño se funden", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("chispa"));
+  await page.getByTestId("interact").click();
+  const canvas = page.frameLocator("iframe").locator("canvas");
+  await canvas.waitFor();
+  const before = await canvas.evaluate(() => window.__chispa?.ballCount() ?? 0);
+  await canvas.evaluate(() => window.__chispa?.drop(270));
+  await expect.poll(() => canvas.evaluate(() => window.__chispa?.ballCount() ?? 0)).toBeGreaterThan(before);
+  await canvas.evaluate(() => window.__chispa?.spawnPair(0));
+  await expect.poll(() => canvas.evaluate(() => window.__chispa?.score() ?? 0), { timeout: 8000 }).toBeGreaterThan(0);
+});
+
 test("el service worker no cachea prototipos", async ({ page }) => {
   const response = await page.request.get("/sw.js");
   expect(response.ok()).toBeTruthy();
@@ -199,5 +213,5 @@ test("el service worker no cachea prototipos", async ({ page }) => {
   expect(source).not.toContain("/protos/chispa/");
   const proto = await page.request.get("/protos/chispa/");
   expect(proto.ok()).toBeTruthy();
-  expect(await proto.text()).toContain("Atrapa la chispa");
+  expect(await proto.text()).toContain("Pozo de bolas");
 });

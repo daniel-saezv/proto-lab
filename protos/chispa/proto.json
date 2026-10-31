@@ -1,17 +1,22 @@
 {
   "slug": "chispa",
-  "title": "Atrapa la chispa",
-  "description": "Minijuego táctil: mueve el frasco y atrapa las chispas antes de que se apaguen. En el escritorio también vale el teclado.",
+  "title": "Pozo de bolas",
+  "description": "Suelta bolas de colores en el pozo. Si dos del mismo tamaño se tocan, se funden en una más grande.",
   "author": "daniel-saezv",
-  "date": "2026-10-30",
-  "tags": ["arcade", "phaser", "movil"],
+  "date": "2026-10-31",
+  "tags": ["arcade", "fusion", "movil"],
   "cover": null,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "history": [
     {
       "version": "0.1.0",
       "date": "2026-10-30",
       "note": "Primera versión jugable, con controles táctiles y de teclado."
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-10-31",
+      "note": "El minijuego pasa a ser un pozo de bolas que se funden al tocarse."
     }
   ]
 }
