@@ -1,5 +1,5 @@
 name: Playwright en CI
-description: Instala dependencias y ejecuta un proyecto de Playwright dentro de la imagen oficial (navegadores preinstalados).
+description: Build, install con pnpm y tests Playwright en el contenedor oficial (sin caché ~/.cache/ms-playwright ni install-deps).
 
 inputs:
   browser:

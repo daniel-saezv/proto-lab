@@ -115,6 +115,8 @@ En pull request corren en paralelo:
 
 En **`verificar`** (y en **`Typecheck y unitarios (main)`** en push a `main`), `assert-playwright-docker-image.sh` comprueba con `docker manifest inspect` que exista la imagen `-noble` de esa versión antes de mergear un bump de Playwright sin tag publicado.
 
+En push a `main` solo corre **`Typecheck y unitarios (main)`** (ya no hay job de calentar caché de navegadores Playwright).
+
 Checks obligatorios en el PR: **`verificar`** (en la UI: `Typecheck, tests y build`), **`E2E (chromium)`** y **`E2E (webkit-iphone)`**. En push a `main`, además, **`Typecheck y unitarios (main)`**.
 
 Convendría añadir un aviso si `dist/` se cuela en el commit y, cuando haya más prototipos, un job que falle si un `proto.json` no pasa el lector del catálogo; hoy ese lector ya corre dentro de `pnpm test:unit` y de `pnpm build`.
@@ -158,7 +160,7 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: exige `Cf-Access-A
 
 ## Cursor Cloud specific instructions
 
-El `install` de `.cursor/environment.json` instala dependencias con pnpm y los navegadores Chromium y WebKit de Playwright (CI, `pnpm previews` y depuración puntual de e2e). Es idempotente.
+El `install` de `.cursor/environment.json` instala dependencias con pnpm y los navegadores Chromium y WebKit de Playwright para entorno local (`pnpm previews` y depuración puntual de e2e). En GitHub Actions los e2e usan la imagen Docker oficial, no `playwright install`. Es idempotente.
 
 Para probar en la nube: `pnpm typecheck`, `pnpm test:unit` y `pnpm build`; opcional `pnpm preview` (4173) o `pnpm dev` (5173). Playwright local según **Pruebas E2E sostenibles**; la suite completa del PR en GitHub Actions.
 
