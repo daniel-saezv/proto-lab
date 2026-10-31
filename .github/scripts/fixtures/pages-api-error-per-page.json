@@ -1,0 +1,11 @@
+{
+  "success": false,
+  "errors": [
+    {
+      "code": 1001,
+      "message": "per_page must be between 1 and 25"
+    }
+  ],
+  "messages": [],
+  "result": null
+}
