@@ -130,6 +130,8 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 - Binding opcional: KV `PROPOSALS`. Sin él no hay límite diario al crear propuestas ni caché del tablón; la Function de estado sigue respondiendo.
 - No definir `ALLOW_DEV_AUTH` en Pages.
 
+**Limpieza de previews (GitHub Actions):** el workflow [`.github/workflows/cleanup-pages-previews.yml`](.github/workflows/cleanup-pages-previews.yml) borra despliegues *preview* en Cloudflare Pages (API `DELETE …/deployments/{id}?force=true`). Al cerrar un PR elimina todos los previews de esa rama. Un cron semanal y un barrido manual (`sweep`) quitan previews cuya rama ya no existe en el remoto o con más de 14 días (configurable). El modo manual `purge-all-previews` (vía `workflow_dispatch`) sirve para una limpieza inicial: borra todos los previews salvo los de ramas con PR abierta; no toca producción ni la rama `main`. Secretos del repositorio (Actions): `CLOUDFLARE_API_TOKEN` (permiso Account → Cloudflare Pages → **Edit**) y `CLOUDFLARE_ACCOUNT_ID`. Si faltan, el job avisa y termina en verde sin borrar nada. En `workflow_dispatch`, usa primero `dry_run: true` (sobre todo con `purge-all-previews`) y luego repite con `dry_run: false`.
+
 El único workflow que mira issues es el aviso al Grok Bot (arriba): al crear una issue y al etiquetar `aprobado` por el dueño. No implementa la propuesta ni lee el título o el cuerpo. Hacen falta dos secretos del repositorio, sin valores en el código: `GROKBOT_WEBHOOK_URL` y `GROKBOT_WEBHOOK_AUTH` (el valor entero de `Authorization`, sin que el workflow le anteponga `Bearer`). Si faltan, el job termina en aviso y no falla.
 
 ### Tablón de propuestas (`GET /api/proposals/status`)

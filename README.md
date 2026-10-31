@@ -82,6 +82,8 @@ Quien entre a producción o a una preview tiene que superar la política de Acce
 
 El aviso al Grok Bot usa dos secretos del repositorio (Settings → Secrets and variables → Actions), nunca en el código: `GROKBOT_WEBHOOK_URL` (URL del webhook) y `GROKBOT_WEBHOOK_AUTH` (valor completo de la cabecera `Authorization`, sin prefijo `Bearer` añadido por el workflow). Si faltan, [`.github/workflows/aprobado-webhook.yml`](.github/workflows/aprobado-webhook.yml) no falla: emite un aviso y no envía nada. El workflow corre al abrir una issue y cuando el dueño pone `aprobado`; otras etiquetas o un `aprobado` de otra cuenta no disparan el aviso de aprobación.
 
+**Limpieza de previews:** [`.github/workflows/cleanup-pages-previews.yml`](.github/workflows/cleanup-pages-previews.yml) elimina despliegues preview acumulados en Pages (proyecto `proto-lab`). Necesita secretos `CLOUDFLARE_API_TOKEN` (Pages **Edit**) y `CLOUDFLARE_ACCOUNT_ID`. Limpieza inicial: Actions → *Limpiar previews de Pages* → `mode: purge-all-previews`, `dry_run: true`, revisar el log; luego el mismo run con `dry_run: false`.
+
 ## Instalar la PWA
 
 Hay que abrir [https://proto-lab-3k6.pages.dev](https://proto-lab-3k6.pages.dev), superar el PIN y, desde esa misma origen, añadirla a la pantalla de inicio. Si se instala otro hostname, Access puede volver a pedir el PIN o no coincidir la sesión.
