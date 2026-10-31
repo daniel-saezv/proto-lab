@@ -50,6 +50,12 @@ import {
   type ColliderSpot,
 } from "./navigation";
 import { DEBUG_MARKERS, VIEWPOINTS, viewpointById } from "./viewpoints";
+import {
+  smoothstep01,
+  whiteboardCameraPose,
+  whiteboardTransitionSeconds,
+  WHITEBOARD_FRAME,
+} from "./whiteboard-view";
 import type { CatalogEntry } from "./types";
 import { createWhiteboardStatus, type WhiteboardStatusController } from "./whiteboard-status";
 import { bindWhiteboardMesh } from "./world-whiteboard";
@@ -87,6 +93,8 @@ export type WorldHandle = {
   setArcadeHighlight: (index: number) => void;
   setSelectorOpen: (open: boolean) => void;
   setProposalBoardItems: (items: ProposalStatusItem[], partial: boolean) => void;
+  isViewingWhiteboard: () => boolean;
+  exitWhiteboard: () => void;
   dispose: () => void;
 };
 
@@ -113,6 +121,7 @@ export function startWorld(options: {
   onOpenSelector: () => void;
   onTarget: (label: string | null) => void;
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
+  onBoardView?: (open: boolean) => void;
 }): WorldHandle {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -320,7 +329,7 @@ export function startWorld(options: {
       collider: arcadeSpot.collider,
       label: "Usar la máquina",
     },
-    { id: "chalkboard", kind: "npc", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 0, collider: LAYOUT.chalkboard.collider, label: "" },
+    { id: "chalkboard", kind: "npc", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 2.2, collider: LAYOUT.chalkboard.collider, label: "Ver la pizarra" },
     { id: "bench", kind: "npc", x: LAYOUT.bench.x, z: LAYOUT.bench.z, radius: 0, collider: LAYOUT.bench.collider, label: "" },
     ...ambient.colliders.map((item) => ({
       id: item.id,
@@ -335,6 +344,7 @@ export function startWorld(options: {
 
   addRangeRing("inventor", LAYOUT.inventor.x, LAYOUT.inventor.z, PALETTE.amber);
   addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
+  addRangeRing("chalkboard", LAYOUT.chalkboard.x, LAYOUT.chalkboard.z, 0x8fd8ff);
 
   let yaw = 0.15;
   let pitch = 0.15;
@@ -356,6 +366,13 @@ export function startWorld(options: {
   let pointerDownX = 0;
   let pointerDownY = 0;
   let pointerDragged = false;
+  let boardPhase: "idle" | "enter" | "hold" | "leave" = "idle";
+  let boardElapsed = 0;
+  const boardFrom = new Vector3();
+  const boardTo = new Vector3();
+  const boardLookFrom = new Vector3();
+  const boardLookTo = new Vector3();
+  const boardLook = new Vector3();
 
   const input = attachInput({
     canvas: renderer.domElement,
@@ -372,6 +389,16 @@ export function startWorld(options: {
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
     labelRenderer.setSize(width, height);
+    if (boardPhase === "idle" || cameraMode === "top") return;
+    const framed = whiteboardCameraPose(camera.aspect, camera.fov);
+    boardLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
+    if (boardPhase === "leave") return;
+    boardTo.set(framed.x, framed.y, framed.z);
+    if (boardPhase === "hold") {
+      camera.position.copy(boardTo);
+      boardLook.copy(boardLookTo);
+      camera.lookAt(boardLook);
+    }
   }
   const observer = new ResizeObserver(resize);
   observer.observe(options.viewport);
@@ -397,7 +424,9 @@ export function startWorld(options: {
     frame += dt;
     const sample = input.read();
     input.resetLook();
-    if (inputEnabled) {
+    const readingBoard = boardPhase === "enter" || boardPhase === "hold";
+    if (readingBoard && Math.hypot(sample.forward, sample.right) > 0.08) beginLeaveBoard();
+    if (inputEnabled && boardPhase === "idle") {
       lookSmoothX = smoothLookInput(lookSmoothX, sample.lookX, dt);
       lookSmoothY = smoothLookInput(lookSmoothY, sample.lookY, dt);
       const lookSens = coarse ? 0.0042 : 0.00315;
@@ -461,7 +490,9 @@ export function startWorld(options: {
     }
 
     const activeCamera = cameraMode === "top" ? overviewCamera : camera;
-    if (cameraMode === "top") {
+    if (boardPhase !== "idle") {
+      stepBoardCamera(dt);
+    } else if (cameraMode === "top") {
       fitOverview();
     } else {
       const ideal = cameraDistance();
@@ -513,7 +544,7 @@ export function startWorld(options: {
       targetLabel = label;
       options.onTarget(label);
     }
-    for (const [id, ring] of highlightRings) ring.visible = id === best?.id;
+    for (const [id, ring] of highlightRings) ring.visible = boardPhase === "idle" && id === best?.id;
     for (const [id, plate] of nameplates) plate.classList.toggle("is-near", id === best?.id);
   }
 
@@ -535,6 +566,7 @@ export function startWorld(options: {
     const spot = currentSpot();
     if (!spot || !inputEnabled) return;
     if (spot.kind === "npc" && spot.id === "inventor") options.onTalk();
+    if (spot.kind === "npc" && spot.id === "chalkboard") enterBoardView();
     if (spot.kind === "machine" && spot.id === "arcade") options.onOpenSelector();
   }
 
@@ -589,7 +621,25 @@ export function startWorld(options: {
   }
 
   function onClick(event: PointerEvent) {
-    if (!inputEnabled || event.button !== 0 || pointerDragged) return;
+    if (event.button !== 0 || pointerDragged) return;
+    const hitId = rayHitId(event);
+    if (boardPhase !== "idle") {
+      if (hitId !== "chalkboard") beginLeaveBoard();
+      return;
+    }
+    if (!inputEnabled) return;
+    if (hitId === "chalkboard") {
+      enterBoardView();
+      return;
+    }
+    if (!hitId) return;
+    const spot = spots.find((item) => item.id === hitId);
+    if (!spot) return;
+    const distance = Math.hypot(player.position.x - spot.x, player.position.z - spot.z);
+    if (distance <= spot.radius) interact();
+  }
+
+  function rayHitId(event: PointerEvent): string | null {
     const bounds = renderer.domElement.getBoundingClientRect();
     pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
     pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
@@ -597,12 +647,63 @@ export function startWorld(options: {
     const hits = raycaster.intersectObjects(scene.children, true);
     for (const hit of hits) {
       const id = interactId(hit.object);
-      if (!id) continue;
-      const spot = spots.find((item) => item.id === id);
-      if (!spot) return;
-      const distance = Math.hypot(player.position.x - spot.x, player.position.z - spot.z);
-      if (distance <= spot.radius) interact();
-      return;
+      if (id) return id;
+    }
+    return null;
+  }
+
+  function publishBoardView(open: boolean) {
+    options.viewport.dataset.boardView = open ? "1" : "0";
+    options.onBoardView?.(open);
+  }
+
+  function enterBoardView() {
+    if (boardPhase !== "idle" || cameraMode === "top") return;
+    boardFrom.copy(camera.position);
+    boardLookFrom.set(player.position.x, 1.15, player.position.z);
+    boardLook.copy(boardLookFrom);
+    const framed = whiteboardCameraPose(camera.aspect, camera.fov);
+    boardTo.set(framed.x, framed.y, framed.z);
+    boardLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
+    boardElapsed = 0;
+    boardPhase = "enter";
+    velX = 0;
+    velZ = 0;
+    player.visible = false;
+    publishBoardView(true);
+  }
+
+  function beginLeaveBoard() {
+    if (boardPhase === "idle" || boardPhase === "leave") return;
+    boardFrom.copy(camera.position);
+    boardLookFrom.copy(boardLook);
+    const pose = resolveCameraArm({
+      playerX: player.position.x,
+      playerZ: player.position.z,
+      yaw,
+      pitch,
+      distance: cameraDistance(),
+    });
+    boardTo.set(pose.x, pose.y, pose.z);
+    boardLookTo.set(player.position.x, 1.15, player.position.z);
+    boardElapsed = 0;
+    boardPhase = "leave";
+    player.visible = true;
+  }
+
+  function stepBoardCamera(dt: number) {
+    const duration = whiteboardTransitionSeconds(reduced);
+    boardElapsed += dt;
+    const u = duration <= 0 ? 1 : smoothstep01(boardElapsed / duration);
+    boardLook.lerpVectors(boardLookFrom, boardLookTo, u);
+    camera.position.lerpVectors(boardFrom, boardTo, u);
+    camera.lookAt(boardLook);
+    if (u < 1) return;
+    if (boardPhase === "enter") boardPhase = "hold";
+    if (boardPhase === "leave") {
+      boardPhase = "idle";
+      snapped = true;
+      publishBoardView(false);
     }
   }
 
@@ -647,6 +748,13 @@ export function startWorld(options: {
         yaw = which === "workshop" ? -0.6 : 2.4;
         snapped = true;
       },
+      whiteboardView: () => ({
+        phase: boardPhase,
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+        playerVisible: player.visible,
+      }),
       probeWalkable: () => {
         const bounds = playerLobbyBounds();
         const start = { x: 0, z: 1.7 };
@@ -684,6 +792,12 @@ export function startWorld(options: {
     },
     setProposalBoardItems(items: ProposalStatusItem[], partial: boolean) {
       lobbyWhiteboard.setItems(items, partial);
+    },
+    isViewingWhiteboard() {
+      return boardPhase !== "idle";
+    },
+    exitWhiteboard() {
+      beginLeaveBoard();
     },
     dispose() {
       running = false;
@@ -866,8 +980,8 @@ export function startWorld(options: {
     box(scene, 0.12, 1.95, 0.08, -2.92, 1.55, -7.3, PALETTE.trim, false);
     const material = new MeshBasicMaterial({ map: whiteboard.texture });
     materials.push(material);
-    const board = new Mesh(geo(new PlaneGeometry(3.1, 1.7)), material);
-    board.position.set(-4.6, 1.55, -7.33);
+    const board = new Mesh(geo(new PlaneGeometry(WHITEBOARD_FRAME.width, WHITEBOARD_FRAME.height)), material);
+    board.position.set(WHITEBOARD_FRAME.x, WHITEBOARD_FRAME.y, WHITEBOARD_FRAME.z);
     board.userData.interactId = "chalkboard";
     scene.add(board);
     bindWhiteboardMesh(board, whiteboard, (item) => materials.push(item));
@@ -1135,6 +1249,7 @@ declare global {
       visitSlacker?: () => void;
       visitCorner?: (which: "workshop" | "pinball") => void;
       probeWalkable?: () => { target: { x: number; z: number }; moved: number; remaining: number }[];
+      whiteboardView?: () => { phase: string; x: number; y: number; z: number; playerVisible: boolean };
       openPrototype?: (slug: string) => void;
     };
   }

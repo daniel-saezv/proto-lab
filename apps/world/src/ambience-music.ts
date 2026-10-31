@@ -69,6 +69,42 @@ export type MusicHandle = {
   dispose: () => void;
 };
 
+/**
+ * Un gesto solo cuenta si de verdad hay que llamar a play() y resume().
+ * Si el intento anterior fue rechazado, el siguiente gesto vuelve a intentarlo.
+ */
+export function playbackAfterGesture(input: {
+  muted: boolean;
+  paused: boolean;
+  visible: boolean;
+  sounding: boolean;
+}): { kick: boolean } {
+  if (input.muted || input.paused || !input.visible || input.sounding) return { kick: false };
+  return { kick: true };
+}
+
+export function playbackRejection(name: string): { retryOnNextGesture: boolean; skipTrack: boolean } {
+  if (name === "NotAllowedError") return { retryOnNextGesture: true, skipTrack: false };
+  if (name === "AbortError") return { retryOnNextGesture: false, skipTrack: false };
+  return { retryOnNextGesture: false, skipTrack: true };
+}
+
+/**
+ * En iOS, crear un MediaElementSource con el contexto suspendido deja la
+ * salida muda aunque luego se reanude. Solo se enruta cuando ya corre.
+ */
+export function shouldRouteMediaElement(contextState: string): boolean {
+  return contextState === "running";
+}
+
+export function playbackOutputLive(input: {
+  mediaPaused: boolean;
+  contextState: string;
+  routed: boolean;
+}): boolean {
+  return !input.mediaPaused && input.contextState === "running" && input.routed;
+}
+
 const energy = { bass: 0, mid: 0 };
 const rawBands = { bass: 0, mid: 0 };
 let sampleEnergy: () => void = () => {
@@ -90,15 +126,20 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   let muted = isMusicMuted(storage);
   let paused = false;
   let armed = false;
+  let sounded = false;
   let skips = 0;
   let trackIndex = 0;
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
   let analyser: AnalyserNode | null = null;
+  let source: MediaElementAudioSourceNode | null = null;
+  let sourceFailed = false;
   let bins: Uint8Array<ArrayBuffer> | null = null;
   let audio: HTMLAudioElement | null = null;
   let order: string[] = [];
   let reducedQuery: MediaQueryList | null = null;
+  let playGeneration = 0;
+  let recovering = false;
 
   function paint() {
     const sounding = !muted;
@@ -106,10 +147,32 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     button.setAttribute("aria-label", sounding ? "Silenciar música" : "Activar música");
     button.textContent = sounding ? "Silenciar" : "Activar";
     button.dataset.state = muted ? "muted" : "on";
+    paintPlayback();
+  }
+
+  function paintPlayback() {
+    const state = muted ? "muted" : sounded ? "playing" : armed ? "waiting" : "idle";
+    button.dataset.playback = state;
+  }
+
+  function wantsAudio(): boolean {
+    return !muted && !paused && document.visibilityState === "visible";
   }
 
   function audible(): boolean {
-    return armed && !muted && !paused && document.visibilityState === "visible";
+    return armed && wantsAudio();
+  }
+
+  function routed(): boolean {
+    return !!source || sourceFailed;
+  }
+
+  function outputLive(): boolean {
+    return sounded && !!audio && playbackOutputLive({
+      mediaPaused: audio.paused,
+      contextState: ctx?.state ?? "none",
+      routed: routed(),
+    });
   }
 
   function motionReduced(): boolean {
@@ -125,13 +188,35 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     master.gain.linearRampToValueAtTime(value, now + seconds);
   }
 
+  function notePlayback() {
+    if (!audio) return;
+    const live = playbackOutputLive({
+      mediaPaused: audio.paused,
+      contextState: ctx?.state ?? "none",
+      routed: routed(),
+    });
+    if (!live) return;
+    sounded = true;
+    paintPlayback();
+  }
+
   function beginTrack() {
     if (!audio || !audible()) return;
     if (order.length === 0) order = shufflePlaylist(AMBIENCE_TRACKS);
     const url = order[trackIndex] ?? AMBIENCE_TRACKS[0];
     if (audio.getAttribute("src") !== url) audio.src = url;
+    // play() tiene que llamarse en el mismo turno del gesto, sin await delante.
+    const generation = ++playGeneration;
     const pending = audio.play();
-    if (pending) void pending.catch(onPlayFailure);
+    if (pending) {
+      void pending.then(() => {
+        if (generation !== playGeneration) return;
+        notePlayback();
+      }).catch((error: unknown) => {
+        if (generation !== playGeneration) return;
+        onPlayFailure(error);
+      });
+    }
   }
 
   function skipTrack() {
@@ -146,9 +231,11 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   function onPlayFailure(error: unknown) {
+    sounded = false;
+    paintPlayback();
     const name = error instanceof DOMException ? error.name : "";
-    if (name === "NotAllowedError" || name === "AbortError") return;
-    skipTrack();
+    const decision = playbackRejection(name);
+    if (decision.skipTrack) skipTrack();
   }
 
   function ensureGraph(): void {
@@ -169,27 +256,17 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     analyser.fftSize = 256;
     analyser.smoothingTimeConstant = 0.72;
     bins = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
+    analyser.connect(master);
+    master.connect(ctx.destination);
     audio = new Audio();
     audio.preload = "none";
     audio.loop = false;
     audio.hidden = true;
+    audio.volume = 0;
+    audio.setAttribute("playsinline", "");
+    audio.setAttribute("webkit-playsinline", "");
     audio.setAttribute("aria-hidden", "true");
     document.body.appendChild(audio);
-    let source: MediaElementAudioSourceNode;
-    try {
-      source = ctx.createMediaElementSource(audio);
-    } catch {
-      audio.remove();
-      audio = null;
-      void ctx.close();
-      ctx = null;
-      analyser = null;
-      bins = null;
-      return;
-    }
-    source.connect(analyser);
-    analyser.connect(master);
-    master.connect(ctx.destination);
     audio.addEventListener("ended", () => {
       trackIndex = advanceTrack(trackIndex, order.length || AMBIENCE_TRACKS.length);
       beginTrack();
@@ -200,34 +277,105 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     });
     audio.addEventListener("playing", () => {
       skips = 0;
+      notePlayback();
     });
+    audio.addEventListener("pause", () => {
+      sounded = false;
+      paintPlayback();
+    });
+    ctx.addEventListener("statechange", onContextState);
     order = shufflePlaylist(AMBIENCE_TRACKS);
   }
 
-  function sync(): void {
-    if (!audible()) {
-      ramp(0, 0.18);
-      audio?.pause();
+  /** Enruta el elemento solo con el contexto en marcha, para no dejar iOS mudo. */
+  function connectElement(): void {
+    if (source || sourceFailed || !ctx || !audio || !analyser) return;
+    if (!shouldRouteMediaElement(ctx.state)) return;
+    try {
+      source = ctx.createMediaElementSource(audio);
+    } catch {
+      sourceFailed = true;
+      audio.volume = MASTER_LEVEL;
+      return;
+    }
+    source.connect(analyser);
+    audio.volume = 1;
+  }
+
+  function onContextState(): void {
+    if (!ctx || ctx.state === "closed") return;
+    if (ctx.state !== "running") {
+      sounded = false;
+      paintPlayback();
+      if (recovering || !audible()) return;
+      recovering = true;
+      startOutput();
+      recovering = false;
+      return;
+    }
+    connectElement();
+    if (audible() && !outputLive()) beginTrack();
+  }
+
+  function silence(): void {
+    playGeneration += 1;
+    ramp(0, 0.18);
+    if (audio && !audio.paused) audio.pause();
+    sounded = false;
+    paintPlayback();
+  }
+
+  /**
+   * resume() y play() en el mismo turno del gesto, sin await delante.
+   * Si el contexto aún no corre, el listener de estado vuelve a llamar a play()
+   * cuando ya se puede enrutar. Si el gesto no bastó, el siguiente lo reintenta.
+   */
+  function startOutput(): void {
+    if (!wantsAudio()) {
+      silence();
       return;
     }
     ensureGraph();
-    if (!ctx || !master) return;
-    void ctx.resume();
-    ramp(MASTER_LEVEL, 0.45);
-    if (!audio) return;
-    if (!audio.getAttribute("src")) {
-      beginTrack();
+    if (!ctx || !master || !audio) return;
+    void ctx.resume().then(() => {
+      if (!wantsAudio()) return;
+      connectElement();
+      if (!outputLive()) beginTrack();
+    }).catch(() => {});
+    ramp(MASTER_LEVEL, 0.2);
+    connectElement();
+    if (!audio.paused && !!audio.getAttribute("src") && playbackOutputLive({
+      mediaPaused: false,
+      contextState: ctx.state,
+      routed: routed(),
+    })) {
+      sounded = true;
+      paintPlayback();
       return;
     }
-    if (!audio.paused) return;
-    const pending = audio.play();
-    if (pending) void pending.catch(onPlayFailure);
+    beginTrack();
   }
 
-  function arm(): void {
-    if (armed) return;
+  function sync(): void {
+    if (!wantsAudio()) {
+      silence();
+      return;
+    }
+    if (!armed) return;
+    startOutput();
+  }
+
+  function onUserGesture(event: Event): void {
+    if (event.target instanceof Element && event.target.closest("#mute-music")) return;
+    const decision = playbackAfterGesture({
+      muted,
+      paused,
+      visible: document.visibilityState === "visible",
+      sounding: outputLive(),
+    });
+    if (!decision.kick) return;
     armed = true;
-    sync();
+    startOutput();
   }
 
   sampleEnergy = () => {
@@ -242,19 +390,26 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     energy.mid += (rawBands.mid - energy.mid) * 0.22;
   };
 
-  const onPointer = () => arm();
-  const onKey = () => arm();
-  const onVisibility = () => sync();
+  const onVisibility = () => {
+    if (document.visibilityState !== "visible") {
+      silence();
+      return;
+    }
+    sync();
+  };
   const onClick = () => {
     muted = toggleMusicMuted(storage);
     armed = true;
     paint();
-    sync();
+    if (wantsAudio()) startOutput();
+    else silence();
   };
 
   button.addEventListener("click", onClick);
-  window.addEventListener("pointerdown", onPointer, { passive: true });
-  window.addEventListener("keydown", onKey);
+  window.addEventListener("pointerup", onUserGesture);
+  window.addEventListener("touchend", onUserGesture, { passive: true });
+  window.addEventListener("click", onUserGesture);
+  window.addEventListener("keydown", onUserGesture);
   document.addEventListener("visibilitychange", onVisibility);
   paint();
 
@@ -266,8 +421,10 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     isMuted: () => muted,
     dispose() {
       button.removeEventListener("click", onClick);
-      window.removeEventListener("pointerdown", onPointer);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerup", onUserGesture);
+      window.removeEventListener("touchend", onUserGesture);
+      window.removeEventListener("click", onUserGesture);
+      window.removeEventListener("keydown", onUserGesture);
       document.removeEventListener("visibilitychange", onVisibility);
       sampleEnergy = () => {
         energy.bass = 0;
@@ -276,8 +433,10 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       audio?.pause();
       audio?.remove();
       audio = null;
+      if (ctx) ctx.removeEventListener("statechange", onContextState);
       void ctx?.close();
       ctx = null;
+      source = null;
       master = null;
       analyser = null;
       bins = null;

@@ -8,6 +8,10 @@ import {
   MUSIC_MUTE_KEY,
   advanceTrack,
   isMusicMuted,
+  playbackAfterGesture,
+  playbackOutputLive,
+  playbackRejection,
+  shouldRouteMediaElement,
   shufflePlaylist,
   toggleMusicMuted,
   writeBandEnergies,
@@ -59,6 +63,24 @@ describe("música ambiental", () => {
     const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../index.html"), "utf8");
     expect(html.toLowerCase()).not.toContain("credit");
     expect(html.toLowerCase()).not.toContain("crédito");
+  });
+
+  it("reintenta el audio en el siguiente gesto si el anterior no pudo sonar", () => {
+    expect(playbackAfterGesture({ muted: false, paused: false, visible: true, sounding: false })).toEqual({ kick: true });
+    expect(playbackAfterGesture({ muted: false, paused: false, visible: true, sounding: true })).toEqual({ kick: false });
+    expect(playbackAfterGesture({ muted: true, paused: false, visible: true, sounding: false })).toEqual({ kick: false });
+    expect(playbackAfterGesture({ muted: false, paused: true, visible: true, sounding: false })).toEqual({ kick: false });
+    expect(playbackAfterGesture({ muted: false, paused: false, visible: false, sounding: false })).toEqual({ kick: false });
+    expect(playbackRejection("NotAllowedError")).toEqual({ retryOnNextGesture: true, skipTrack: false });
+    expect(playbackRejection("AbortError").skipTrack).toBe(false);
+    expect(playbackRejection("NotSupportedError").skipTrack).toBe(true);
+    expect(shouldRouteMediaElement("suspended")).toBe(false);
+    expect(shouldRouteMediaElement("interrupted")).toBe(false);
+    expect(shouldRouteMediaElement("running")).toBe(true);
+    expect(playbackOutputLive({ mediaPaused: false, contextState: "suspended", routed: true })).toBe(false);
+    expect(playbackOutputLive({ mediaPaused: false, contextState: "running", routed: false })).toBe(false);
+    expect(playbackOutputLive({ mediaPaused: true, contextState: "running", routed: true })).toBe(false);
+    expect(playbackOutputLive({ mediaPaused: false, contextState: "running", routed: true })).toBe(true);
   });
 
   it("separa graves y medios sin crear la muestra", () => {

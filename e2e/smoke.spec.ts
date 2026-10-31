@@ -86,6 +86,74 @@ test("el tablón en la pizarra 3D refleja el estado simulado", async ({ page }) 
   await waitForLobbyWhiteboard(page);
 });
 
+test("ver la pizarra encuadra la cámara y vuelve sin abrir un diálogo", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("chalkboard"));
+  const interact = page.getByTestId("interact");
+  await expect(interact).toHaveText("Ver la pizarra");
+  await interact.click();
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.whiteboardView?.() ?? null)).toMatchObject({
+    phase: "hold",
+    playerVisible: false,
+  });
+  const framed = await page.evaluate(() => window.__protoLab?.whiteboardView?.());
+  expect(framed).toBeTruthy();
+  expect(framed!.x).toBeCloseTo(-4.6, 0);
+  expect(framed!.y).toBeCloseTo(1.55, 1);
+  expect(framed!.z).toBeGreaterThan(-7.2);
+  expect(framed!.z).toBeLessThan(-3);
+  const back = page.getByTestId("board-back");
+  await expect(back).toBeVisible();
+  await expect(back).toHaveText("Volver");
+  await back.click();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
+  await expect(back).toBeHidden();
+  await expect(interact).toHaveText("Ver la pizarra");
+  await page.keyboard.press("e");
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
+});
+
+test("en vertical la pizarra se lee con un botón de volver dentro de la pantalla", async ({ browser }) => {
+  const viewport = { width: 390, height: 844 };
+  const context = await browser.newContext({
+    viewport,
+    isMobile: true,
+    hasTouch: true,
+    locale: "es-ES",
+    baseURL: "http://127.0.0.1:4173",
+  });
+  const page = await context.newPage();
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("chalkboard"));
+  await page.getByTestId("interact").tap();
+  const back = page.getByTestId("board-back");
+  await expect(back).toBeVisible();
+  const box = await back.boundingBox();
+  expect(box).toBeTruthy();
+  expect(box!.x).toBeGreaterThanOrEqual(-1);
+  expect(box!.y).toBeGreaterThanOrEqual(-1);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height + 1);
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.whiteboardView?.() ?? null)).toMatchObject({
+    phase: "hold",
+    playerVisible: false,
+  });
+  const framed = await page.evaluate(() => window.__protoLab?.whiteboardView?.());
+  expect(framed).toBeTruthy();
+  expect(framed!.z).toBeGreaterThan(-4);
+  expect(framed!.z).toBeLessThan(1);
+  await context.close();
+});
+
 test("el laboratorio carga, se propone una idea y se abre el prototipo", async ({ page, isMobile }) => {
   const proposal = page.waitForRequest("**/api/proposals");
   await page.goto("/?e2e=1");
@@ -552,6 +620,36 @@ test("la música se sirve y no entra en la precarga del service worker", async (
   const bodyText = await page.locator("body").innerText();
   expect(bodyText.toLowerCase()).not.toContain("credit");
   expect(bodyText.toLowerCase()).not.toContain("crédito");
+});
+
+test("un toque en el laboratorio arranca la música sin pasar por silenciar", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes(".m4a")) requests.push(request.url());
+  });
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.waitForTimeout(400);
+  expect(requests).toHaveLength(0);
+  const canvas = page.locator("#viewport canvas");
+  // Esquina: el centro del lienzo puede caer sobre la máquina y abrir el selector.
+  await canvas.click({ position: { x: 12, y: 96 } });
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  const mute = page.getByTestId("mute-music");
+  await expect(mute).toHaveAttribute("data-playback", "playing");
+  await page.evaluate(() => {
+    const proto = Document.prototype;
+    const current = Object.getOwnPropertyDescriptor(proto, "visibilityState");
+    Object.defineProperty(proto, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    if (current) Object.defineProperty(proto, "visibilityState", current);
+  });
+  await expect(mute).not.toHaveAttribute("data-playback", "playing");
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.keyboard.press("Shift");
+  await expect(mute).toHaveAttribute("data-playback", "playing");
 });
 
 test("el botón de silenciar alterna y persiste", async ({ page }) => {
