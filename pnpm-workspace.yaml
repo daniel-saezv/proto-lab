@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "protos/*"
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - "@cloudflare/workers-types@5.20261031.1"
+  - "@types/three@0.187.0"

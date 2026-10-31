@@ -12,11 +12,11 @@ El Inventor pregunta, resume y pide confirmación. Al confirmar, una Pages Funct
 
 ## Desarrollo
 
-Hace falta Node 22 y pnpm 10.34.9 (`packageManager` en `package.json`).
+Hace falta Node 22 y pnpm 12.17.0 (`packageManager` en `package.json`).
 
 ```sh
 corepack enable
-corepack prepare pnpm@10.34.9 --activate
+corepack prepare pnpm@12.17.0 --activate
 pnpm install --frozen-lockfile
 pnpm exec playwright install --with-deps chromium
 pnpm build
