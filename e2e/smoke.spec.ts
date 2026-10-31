@@ -1,7 +1,36 @@
 import { devices, expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/proposals", async (route) => {
+  await page.route("**/api/proposals/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        partial: false,
+        items: [
+          {
+            number: 7,
+            title: "Cometa lunar",
+            kind: "propuesta",
+            slug: null,
+            phase: "recibida",
+            updatedAt: "2026-03-01T00:00:00Z",
+          },
+          {
+            number: 8,
+            title: "Chispas más rápidas",
+            kind: "iteracion",
+            slug: "chispa",
+            phase: "preview_lista",
+            updatedAt: "2026-03-02T00:00:00Z",
+            previewUrl: "https://preview-test.proto-lab-3k6.pages.dev",
+          },
+        ],
+      }),
+    });
+  });
+  await page.route(/\/api\/proposals$/, async (route) => {
     await route.fulfill({
       status: 201,
       contentType: "application/json",
@@ -46,6 +75,31 @@ async function openInstallHelpFromInventor(page: import("@playwright/test").Page
   await page.getByTestId("choice-install").click();
   await expect(page.getByTestId("install-help")).toBeVisible();
 }
+
+async function openProposalsBoard(page: import("@playwright/test").Page, isMobile: boolean) {
+  await page.evaluate(() => window.__protoLab?.focus("chalkboard"));
+  await expect(page.getByTestId("interact")).toHaveText("Ver el tablón");
+  const interact = page.getByTestId("interact");
+  if (isMobile) await interact.tap();
+  else await interact.click();
+  await expect(page.getByTestId("proposals-board")).toBeVisible();
+}
+
+test("el tablón de propuestas muestra el estado simulado", async ({ page, isMobile }) => {
+  const status = page.waitForRequest("**/api/proposals/status");
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await openProposalsBoard(page, isMobile);
+  await status;
+  await expect(page.getByTestId("board-list")).toBeVisible();
+  await expect(page.getByTestId("board-item-7")).toContainText("Cometa lunar");
+  await expect(page.getByTestId("board-item-8")).toContainText("Preview lista");
+  const preview = page.getByTestId("board-preview-8");
+  await expect(preview).toHaveAttribute("href", "https://preview-test.proto-lab-3k6.pages.dev");
+  await expect(preview).toHaveAttribute("rel", "noopener noreferrer");
+  await page.getByTestId("board-close").click();
+  await expect(page.getByTestId("proposals-board-root")).toBeHidden();
+});
 
 test("el laboratorio carga, se propone una idea y se abre el prototipo", async ({ page, isMobile }) => {
   const proposal = page.waitForRequest("**/api/proposals");
@@ -136,6 +190,9 @@ test("sin WebGL queda un respaldo usable", async ({ browser }) => {
   await expect(page.getByTestId("fallback")).toContainText("no puede mostrar el laboratorio en 3D");
   await page.getByTestId("fallback-talk").click();
   await expect(page.getByTestId("dialogue-text")).toContainText("Inventor");
+  await page.getByTestId("fallback-board").click();
+  await expect(page.getByTestId("proposals-board")).toBeVisible();
+  await page.getByTestId("board-close").click();
   await page.getByTestId("choice-install").click();
   await expect(page.getByTestId("install-help")).toBeVisible();
   await page.getByTestId("install-close").click();

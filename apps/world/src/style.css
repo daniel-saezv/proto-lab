@@ -553,3 +553,87 @@ body.install-open #labels {
 .install-prompt-button {
   margin-top: 10px;
 }
+
+#proposals-board {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  padding:
+    calc(10px + env(safe-area-inset-top))
+    calc(10px + env(safe-area-inset-right))
+    calc(10px + env(safe-area-inset-bottom))
+    calc(10px + env(safe-area-inset-left));
+  background: rgba(8, 10, 22, 0.84);
+}
+#proposals-board:not([hidden]) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.board-panel {
+  width: min(520px, 100%);
+  max-height: min(86dvh, 640px);
+  overflow: auto;
+  padding: 16px 18px 18px;
+  border-radius: 18px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+.board-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.board-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+.board-intro,
+.board-note {
+  margin: 0 0 12px;
+  line-height: 1.45;
+  font-size: 0.95rem;
+  opacity: 0.92;
+}
+.board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.board-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.board-item-title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.board-item-meta {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.88;
+  line-height: 1.4;
+}
+.board-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--amber);
+  font-weight: 700;
+}
+body.board-open #viewport,
+body.board-open #joystick,
+body.board-open #interact,
+body.board-open #hint,
+body.board-open #labels {
+  pointer-events: none !important;
+}
+body.board-open #joystick,
+body.board-open #interact,
+body.board-open #hint,
+body.board-open #labels {
+  visibility: hidden !important;
+}

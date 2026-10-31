@@ -4,6 +4,7 @@ export function showFallback(options: {
   root: HTMLElement;
   prototypes: CatalogEntry[];
   onTalk: () => void;
+  onOpenBoard?: () => void;
   onInstallHelp?: () => void;
   onPlay: (entry: CatalogEntry) => void;
 }) {
@@ -22,6 +23,15 @@ export function showFallback(options: {
   talk.textContent = "Hablar con el Inventor";
   talk.addEventListener("click", options.onTalk);
   actions.append(talk);
+  if (options.onOpenBoard) {
+    const board = document.createElement("button");
+    board.type = "button";
+    board.className = "text-button";
+    board.dataset.testid = "fallback-board";
+    board.textContent = "Ver el tablón de propuestas";
+    board.addEventListener("click", options.onOpenBoard);
+    actions.append(board);
+  }
   if (options.onInstallHelp) {
     const install = document.createElement("button");
     install.type = "button";

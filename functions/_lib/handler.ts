@@ -1,7 +1,7 @@
+import { readAccessEmail } from "./access";
 import {
   LIMITS,
   buildIssue,
-  isEmail,
   rateLimitKey,
   validateProposal,
   type ValidProposal,
@@ -35,21 +35,6 @@ function json(status: number, body: unknown): Response {
       "cache-control": "no-store",
     },
   });
-}
-
-function readEmail(request: Request, env: ProposalEnv): string | null {
-  const fromAccess = request.headers.get("Cf-Access-Authenticated-User-Email");
-  if (fromAccess) {
-    const email = fromAccess.trim().toLowerCase();
-    return isEmail(email) ? email : null;
-  }
-  if (env.ALLOW_DEV_AUTH === "true") {
-    const dev = request.headers.get("X-Dev-User-Email");
-    if (!dev) return null;
-    const email = dev.trim().toLowerCase();
-    return isEmail(email) ? email : null;
-  }
-  return null;
 }
 
 async function createGitHubIssue(
@@ -99,7 +84,7 @@ export async function handleProposal(request: Request, env: ProposalEnv, options
     return json(405, { ok: false, error: "method", message: "Solo se aceptan propuestas por POST." });
   }
 
-  const email = readEmail(request, env);
+  const email = readAccessEmail(request, env);
   if (!email) {
     return json(401, { ok: false, error: "unauthorized", message: "No hay una sesión de Cloudflare Access." });
   }
