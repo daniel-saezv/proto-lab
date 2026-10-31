@@ -1,0 +1,70 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "id": "f64788e9-fccd-4d4a-a28a-cb84f88f6",
+      "short_id": "f64788e9",
+      "environment": "preview",
+      "created_on": "2026-10-15T00:55:03.923456Z",
+      "modified_on": "2026-10-15T00:58:59.045655Z",
+      "deployment_trigger": {
+        "type": "github:push",
+        "metadata": {
+          "branch": "cursor/ci-e2e-cache-aa3d",
+          "commit_dirty": false,
+          "commit_hash": "ad9ccd918a81025731e10e40267e11273a263421",
+          "commit_message": "fix: \"comillas\" y saltos\nen el mensaje"
+        }
+      },
+      "latest_stage": {
+        "name": "deploy",
+        "status": "success",
+        "started_on": "2026-10-15T00:55:03.923456Z",
+        "ended_on": "2026-10-15T00:58:59.045655Z"
+      },
+      "aliases": ["cursor-ci-e2e-cache-aa3d.proto-lab-3k6.pages.dev"],
+      "url": "https://f64788e9.proto-lab-3k6.pages.dev",
+      "env_vars": {
+        "NODE_VERSION": { "type": "plain_text", "value": "22" }
+      },
+      "stages": [
+        {
+          "name": "queued",
+          "status": "success",
+          "started_on": "2026-10-15T00:55:03.923456Z",
+          "ended_on": "2026-10-15T00:55:10.000000Z"
+        },
+        {
+          "name": "deploy",
+          "status": "success",
+          "started_on": "2026-10-15T00:55:10.000000Z",
+          "ended_on": "2026-10-15T00:58:59.045655Z"
+        }
+      ]
+    },
+    {
+      "id": "a1111111-1111-4111-8111-111111111111",
+      "short_id": "a1111111",
+      "environment": "preview",
+      "created_on": "2026-10-20T12:00:00.000000Z",
+      "deployment_trigger": {
+        "metadata": {
+          "branch": "cursor/cleanup-pages-previews-f5e2",
+          "commit_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commit_message": "WIP"
+        }
+      },
+      "latest_stage": { "name": "deploy", "status": "success" },
+      "aliases": []
+    }
+  ],
+  "result_info": {
+    "count": 2,
+    "page": 1,
+    "per_page": 50,
+    "total_count": 2,
+    "total_pages": 1
+  }
+}
