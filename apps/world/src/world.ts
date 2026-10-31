@@ -67,6 +67,8 @@ import {
   WHITEBOARD_FRAME,
 } from "./whiteboard-view";
 import type { CatalogEntry } from "./types";
+import type { BoardNavAction, BoardUiSnapshot } from "./proposals-board-actions";
+import { WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./proposals-board-metrics";
 import { createWhiteboardStatus, type WhiteboardStatusController } from "./whiteboard-status";
 import { bindWhiteboardMesh } from "./world-whiteboard";
 import { batchStaticMeshes, type BatchStats } from "./static-batch";
@@ -106,6 +108,8 @@ export type WorldHandle = {
   setProposalBoardItems: (items: ProposalStatusItem[], partial: boolean) => void;
   isViewingWhiteboard: () => boolean;
   exitWhiteboard: () => void;
+  handleBoardKey: (key: string) => boolean;
+  clearBoardSelection: () => boolean;
   /** Pausa el bucle, el análisis de audio y el resto del trabajo por frame. */
   setSuspended: (suspended: boolean) => void;
   dispose: () => void;
@@ -138,6 +142,8 @@ export function startWorld(options: {
   onTarget: (label: string | null) => void;
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
   onBoardView?: (open: boolean) => void;
+  onBoardUi?: (ui: BoardUiSnapshot) => void;
+  onBoardAction?: (action: BoardNavAction) => void;
   onGesture?: () => void;
   /** `false` deja cada malla suelta para medir renderer.info. */
   batch?: boolean;
@@ -253,10 +259,22 @@ export function startWorld(options: {
   const highlightRings = new Map<string, Mesh>();
   const lobbyWhiteboard = createWhiteboardStatus({
     reducedMotion: reduced,
+    knownSlugs: options.prototypes.map((entry) => entry.slug),
     onSummaryChange: (summary) => {
       options.viewport.dataset.whiteboardItems = summary;
     },
+    onUi: (ui) => {
+      options.viewport.dataset.boardScreen = ui.screen;
+      options.viewport.dataset.boardSelected = ui.selectedNumber == null ? "" : String(ui.selectedNumber);
+      options.viewport.dataset.boardAction = ui.detail?.action?.kind ?? "";
+      options.viewport.dataset.boardActionLabel = ui.detail?.action?.label ?? "";
+      options.viewport.dataset.boardMotion = ui.moving ? "1" : "0";
+      options.viewport.dataset.boardInteractive = ui.interactive ? "1" : "0";
+      options.onBoardUi?.(ui);
+    },
+    onAction: (action) => options.onBoardAction?.(action),
   });
+  let boardMesh: Mesh | null = null;
   addChalkboard(lobbyWhiteboard);
   addBench();
   addLamp();
@@ -693,6 +711,48 @@ export function startWorld(options: {
     handlePrimaryTap(event.clientX, event.clientY);
   }
 
+  function boardSurfaceUv(clientX: number, clientY: number): { u: number; v: number } | null {
+    if (!boardMesh) return null;
+    const bounds = renderer.domElement.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return null;
+    pointer.x = ((clientX - bounds.left) / bounds.width) * 2 - 1;
+    pointer.y = -((clientY - bounds.top) / bounds.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const uv = raycaster.intersectObject(boardMesh, false)[0]?.uv;
+    if (!uv) return null;
+    return { u: uv.x, v: uv.y };
+  }
+
+  function projectCanvas(px: number, py: number): { x: number; y: number } | null {
+    const point = new Vector3(
+      WHITEBOARD_FRAME.x + (px / WHITEBOARD_WIDTH - 0.5) * WHITEBOARD_FRAME.width,
+      WHITEBOARD_FRAME.y + (0.5 - py / WHITEBOARD_HEIGHT) * WHITEBOARD_FRAME.height,
+      WHITEBOARD_FRAME.z,
+    );
+    point.project(camera);
+    const rect = renderer.domElement.getBoundingClientRect();
+    return {
+      x: (point.x * 0.5 + 0.5) * rect.width,
+      y: (-point.y * 0.5 + 0.5) * rect.height,
+    };
+  }
+
+  function projectBoardRect(zone: "row" | "back" | "action", number?: number) {
+    const area = lobbyWhiteboard.targetRect(zone, number);
+    if (!area) return null;
+    const topLeft = projectCanvas(area.x, area.y);
+    const bottomRight = projectCanvas(area.x + area.w, area.y + area.h);
+    if (!topLeft || !bottomRight) return null;
+    const x = Math.min(topLeft.x, bottomRight.x);
+    const y = Math.min(topLeft.y, bottomRight.y);
+    return {
+      x,
+      y,
+      width: Math.abs(bottomRight.x - topLeft.x),
+      height: Math.abs(bottomRight.y - topLeft.y),
+    };
+  }
+
   function rayHitIdAt(clientX: number, clientY: number): string | null {
     const bounds = renderer.domElement.getBoundingClientRect();
     pointer.x = ((clientX - bounds.left) / bounds.width) * 2 - 1;
@@ -708,6 +768,15 @@ export function startWorld(options: {
 
   handlePrimaryTap = (clientX, clientY) => {
     const hitId = rayHitIdAt(clientX, clientY);
+    if (boardPhase === "hold") {
+      const uv = boardSurfaceUv(clientX, clientY);
+      if (uv) {
+        lobbyWhiteboard.pointerAt(uv.u, uv.v);
+        return;
+      }
+      if (hitId !== "chalkboard") beginLeaveBoard();
+      return;
+    }
     if (boardPhase !== "idle") {
       if (hitId !== "chalkboard") beginLeaveBoard();
       return;
@@ -747,6 +816,7 @@ export function startWorld(options: {
 
   function beginLeaveBoard() {
     if (boardPhase === "idle" || boardPhase === "leave") return;
+    lobbyWhiteboard.setInteractive(false);
     boardFrom.copy(camera.position);
     boardLookFrom.copy(boardLook);
     const pose = resolveCameraArm({
@@ -761,6 +831,7 @@ export function startWorld(options: {
     boardElapsed = 0;
     boardPhase = "leave";
     player.visible = true;
+    if (whiteboardTransitionSeconds(reduced) <= 0) stepBoardCamera(0);
   }
 
   function stepBoardCamera(dt: number) {
@@ -771,7 +842,10 @@ export function startWorld(options: {
     camera.position.lerpVectors(boardFrom, boardTo, u);
     camera.lookAt(boardLook);
     if (u < 1) return;
-    if (boardPhase === "enter") boardPhase = "hold";
+    if (boardPhase === "enter") {
+      boardPhase = "hold";
+      lobbyWhiteboard.setInteractive(true);
+    }
     if (boardPhase === "leave") {
       boardPhase = "idle";
       snapped = true;
@@ -866,6 +940,12 @@ export function startWorld(options: {
         z: camera.position.z,
         playerVisible: player.visible,
       }),
+      boardPoint: (zone: "row" | "back" | "action", number?: number) => {
+        const box = projectBoardRect(zone, number);
+        if (!box) return null;
+        return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      },
+      boardBox: (zone: "row" | "back" | "action", number?: number) => projectBoardRect(zone, number),
       renderFrame: () => frame,
       renderSuspended: () => suspended,
       rendererStats,
@@ -921,6 +1001,14 @@ export function startWorld(options: {
     },
     exitWhiteboard() {
       beginLeaveBoard();
+    },
+    handleBoardKey(key: string) {
+      if (boardPhase !== "hold") return false;
+      return lobbyWhiteboard.handleKey(key);
+    },
+    clearBoardSelection() {
+      if (boardPhase !== "hold") return false;
+      return lobbyWhiteboard.clearSelection();
     },
     setSuspended,
     dispose() {
@@ -1108,6 +1196,7 @@ export function startWorld(options: {
     board.position.set(WHITEBOARD_FRAME.x, WHITEBOARD_FRAME.y, WHITEBOARD_FRAME.z);
     board.userData.interactId = "chalkboard";
     board.userData.noBatch = true;
+    boardMesh = board;
     scene.add(board);
     bindWhiteboardMesh(board, whiteboard, (item) => materials.push(item));
     const label = new Group();
@@ -1376,6 +1465,11 @@ declare global {
       visitCorner?: (which: "workshop" | "pinball") => void;
       probeWalkable?: () => { target: { x: number; z: number }; moved: number; remaining: number }[];
       whiteboardView?: () => { phase: string; x: number; y: number; z: number; playerVisible: boolean };
+      boardPoint?: (zone: "row" | "back" | "action", number?: number) => { x: number; y: number } | null;
+      boardBox?: (
+        zone: "row" | "back" | "action",
+        number?: number,
+      ) => { x: number; y: number; width: number; height: number } | null;
       openPrototype?: (slug: string) => void;
       renderFrame?: () => number;
       renderSuspended?: () => boolean;

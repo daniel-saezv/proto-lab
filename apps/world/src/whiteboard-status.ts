@@ -1,5 +1,13 @@
 import { CanvasTexture, LinearFilter, SRGBColorSpace } from "three";
 import {
+  boardNavAction,
+  buildBoardUi,
+  formatBoardDate,
+  kindDetailLabel,
+  phaseDetailLabel,
+  type BoardUiSnapshot,
+} from "./proposals-board-actions";
+import {
   ANIM_FRAME_MS,
   paintRetryChalk,
   paintSkeletonBoard,
@@ -7,6 +15,18 @@ import {
   revealComplete,
   revealRowProgress,
 } from "./proposals-board-chalk";
+import {
+  detailActionRect,
+  detailBackRect,
+  hitBoard,
+  paintDetailBoard,
+  paintListAffordances,
+  paintListIncoming,
+  paintListOutgoing,
+  rowHitRect,
+  type BoardRect,
+  type ChalkAppearance,
+} from "./proposals-board-detail";
 import {
   boardDataSignature,
   computeRowLayouts,
@@ -20,30 +40,30 @@ import {
   WHITEBOARD_HEIGHT,
   WHITEBOARD_MAX_ROWS,
   WHITEBOARD_WIDTH,
+  type BoardPaintModel,
   type BoardPaintRow,
   type BoardRowLayout,
 } from "./proposals-board-paint";
+import { BoardSession, drawAppearance, eraseAppearance } from "./proposals-board-session";
 import type { ProposalStatusItem } from "./proposals-status-api";
-import type { WhiteboardPhase, WhiteboardStatusController } from "./whiteboard-status-types";
+import type { WhiteboardPhase, WhiteboardStatusController, WhiteboardStatusOptions } from "./whiteboard-status-types";
 
 export type { WhiteboardPhase, WhiteboardStatusController } from "./whiteboard-status-types";
 
 const PULSE_INTERVAL_MS = 100;
 const HIGHLIGHT_MS = 1400;
 
-export function createWhiteboardStatus(options: {
-  reducedMotion?: boolean;
-  attachTo?: HTMLElement;
-  onSummaryChange?: (summary: string) => void;
-}): WhiteboardStatusController {
+export function createWhiteboardStatus(options: WhiteboardStatusOptions): WhiteboardStatusController {
   const reducedMotion = options.reducedMotion ?? window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const canvas = document.createElement("canvas");
   canvas.width = WHITEBOARD_WIDTH;
   canvas.height = WHITEBOARD_HEIGHT;
   canvas.dataset.whiteboardPhase = "loading";
+  canvas.setAttribute("aria-hidden", "true");
   if (options.attachTo) {
     canvas.className = "fallback-whiteboard-canvas";
     canvas.dataset.testid = "fallback-whiteboard";
+    canvas.style.touchAction = "manipulation";
     options.attachTo.append(canvas);
   }
   const context = canvas.getContext("2d");
@@ -65,6 +85,9 @@ export function createWhiteboardStatus(options: {
   const paintRows: BoardPaintRow[] = [];
   const lastPhase = new Map<number, ProposalStatusItem["phase"]>();
   const highlightUntil = new Map<number, number>();
+  const session = new BoardSession();
+  let knownSlugs = options.knownSlugs ?? [];
+  let uiSignature = "";
 
   let phase: WhiteboardPhase = "loading";
   let revealStartMs = 0;
@@ -77,6 +100,41 @@ export function createWhiteboardStatus(options: {
   function setPhase(next: WhiteboardPhase) {
     phase = next;
     canvas.dataset.whiteboardPhase = next;
+  }
+
+  function rowNumbers(): number[] {
+    return selectBoardRows(items).rows.map((item) => item.number);
+  }
+
+  function selectedItem(): ProposalStatusItem | null {
+    if (session.selectedNumber == null) return null;
+    return selectBoardRows(items).rows.find((item) => item.number === session.selectedNumber) ?? null;
+  }
+
+  function currentUi(): BoardUiSnapshot {
+    return buildBoardUi({
+      interactive: session.interactive,
+      moving: session.isMoving(),
+      screen: session.screen,
+      selectedNumber: session.selectedNumber,
+      focus: session.focus,
+      items,
+      knownSlugs,
+    });
+  }
+
+  function publishUi() {
+    const ui = currentUi();
+    const next = JSON.stringify(ui);
+    canvas.dataset.boardScreen = ui.screen;
+    canvas.dataset.boardSelected = ui.selectedNumber == null ? "" : String(ui.selectedNumber);
+    canvas.dataset.boardAction = ui.detail?.action?.kind ?? "";
+    canvas.dataset.boardActionLabel = ui.detail?.action?.label ?? "";
+    canvas.dataset.boardMotion = ui.moving ? "1" : "0";
+    canvas.dataset.boardInteractive = ui.interactive ? "1" : "0";
+    if (next === uiSignature) return;
+    uiSignature = next;
+    options.onUi?.(ui);
   }
 
   function buildPaintRows(nowMs: number): BoardPaintRow[] {
@@ -95,6 +153,13 @@ export function createWhiteboardStatus(options: {
     return built;
   }
 
+  function listModel(nowMs: number): BoardPaintModel {
+    paintRows.length = 0;
+    paintRows.push(...buildPaintRows(nowMs));
+    const { overflow } = selectBoardRows(items);
+    return { rows: paintRows, overflow, partial, pulseT, reducedMotion };
+  }
+
   function notifySummary() {
     const summary = items
       .slice(0, WHITEBOARD_MAX_ROWS)
@@ -108,19 +173,83 @@ export function createWhiteboardStatus(options: {
     paintRetryChalk(ctx, nowMs, WHITEBOARD_WIDTH - 42, WHITEBOARD_HEIGHT - 28);
   }
 
+  function paintAffordances() {
+    if (!session.interactive || session.screen !== "list" || session.isMoving()) return;
+    paintListAffordances(ctx, layouts, session.focus);
+  }
+
   function fullRedraw(nowMs: number) {
-    paintRows.length = 0;
-    paintRows.push(...buildPaintRows(nowMs));
-    const { overflow } = selectBoardRows(items);
-    layouts = paintWhiteboard(ctx, {
-      rows: paintRows,
-      overflow,
-      partial,
-      pulseT,
-      reducedMotion,
-    });
+    layouts = paintWhiteboard(ctx, listModel(nowMs));
+    paintAffordances();
     paintRetryIfNeeded(nowMs);
     texture.needsUpdate = true;
+  }
+
+  function detailAppearance(nowMs: number, appearance: ChalkAppearance) {
+    const item = selectedItem();
+    if (!item) {
+      fullRedraw(nowMs);
+      return;
+    }
+    const action = boardNavAction(item, knownSlugs);
+    const date = formatBoardDate(item.updatedAt);
+    paintDetailBoard(
+      ctx,
+      {
+        number: item.number,
+        title: item.title,
+        meta: [kindDetailLabel(item.kind), date].filter((part): part is string => Boolean(part)).join(" · "),
+        phaseLabel: phaseDetailLabel(item.phase),
+        actionLabel: action?.label ?? null,
+        focused: session.focus?.zone === "action" ? "action" : session.focus?.zone === "back" ? "back" : null,
+      },
+      appearance,
+    );
+    paintRetryIfNeeded(nowMs);
+    texture.needsUpdate = true;
+  }
+
+  function repaint(nowMs: number) {
+    if (phase === "loading" || phase === "reveal") return;
+    if (session.screen === "detail" && selectedItem() && !session.isMoving()) {
+      detailAppearance(nowMs, { stroke: 1, text: 1 });
+      return;
+    }
+    fullRedraw(nowMs);
+  }
+
+  function paintMotion(nowMs: number) {
+    const sample = session.motionSample(nowMs, reducedMotion);
+    if (sample.stage === "settled") {
+      session.settle(nowMs, reducedMotion);
+      repaint(nowMs);
+      publishUi();
+      return;
+    }
+    if (sample.stage === "erase" && sample.from === "list") {
+      layouts = paintListOutgoing(ctx, listModel(nowMs), sample.t);
+    } else if (sample.stage === "draw" && sample.to === "list") {
+      layouts = paintListIncoming(ctx, listModel(nowMs), sample.t);
+    } else if (sample.stage === "erase") {
+      detailAppearance(nowMs, eraseAppearance(sample.t));
+    } else {
+      detailAppearance(nowMs, drawAppearance(sample.t));
+    }
+    texture.needsUpdate = true;
+  }
+
+  function afterInput(nowMs: number) {
+    if (session.isMoving()) paintMotion(nowMs);
+    else repaint(nowMs);
+    publishUi();
+  }
+
+  function activateSelection() {
+    const item = selectedItem();
+    if (!item) return;
+    const action = boardNavAction(item, knownSlugs);
+    if (!action) return;
+    options.onAction?.(action);
   }
 
   function paintLoadingFrame(nowMs: number) {
@@ -158,7 +287,8 @@ export function createWhiteboardStatus(options: {
     texture.needsUpdate = true;
     if (revealComplete(revealStartMs, nowMs, rowCount)) {
       setPhase(rowCount === 0 ? "empty" : "live");
-      fullRedraw(nowMs);
+      repaint(nowMs);
+      publishUi();
     }
   }
 
@@ -167,10 +297,59 @@ export function createWhiteboardStatus(options: {
     texture.needsUpdate = true;
   }
 
+  function pointerAt(u: number, v: number) {
+    if (!session.interactive || (phase !== "live" && phase !== "empty")) return;
+    const x = u * WHITEBOARD_WIDTH;
+    const y = (1 - v) * WHITEBOARD_HEIGHT;
+    const item = selectedItem();
+    const hasAction = session.screen === "detail" && item != null && boardNavAction(item, knownSlugs) != null;
+    const hit = hitBoard(x, y, session.screen, layouts, hasAction);
+    if (!hit) return;
+    const now = performance.now();
+    const result = session.pointer(
+      hit.zone,
+      hit.zone === "row" ? hit.number : undefined,
+      rowNumbers(),
+      hasAction,
+      now,
+      reducedMotion,
+    );
+    if (result.activate) {
+      activateSelection();
+      return;
+    }
+    if (result.handled) afterInput(now);
+  }
+
+  if (options.attachTo) {
+    let downX = 0;
+    let downY = 0;
+    let dragged = false;
+    canvas.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      downX = event.clientX;
+      downY = event.clientY;
+      dragged = false;
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (Math.hypot(event.clientX - downX, event.clientY - downY) > 10) dragged = true;
+    });
+    canvas.addEventListener("pointerup", (event) => {
+      if (event.button !== 0 || dragged) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+      const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+      pointerAt(x / canvas.width, 1 - y / canvas.height);
+    });
+  }
+
   paintBackgroundOnly();
   if (reducedMotion) {
     paintSkeletonBoard(ctx, 0, true, false);
   }
+  if (options.interactive) session.setInteractive(true, []);
+  publishUi();
 
   return {
     texture,
@@ -184,23 +363,34 @@ export function createWhiteboardStatus(options: {
       receivedData = true;
       fetchError = false;
       notifySummary();
+      session.syncRows(rowNumbers());
+
+      if (session.screen === "detail" && selectedItem() && !session.isMoving()) {
+        setPhase("live");
+        repaint(performance.now());
+        publishUi();
+        return;
+      }
 
       const rowCount = selectBoardRows(items).rows.length;
       if (rowCount === 0) {
         setPhase("empty");
         fullRedraw(performance.now());
+        publishUi();
         return;
       }
 
       if (reducedMotion) {
         setPhase("live");
         fullRedraw(performance.now());
+        publishUi();
         return;
       }
 
       setPhase("reveal");
       revealStartMs = performance.now();
       paintRevealFrame(revealStartMs);
+      publishUi();
     },
     setFetchError(failed: boolean) {
       fetchError = failed;
@@ -209,9 +399,49 @@ export function createWhiteboardStatus(options: {
         paintLoadingFrame(performance.now());
         return;
       }
-      if (failed && phase === "live") {
-        fullRedraw(performance.now());
+      if (failed && (phase === "live" || phase === "empty")) {
+        repaint(performance.now());
       }
+    },
+    setInteractive(on: boolean) {
+      const changed = session.setInteractive(on, rowNumbers());
+      if (!changed) return;
+      if (phase === "live" || phase === "empty") repaint(performance.now());
+      publishUi();
+    },
+    pointerAt,
+    selectRow(number: number) {
+      if (!session.interactive || (phase !== "live" && phase !== "empty")) return;
+      const now = performance.now();
+      if (!session.select(number, rowNumbers(), now, reducedMotion)) return;
+      afterInput(now);
+    },
+    handleKey(key: string) {
+      if (!session.interactive) return false;
+      const item = selectedItem();
+      const hasAction = session.screen === "detail" && item != null && boardNavAction(item, knownSlugs) != null;
+      const now = performance.now();
+      const result = session.key(key, rowNumbers(), hasAction, now, reducedMotion);
+      if (result.activate) {
+        activateSelection();
+        return true;
+      }
+      if (!result.handled) return false;
+      afterInput(now);
+      return true;
+    },
+    clearSelection() {
+      return this.handleKey("Escape");
+    },
+    targetRect(zone, number) {
+      if (zone === "back") return detailBackRect();
+      if (zone === "action") {
+        const item = selectedItem();
+        if (!item || !boardNavAction(item, knownSlugs)) return null;
+        return detailActionRect();
+      }
+      const layout = layouts.find((row) => row.number === number);
+      return layout ? rowHitRect(layout) : null;
     },
     tick(nowMs) {
       if (phase === "loading") {
@@ -228,13 +458,21 @@ export function createWhiteboardStatus(options: {
         return;
       }
 
-      if (fetchError) {
+      if (session.interactive && session.isMoving()) {
         if (nowMs - lastAnimDraw < ANIM_FRAME_MS) return;
         lastAnimDraw = nowMs;
-        fullRedraw(nowMs);
+        paintMotion(nowMs);
         return;
       }
 
+      if (fetchError) {
+        if (nowMs - lastAnimDraw < ANIM_FRAME_MS) return;
+        lastAnimDraw = nowMs;
+        repaint(nowMs);
+        return;
+      }
+
+      if (session.screen === "detail") return;
       if (reducedMotion || phase !== "live") return;
       paintRows.length = 0;
       paintRows.push(...buildPaintRows(nowMs));
@@ -250,11 +488,14 @@ export function createWhiteboardStatus(options: {
         if (!layout) continue;
         paintWhiteboardRowTrack(ctx, layout, row, pulseT, reducedMotion);
       }
+      paintAffordances();
       texture.needsUpdate = true;
     },
     needsAnimation() {
       if (phase === "loading" || phase === "reveal") return true;
+      if (session.interactive && session.isMoving()) return true;
       if (fetchError) return true;
+      if (session.screen === "detail") return false;
       if (reducedMotion || phase !== "live") return false;
       paintRows.length = 0;
       paintRows.push(...buildPaintRows(performance.now()));
@@ -267,6 +508,7 @@ export function createWhiteboardStatus(options: {
         .map((item) => String(item.number))
         .join(",");
     },
+    getUi: () => currentUi(),
     dispose() {
       texture.dispose();
       canvas.remove();

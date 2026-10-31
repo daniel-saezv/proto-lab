@@ -55,7 +55,7 @@ export function boardDataSignature(items: ProposalStatusItem[], partial: boolean
   const slice = items.slice(0, WHITEBOARD_MAX_ROWS);
   return JSON.stringify({
     partial,
-    items: slice.map((item) => [item.number, item.phase, item.title, item.updatedAt]),
+    items: slice.map((item) => [item.number, item.phase, item.title, item.updatedAt, item.slug ?? "", item.previewUrl ?? ""]),
     overflow: Math.max(0, items.length - WHITEBOARD_MAX_ROWS),
   });
 }
@@ -160,21 +160,14 @@ function drawTrack(
 }
 
 export function paintWhiteboard(context: CanvasRenderingContext2D, model: BoardPaintModel): BoardRowLayout[] {
-  const { rows, overflow, partial, pulseT, reducedMotion } = model;
   paintWhiteboardFrame(context);
+  return paintWhiteboardBody(context, model);
+}
 
-  context.fillStyle = COLORS.ink;
-  context.font = "700 36px sans-serif";
-  context.textAlign = "left";
-  context.textBaseline = "alphabetic";
-  context.fillText("Tablón", 32, 46);
-
-  if (partial) {
-    context.fillStyle = COLORS.inkMuted;
-    context.font = "600 22px sans-serif";
-    context.textAlign = "right";
-    context.fillText("·", WHITEBOARD_WIDTH - 32, 46);
-  }
+/** Contenido del listado, sin el fondo. Sirve para fundirlo durante la transición. */
+export function paintWhiteboardBody(context: CanvasRenderingContext2D, model: BoardPaintModel): BoardRowLayout[] {
+  const { rows, overflow, partial, pulseT, reducedMotion } = model;
+  paintBoardHeader(context, partial);
 
   const layouts = computeRowLayouts(rows.length);
   const marginX = 28;
@@ -192,19 +185,7 @@ export function paintWhiteboard(context: CanvasRenderingContext2D, model: BoardP
   rows.forEach((row, index) => {
     const layout = layouts[index]!;
     layout.number = row.number;
-    if (row.highlight > 0) {
-      context.fillStyle = COLORS.highlight;
-      context.globalAlpha = row.highlight * 0.85;
-      context.fillRect(marginX - 8, layout.y + 4, trackWidth + 16, layout.height - 8);
-      context.globalAlpha = 1;
-    }
-    context.fillStyle = COLORS.ink;
-    context.font = "700 26px sans-serif";
-    context.textAlign = "left";
-    const title = truncateText(context, `#${row.number} · ${row.title}`, trackWidth - 80);
-    context.fillText(title, marginX, layout.y + 34);
-    const visuals = trackStepVisuals(row.phase);
-    drawTrack(context, marginX, layout.trackY, trackWidth, layout.trackHeight, visuals, pulseT, reducedMotion);
+    paintSingleRow(context, layout, row, pulseT, reducedMotion, marginX, trackWidth);
   });
 
   if (overflow > 0) {
@@ -291,6 +272,8 @@ export function paintSingleRow(
   marginX: number,
   trackWidth: number,
 ) {
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
   if (row.highlight > 0) {
     context.fillStyle = COLORS.highlight;
     context.globalAlpha = row.highlight * 0.85;

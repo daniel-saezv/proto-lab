@@ -107,50 +107,13 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 #board-back[hidden] { display: none; }
 
-#board-previews {
-  position: absolute;
-  z-index: 8;
-  left: calc(12px + env(safe-area-inset-left));
-  right: calc(12px + env(safe-area-inset-right));
-  bottom: calc(12px + env(safe-area-inset-bottom));
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-#board-previews[hidden] { display: none; }
-.board-preview-list {
-  pointer-events: auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  max-width: min(720px, 100%);
-  margin: 0;
-  padding: 8px 10px;
-  list-style: none;
-  border-radius: 16px;
-  background: rgba(10, 12, 24, 0.82);
-  border: 2px solid rgba(246, 241, 231, 0.28);
-}
-.board-preview-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.board-preview-title {
-  font-size: 0.85rem;
-  font-weight: 700;
-  line-height: 1.3;
-}
-.board-preview-item .board-link { margin-top: 0; }
-.fallback-previews { margin-top: 12px; }
-.fallback-previews[hidden] { display: none; }
 body.reading-board #hint,
 body.reading-board #labels,
 body.reading-board #touch-controls,
+body.reading-board #touch-controls *,
 body.reading-board #interact {
   visibility: hidden;
+  pointer-events: none !important;
 }
 
 #interact {
@@ -652,6 +615,7 @@ body.dialogue-open #labels {
   max-width: 640px;
   height: auto;
   border-radius: 8px;
+  touch-action: manipulation;
 }
 
 body.install-open #viewport,

@@ -5,6 +5,11 @@ interface Window {
     visitCorner?: (which: "workshop" | "pinball") => void;
     probeWalkable?: () => { target: { x: number; z: number }; moved: number; remaining: number }[];
     whiteboardView?: () => { phase: string; x: number; y: number; z: number; playerVisible: boolean };
+    boardPoint?: (zone: "row" | "back" | "action", number?: number) => { x: number; y: number } | null;
+    boardBox?: (
+      zone: "row" | "back" | "action",
+      number?: number,
+    ) => { x: number; y: number; width: number; height: number } | null;
     viewpoints?: () => { id: string; label: string }[];
     setViewpoint?: (id: string) => boolean;
     setDebug?: (on: boolean) => void;
