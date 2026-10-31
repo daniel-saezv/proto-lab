@@ -463,6 +463,24 @@ body.selector-open #labels {
   gap: 10px;
   margin-top: 12px;
 }
+.fallback-whiteboard {
+  margin: 16px 0 20px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 2px solid var(--line);
+  background: rgba(10, 14, 28, 0.72);
+}
+.fallback-whiteboard h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+.fallback-whiteboard-canvas {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  border-radius: 8px;
+}
 
 body.install-open #viewport,
 body.install-open #joystick,
