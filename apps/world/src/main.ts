@@ -261,6 +261,7 @@ async function bootWorld() {
   shell.hidden = false;
   statusPoller.start();
   if (!hasWebGL()) {
+    music.prime();
     await mountFallback();
     finishBoot();
     return;
@@ -269,6 +270,7 @@ async function bootWorld() {
     performance.mark("proto:world-import");
     const module = await import("./world");
     performance.mark("proto:world-imported");
+    music.prime();
     performance.measure("proto:import-world", "proto:world-import", "proto:world-imported");
     world = module.startWorld({
       viewport,
@@ -327,6 +329,7 @@ async function bootWorld() {
     });
   } catch (error) {
     console.error("No se ha podido encender el laboratorio en 3D");
+    music.prime();
     await mountFallback();
     finishBoot();
     void error;

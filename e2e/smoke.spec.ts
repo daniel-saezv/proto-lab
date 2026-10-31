@@ -603,7 +603,7 @@ test("en horizontal las acciones de confirmación del diálogo caben en pantalla
 });
 
 test("la música se sirve y no muestra créditos en pantalla", async ({ page }) => {
-  const track = await page.request.get("/protos/audio/life-in-fragments.m4a");
+  const track = await page.request.get("/protos/audio/luanda.m4a");
   expect(track.ok()).toBeTruthy();
   expect(track.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
   const credits = await page.request.get("/protos/audio/CREDITS.md");
@@ -628,6 +628,7 @@ test("un toque en el laboratorio arranca la música sin pasar por silenciar", as
   // Esquina: el centro del lienzo puede caer sobre la máquina y abrir el selector.
   await canvas.click({ position: { x: 12, y: 96 } });
   await expect.poll(() => requests.length).toBeGreaterThan(0);
+  expect(requests.every((url) => url.includes("luanda.m4a"))).toBe(true);
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await page.evaluate(() => {
     const proto = Document.prototype;
@@ -661,6 +662,7 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   expect(box).toBeTruthy();
   await dispatchTouchDrag(page, box!.x + box!.width / 2, box!.y + box!.height / 2, 0, -48);
   await expect.poll(() => requests.length).toBeGreaterThan(0);
+  expect(requests.every((url) => url.includes("luanda.m4a"))).toBe(true);
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await expect(page.locator("#game-selector")).toBeHidden();

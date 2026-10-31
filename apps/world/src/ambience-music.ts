@@ -1,16 +1,21 @@
 export const MUSIC_MUTE_KEY = "proto-lab:music-muted";
 
 /**
- * Bajo /protos/ el service worker no precachea ni intercepta
- * (scripts/sw.mjs). La primera pista empieza a bajar al arrancar,
- * con prioridad baja, y play() espera al primer gesto. Las demás
- * se piden cuando les toca sonar.
+ * Una sola pista, en bucle. El service worker no precachea `/protos/`
+ * (scripts/sw.mjs). `prime()` la pide cuando el chunk del mundo ya está
+ * en marcha, para no competir con ese JS. `play()` sigue en el primer gesto.
  */
-export const AMBIENCE_TRACKS = [
-  "/protos/audio/life-in-fragments.m4a",
-  "/protos/audio/luanda.m4a",
-  "/protos/audio/lemonade.m4a",
-] as const;
+export const AMBIENCE_TRACK = "/protos/audio/luanda.m4a";
+
+/** Subida al empezar a sonar. */
+export const MUSIC_FADE_IN_S = 1.4;
+/** Bajada al parar, pausar o silenciar. */
+export const MUSIC_FADE_OUT_S = 0.8;
+/**
+ * La cola de Luanda queda casi en silencio (~0,2 s) antes del corte.
+ * El bucle solapa ese tramo con el ataque del tema.
+ */
+export const LOOP_CROSSFADE_S = 0.45;
 
 const MASTER_LEVEL = 0.32;
 
@@ -33,20 +38,10 @@ export function toggleMusicMuted(storage: StorageLike): boolean {
   return next;
 }
 
-export function shufflePlaylist<T>(items: readonly T[], random: () => number = Math.random): T[] {
-  const next = items.slice();
-  for (let i = next.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    const swap = next[i]!;
-    next[i] = next[j]!;
-    next[j] = swap;
-  }
-  return next;
-}
-
-export function advanceTrack(index: number, length: number): number {
-  if (length <= 0) return 0;
-  return (index + 1) % length;
+/** Segundos de solape. Nunca más de la mitad del tema. */
+export function loopOverlapSeconds(duration: number, crossfade = LOOP_CROSSFADE_S): number {
+  if (!(duration > 0)) return 0;
+  return Math.min(crossfade, duration / 2);
 }
 
 /** Graves en los 3 primeros bins; medios en los bins 4..11. Sin reservar objetos. */
@@ -70,6 +65,8 @@ export type MusicHandle = {
   isMuted: () => boolean;
   /** play() y resume() en el turno del gesto. Se puede llamar desde el joystick o el lienzo. */
   unlock: () => void;
+  /** Empieza la descarga de la pista. No bloquea el primer fotograma. */
+  prime: () => void;
   dispose: () => void;
 };
 
@@ -122,29 +119,43 @@ export function getMusicEnergy(): { bass: number; mid: number } {
   return energy;
 }
 
+type LoopVoice = {
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+  when: number;
+  offset: number;
+};
+
 /**
- * Lista en bucle, barajada una vez. Cada archivo se pide al empezar esa pista.
+ * Luanda en bucle, con fundido al entrar y al salir.
  * Nada suena hasta el primer gesto. El silencio queda en localStorage.
+ * Abrir un prototipo no pasa por aquí: el lobby no pausa la música.
  */
 export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageLike = localStorage): MusicHandle {
   let muted = isMusicMuted(storage);
   let paused = false;
   let armed = false;
   let sounded = false;
-  let skips = 0;
-  let trackIndex = 0;
+  let primed = false;
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
   let analyser: AnalyserNode | null = null;
   let source: MediaElementAudioSourceNode | null = null;
+  let elementGain: GainNode | null = null;
   let sourceFailed = false;
   let bins: Uint8Array<ArrayBuffer> | null = null;
   let audio: HTMLAudioElement | null = null;
-  let order: string[] = [];
   let reducedQuery: MediaQueryList | null = null;
   let playGeneration = 0;
-  let primedFor: string | null = null;
-  let primedSrc: string | null = null;
+  let buffer: AudioBuffer | null = null;
+  let pendingBytes: ArrayBuffer | null = null;
+  let bytesPromise: Promise<void> | null = null;
+  let decoding = false;
+  let usingBuffer = false;
+  let loopVoices: LoopVoice[] = [];
+  let loopTimer: number | null = null;
+  let stopTimer: number | null = null;
+  let resumeOffset = 0;
 
   function paint() {
     const sounding = !muted;
@@ -172,8 +183,13 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     return !!source || sourceFailed;
   }
 
+  function bufferLive(): boolean {
+    return usingBuffer && loopVoices.length > 0 && ctx?.state === "running";
+  }
+
   function outputLive(): boolean {
-    return sounded && !!audio && playbackOutputLive({
+    if (bufferLive()) return true;
+    return !!audio && playbackOutputLive({
       mediaPaused: audio.paused,
       contextState: ctx?.state ?? "none",
       routed: routed(),
@@ -190,29 +206,146 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     if (!ctx || !master) return;
     const now = ctx.currentTime;
     master.gain.cancelScheduledValues(now);
+    master.gain.setValueAtTime(master.gain.value, now);
     master.gain.linearRampToValueAtTime(value, now + seconds);
   }
 
   function notePlayback() {
-    if (!audio) return;
-    const live = playbackOutputLive({
-      mediaPaused: audio.paused,
-      contextState: ctx?.state ?? "none",
-      routed: routed(),
-    });
-    if (!live) return;
+    if (!outputLive()) return;
     sounded = true;
     paintPlayback();
   }
 
-  function beginTrack() {
-    if (!audio || !audible()) return;
-    if (order.length === 0) order = shufflePlaylist(AMBIENCE_TRACKS);
-    const network = order[trackIndex] ?? AMBIENCE_TRACKS[0];
-    const url = primedSrc && network === primedFor ? primedSrc : network;
-    if (audio.getAttribute("src") !== url) audio.src = url;
+  function cancelStop() {
+    if (stopTimer == null) return;
+    window.clearTimeout(stopTimer);
+    stopTimer = null;
+  }
+
+  function clearLoopTimer() {
+    if (loopTimer == null) return;
+    window.clearTimeout(loopTimer);
+    loopTimer = null;
+  }
+
+  function stopLoopVoices() {
+    usingBuffer = false;
+    clearLoopTimer();
+    for (const voice of loopVoices) {
+      voice.source.onended = null;
+      try {
+        voice.source.stop();
+      } catch {
+        // Ya estaba parada.
+      }
+      voice.gain.disconnect();
+    }
+    loopVoices = [];
+  }
+
+  function captureOffset(): number {
+    if (usingBuffer && ctx && buffer) {
+      const now = ctx.currentTime;
+      let best: LoopVoice | null = null;
+      for (const voice of loopVoices) {
+        if (voice.when <= now + 0.001 && (!best || voice.when > best.when)) best = voice;
+      }
+      if (best) {
+        const pos = best.offset + (now - best.when);
+        const dur = buffer.duration;
+        return ((pos % dur) + dur) % dur;
+      }
+    }
+    if (audio && Number.isFinite(audio.currentTime)) return audio.currentTime;
+    return resumeOffset;
+  }
+
+  function placeVoice(when: number, offset: number, fadeIn: boolean) {
+    if (!ctx || !buffer || !analyser) return;
+    const startAt = Math.max(when, ctx.currentTime);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const gain = ctx.createGain();
+    src.connect(gain);
+    gain.connect(analyser);
+    const dur = buffer.duration;
+    const remaining = Math.max(0.05, dur - offset);
+    const fade = Math.min(loopOverlapSeconds(dur), remaining / 2);
+    const end = startAt + remaining;
+    const fadeOutAt = Math.max(startAt, end - fade);
+    src.start(startAt, Math.min(offset, Math.max(0, dur - 0.05)));
+    src.stop(end + 0.03);
+    gain.gain.setValueAtTime(fadeIn ? 0.0001 : 1, startAt);
+    if (fadeIn) gain.gain.linearRampToValueAtTime(1, startAt + fade);
+    gain.gain.linearRampToValueAtTime(1, fadeOutAt);
+    gain.gain.linearRampToValueAtTime(0.0001, end);
+    const voice: LoopVoice = { source: src, gain, when: startAt, offset };
+    loopVoices.push(voice);
+    src.onended = () => {
+      const index = loopVoices.indexOf(voice);
+      if (index >= 0) loopVoices.splice(index, 1);
+      gain.disconnect();
+    };
+  }
+
+  function armChain() {
+    if (!ctx || !buffer || !usingBuffer) return;
+    clearLoopTimer();
+    const waitMs = Math.max(0, (resumeNextAt() - ctx.currentTime) * 1000);
+    loopTimer = window.setTimeout(() => {
+      loopTimer = null;
+      if (!usingBuffer || !ctx || !buffer || !audible()) return;
+      const when = Math.max(ctx.currentTime + 0.05, scheduledAt);
+      placeVoice(when, 0, true);
+      scheduledAt = when + buffer.duration - loopOverlapSeconds(buffer.duration);
+      armChain();
+    }, waitMs);
+  }
+
+  let scheduledAt = 0;
+
+  function resumeNextAt(): number {
+    return scheduledAt - 0.5;
+  }
+
+  function startLooped(offset: number) {
+    if (!ctx || !buffer) return;
+    stopLoopVoices();
+    usingBuffer = true;
+    const now = ctx.currentTime;
+    const overlap = loopOverlapSeconds(buffer.duration);
+    const clamped = ((offset % buffer.duration) + buffer.duration) % buffer.duration;
+    placeVoice(now, clamped, false);
+    scheduledAt = now + (buffer.duration - clamped) - overlap;
+    placeVoice(scheduledAt, 0, true);
+    scheduledAt += buffer.duration - overlap;
+    armChain();
+  }
+
+  function quietElement() {
+    if (!audio) return;
+    if (elementGain && ctx) {
+      const now = ctx.currentTime;
+      elementGain.gain.cancelScheduledValues(now);
+      elementGain.gain.setValueAtTime(elementGain.gain.value, now);
+      elementGain.gain.linearRampToValueAtTime(0, now + 0.2);
+    } else {
+      audio.volume = 0;
+    }
+    const generation = playGeneration;
+    window.setTimeout(() => {
+      if (generation !== playGeneration || !usingBuffer) return;
+      if (audio && !audio.paused) audio.pause();
+    }, 220);
+  }
+
+  function beginElement() {
+    if (!audio || !audible() || usingBuffer) return;
+    if (!audio.getAttribute("src")) audio.src = AMBIENCE_TRACK;
+    audio.loop = true;
+    if (elementGain) elementGain.gain.setValueAtTime(1, ctx?.currentTime ?? 0);
     if (!source && !sourceFailed) audio.volume = MASTER_LEVEL;
-    // play() tiene que llamarse en el mismo turno del gesto, sin await delante.
+    else audio.volume = 1;
     const generation = ++playGeneration;
     const pending = audio.play();
     if (pending) {
@@ -226,23 +359,11 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     }
   }
 
-  function skipTrack() {
-    if (!audio || !audible()) return;
-    skips += 1;
-    if (skips > AMBIENCE_TRACKS.length) {
-      audio.pause();
-      return;
-    }
-    trackIndex = advanceTrack(trackIndex, order.length || AMBIENCE_TRACKS.length);
-    beginTrack();
-  }
-
   function onPlayFailure(error: unknown) {
     sounded = false;
     paintPlayback();
     const name = error instanceof DOMException ? error.name : "";
-    const decision = playbackRejection(name);
-    if (decision.skipTrack) skipTrack();
+    if (playbackRejection(name).skipTrack) audio?.pause();
   }
 
   function ensureAudioElement(): HTMLAudioElement | null {
@@ -250,7 +371,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     if (typeof document === "undefined") return null;
     audio = new Audio();
     audio.preload = "none";
-    audio.loop = false;
+    audio.loop = true;
     audio.hidden = true;
     audio.volume = 0;
     audio.setAttribute("playsinline", "");
@@ -258,22 +379,30 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     audio.setAttribute("aria-hidden", "true");
     document.body.appendChild(audio);
     audio.addEventListener("ended", () => {
-      trackIndex = advanceTrack(trackIndex, order.length || AMBIENCE_TRACKS.length);
-      beginTrack();
+      if (usingBuffer || !audible()) return;
+      beginElement();
     });
     audio.addEventListener("error", () => {
-      if (!audible()) return;
-      skipTrack();
+      if (!audible() || usingBuffer) return;
+      sounded = false;
+      paintPlayback();
+      audio?.pause();
     });
     audio.addEventListener("playing", () => {
-      skips = 0;
       performance.mark?.("proto:audio-playing");
       notePlayback();
     });
     audio.addEventListener("canplay", () => {
       performance.mark?.("proto:audio-canplay");
     });
+    audio.addEventListener("progress", () => {
+      tryCaptureBytes();
+    });
+    audio.addEventListener("canplaythrough", () => {
+      tryCaptureBytes();
+    });
     audio.addEventListener("pause", () => {
+      if (usingBuffer) return;
       sounded = false;
       paintPlayback();
     });
@@ -301,39 +430,69 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     bins = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
     analyser.connect(master);
     master.connect(ctx.destination);
+    elementGain = ctx.createGain();
+    elementGain.connect(analyser);
     ctx.addEventListener("statechange", onContextState);
-    if (order.length === 0) order = shufflePlaylist(AMBIENCE_TRACKS);
+    void decodePending();
   }
 
   /**
-   * Baja la primera pista en segundo plano. play() no espera a este fetch:
-   * si el blob ya está, suena desde memoria; si no, usa la URL de red en el
-   * mismo turno del gesto.
+   * Una sola descarga, por el elemento. El ArrayBuffer para el bucle
+   * sale de la caché cuando el archivo ya está entero.
    */
-  function primeFirstTrack(): void {
-    if (muted) return;
-    const params = new URLSearchParams(location.search);
-    if (params.get("audio") === "lazy") return;
-    if (order.length === 0) order = shufflePlaylist(AMBIENCE_TRACKS);
-    const url = order[trackIndex] ?? order[0];
-    if (!url || primedFor === url) return;
-    primedFor = url;
-    performance.mark?.("proto:audio-prime");
-    void fetch(url, { credentials: "same-origin", priority: "low" })
+  function tryCaptureBytes() {
+    if (bytesPromise || pendingBytes || buffer || !audio) return;
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    if (audio.buffered.length === 0) return;
+    let end = 0;
+    for (let i = 0; i < audio.buffered.length; i++) end = Math.max(end, audio.buffered.end(i));
+    if (end < audio.duration - 0.35) return;
+    bytesPromise = fetch(AMBIENCE_TRACK, { credentials: "same-origin", cache: "force-cache" })
       .then(async (response) => {
-        if (!response.ok || primedFor !== url) return;
-        const blob = await response.blob();
-        if (primedFor !== url) return;
-        if (primedSrc) URL.revokeObjectURL(primedSrc);
-        primedSrc = URL.createObjectURL(blob);
+        if (!response.ok) return;
+        pendingBytes = await response.arrayBuffer();
         performance.mark?.("proto:audio-primed");
+        await decodePending();
       })
-      .catch(() => {});
+      .catch(() => {
+        bytesPromise = null;
+      });
+  }
+
+  async function decodePending() {
+    if (buffer || decoding || !pendingBytes || !ctx) return;
+    decoding = true;
+    try {
+      buffer = await ctx.decodeAudioData(pendingBytes.slice(0));
+      if (audible()) upgradeToLoop();
+    } catch {
+      buffer = null;
+    } finally {
+      decoding = false;
+    }
+  }
+
+  function upgradeToLoop() {
+    if (!buffer || !audible() || usingBuffer) return;
+    const offset = audio && Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    startLooped(offset);
+    quietElement();
+    notePlayback();
+  }
+
+  function prime() {
+    if (primed || muted) return;
+    primed = true;
+    const element = ensureAudioElement();
+    if (!element || element.getAttribute("src")) return;
+    element.preload = "auto";
+    element.src = AMBIENCE_TRACK;
+    performance.mark?.("proto:audio-prime");
   }
 
   /** Enruta el elemento solo con el contexto en marcha, para no dejar iOS mudo. */
   function connectElement(): void {
-    if (source || sourceFailed || !ctx || !audio || !analyser) return;
+    if (source || sourceFailed || !ctx || !audio || !elementGain) return;
     if (!shouldRouteMediaElement(ctx.state)) return;
     try {
       source = ctx.createMediaElementSource(audio);
@@ -342,7 +501,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       audio.volume = MASTER_LEVEL;
       return;
     }
-    source.connect(analyser);
+    source.connect(elementGain);
+    elementGain.gain.setValueAtTime(1, ctx.currentTime);
     audio.volume = 1;
   }
 
@@ -353,36 +513,52 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       paintPlayback();
       return;
     }
-    // Conectar aquí, sin otro play(): un play() en la promesa queda fuera del gesto
-    // y en iOS aborta el que sí era válido.
+    // Sin otro play(): un play() fuera del gesto aborta el arranque en iOS.
     connectElement();
     notePlayback();
   }
 
   function silence(): void {
     playGeneration += 1;
-    ramp(0, 0.18);
-    if (audio && !audio.paused) audio.pause();
+    const generation = playGeneration;
+    ramp(0, MUSIC_FADE_OUT_S);
     sounded = false;
     paintPlayback();
+    cancelStop();
+    stopTimer = window.setTimeout(() => {
+      stopTimer = null;
+      if (generation !== playGeneration) return;
+      resumeOffset = captureOffset();
+      if (audio && !audio.paused) audio.pause();
+      stopLoopVoices();
+    }, MUSIC_FADE_OUT_S * 1000);
   }
 
   /**
    * resume() y play() en este mismo turno, sin await delante.
-   * No se vuelve a llamar a play() cuando el contexto pasa a running: esa
-   * llamada ya no es el gesto y en iOS aborta el arranque. El siguiente
-   * gesto reintenta si todavía no suena.
+   * No se vuelve a llamar a play() cuando el contexto pasa a running.
    */
   function startOutput(): void {
     if (!wantsAudio()) {
       silence();
       return;
     }
+    prime();
     ensureGraph();
     if (!ctx || !master || !audio) return;
-    // resume() y play() en este turno, antes de cualquier await.
+    cancelStop();
     void ctx.resume().catch(() => {});
-    ramp(MASTER_LEVEL, 0.2);
+    ramp(MASTER_LEVEL, MUSIC_FADE_IN_S);
+    if (usingBuffer && loopVoices.length > 0) {
+      notePlayback();
+      return;
+    }
+    if (buffer) {
+      startLooped(resumeOffset);
+      if (!audio.paused) quietElement();
+      notePlayback();
+      return;
+    }
     connectElement();
     if (!audio.paused && !!audio.getAttribute("src") && playbackOutputLive({
       mediaPaused: false,
@@ -393,7 +569,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       paintPlayback();
       return;
     }
-    beginTrack();
+    beginElement();
   }
 
   function unlock(): void {
@@ -445,13 +621,12 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     muted = toggleMusicMuted(storage);
     armed = true;
     paint();
+    if (!muted) prime();
     if (wantsAudio()) startOutput();
     else silence();
   };
 
   button.addEventListener("click", onClick);
-  // Captura en window: el joystick y el lienzo no pueden tragarse el gesto
-  // con stopPropagation, y iOS solo activa el audio en el turno de estos eventos.
   const unlockCapture: AddEventListenerOptions = { capture: true };
   window.addEventListener("pointerup", onUserGesture, unlockCapture);
   window.addEventListener("touchend", onUserGesture, unlockCapture);
@@ -459,7 +634,6 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   window.addEventListener("keydown", onUserGesture, unlockCapture);
   document.addEventListener("visibilitychange", onVisibility);
   paint();
-  primeFirstTrack();
 
   return {
     setPaused(next: boolean) {
@@ -468,30 +642,34 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     },
     isMuted: () => muted,
     unlock,
+    prime,
     dispose() {
       button.removeEventListener("click", onClick);
-      const unlockCapture: AddEventListenerOptions = { capture: true };
-      window.removeEventListener("pointerup", onUserGesture, unlockCapture);
-      window.removeEventListener("touchend", onUserGesture, unlockCapture);
-      window.removeEventListener("click", onUserGesture, unlockCapture);
-      window.removeEventListener("keydown", onUserGesture, unlockCapture);
+      const capture: AddEventListenerOptions = { capture: true };
+      window.removeEventListener("pointerup", onUserGesture, capture);
+      window.removeEventListener("touchend", onUserGesture, capture);
+      window.removeEventListener("click", onUserGesture, capture);
+      window.removeEventListener("keydown", onUserGesture, capture);
       document.removeEventListener("visibilitychange", onVisibility);
       sampleEnergy = () => {
         energy.bass = 0;
         energy.mid = 0;
       };
+      cancelStop();
+      clearLoopTimer();
+      stopLoopVoices();
       audio?.pause();
       audio?.remove();
       audio = null;
-      if (primedSrc) URL.revokeObjectURL(primedSrc);
-      primedSrc = null;
       if (ctx) ctx.removeEventListener("statechange", onContextState);
       void ctx?.close();
       ctx = null;
       source = null;
+      elementGain = null;
       master = null;
       analyser = null;
       bins = null;
+      buffer = null;
     },
   };
 }
