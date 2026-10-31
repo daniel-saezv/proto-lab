@@ -108,7 +108,7 @@ button, input, textarea { font: inherit; color: inherit; }
 #board-back[hidden] { display: none; }
 body.reading-board #hint,
 body.reading-board #labels,
-body.reading-board #joystick,
+body.reading-board #touch-controls,
 body.reading-board #interact {
   visibility: hidden;
 }
@@ -128,47 +128,50 @@ body.reading-board #interact {
   font-weight: 700;
   cursor: pointer;
 }
-.has-joystick #interact { bottom: calc(168px + env(safe-area-inset-bottom)); }
+
+#touch-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.touch-zone {
+  position: absolute;
+  top: env(safe-area-inset-top, 0);
+  bottom: env(safe-area-inset-bottom, 0);
+  width: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+.touch-zone--move {
+  left: 0;
+}
+.touch-zone--look {
+  right: 0;
+}
+#joystick[data-testid="joystick"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  pointer-events: none;
+}
+#touch-controls .nipple .back {
+  border: 2px solid rgba(255, 183, 3, 0.45);
+  opacity: 0.92 !important;
+}
+#touch-controls .nipple .front {
+  box-shadow: 0 0 12px rgba(255, 183, 3, 0.35);
+}
 
 @media (max-height: 500px) {
-  #joystick {
-    width: 96px;
-    height: 96px;
-  }
-  #knob {
-    width: 42px;
-    height: 42px;
-  }
   .has-joystick #interact {
     left: auto;
     right: calc(16px + env(safe-area-inset-right));
     bottom: calc(16px + env(safe-area-inset-bottom));
     transform: none;
   }
-}
-
-#joystick {
-  position: absolute;
-  left: calc(16px + env(safe-area-inset-left));
-  bottom: calc(16px + env(safe-area-inset-bottom));
-  z-index: 4;
-  width: 128px;
-  height: 128px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(255, 183, 3, 0.5);
-  touch-action: none;
-}
-#knob {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--amber);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
 }
 
 .speech-bubble {
@@ -317,7 +320,7 @@ body.reading-board #interact {
 .dialogue-input::placeholder { color: rgba(246, 241, 231, 0.45); }
 
 body.prototype-open #viewport,
-body.prototype-open #joystick,
+body.prototype-open #touch-controls,
 body.prototype-open #interact,
 body.prototype-open #hint,
 body.prototype-open #labels {
@@ -358,7 +361,7 @@ body.is-pseudo-fullscreen {
   touch-action: none;
 }
 body.is-pseudo-fullscreen #viewport,
-body.is-pseudo-fullscreen #joystick,
+body.is-pseudo-fullscreen #touch-controls,
 body.is-pseudo-fullscreen #interact,
 body.is-pseudo-fullscreen #hint,
 body.is-pseudo-fullscreen #labels,
@@ -451,13 +454,13 @@ body.is-pseudo-fullscreen #boot {
 }
 
 body.selector-open #viewport,
-body.selector-open #joystick,
+body.selector-open #touch-controls,
 body.selector-open #interact,
 body.selector-open #hint,
 body.selector-open #labels {
   pointer-events: none !important;
 }
-body.selector-open #joystick,
+body.selector-open #touch-controls,
 body.selector-open #interact,
 body.selector-open #hint,
 body.selector-open #labels {
@@ -465,13 +468,13 @@ body.selector-open #labels {
 }
 
 body.dialogue-open #viewport,
-body.dialogue-open #joystick,
+body.dialogue-open #touch-controls,
 body.dialogue-open #interact,
 body.dialogue-open #hint,
 body.dialogue-open #labels {
   pointer-events: none !important;
 }
-body.dialogue-open #joystick,
+body.dialogue-open #touch-controls,
 body.dialogue-open #interact,
 body.dialogue-open #hint,
 body.dialogue-open #labels {
@@ -608,13 +611,13 @@ body.dialogue-open #labels {
 }
 
 body.install-open #viewport,
-body.install-open #joystick,
+body.install-open #touch-controls,
 body.install-open #interact,
 body.install-open #hint,
 body.install-open #labels {
   pointer-events: none !important;
 }
-body.install-open #joystick,
+body.install-open #touch-controls,
 body.install-open #interact,
 body.install-open #hint,
 body.install-open #labels {
@@ -951,13 +954,13 @@ body.install-open #labels {
   }
 }
 body.board-open #viewport,
-body.board-open #joystick,
+body.board-open #touch-controls,
 body.board-open #interact,
 body.board-open #hint,
 body.board-open #labels {
   pointer-events: none !important;
 }
-body.board-open #joystick,
+body.board-open #touch-controls,
 body.board-open #interact,
 body.board-open #hint,
 body.board-open #labels {
