@@ -1,3 +1,4 @@
+import { createAmbienceMusic } from "./ambience-music";
 import { sendProposal } from "./api";
 import catalogFile from "./generated/catalog.json";
 import { createDialogue } from "./dialogue";
@@ -23,6 +24,9 @@ const viewport = must("#viewport");
 const labels = must("#labels");
 const hint = must("#hint");
 const interact = must<HTMLButtonElement>("#interact");
+const muteMusic = must<HTMLButtonElement>("#mute-music");
+const music = createAmbienceMusic(muteMusic);
+const boardBack = must<HTMLButtonElement>("#board-back");
 const joystick = must("#joystick");
 const knob = must("#knob");
 const dialogueRoot = must("#dialogue");
@@ -41,6 +45,7 @@ if (touch) {
 }
 
 let inputEnabled = true;
+let viewingBoard = false;
 let deferredInstallPrompt: DeferredInstallPrompt | null = null;
 let lobbyWhiteboard: WhiteboardStatusController | null = null;
 let fallbackWhiteboard: WhiteboardStatusController | null = null;
@@ -84,8 +89,14 @@ const overlay = createOverlay(stage, () => {
   inputEnabled = true;
   world?.setInputEnabled(true);
   world?.setSelectorOpen(false);
+  music.setPaused(document.visibilityState !== "visible");
   statusPoller.refresh();
 });
+
+function openPrototype(entry: CatalogEntry) {
+  music.setPaused(true);
+  overlay.open(entry);
+}
 
 const statusPoller = createProposalStatusPoller({
   fetch: fetchProposalStatus,
@@ -137,7 +148,7 @@ const selector = createGameSelector({
     inputEnabled = false;
     world?.setInputEnabled(false);
     interact.hidden = true;
-    overlay.open(entry);
+    openPrototype(entry);
   },
   onOpen: () => {
     inputEnabled = false;
@@ -153,12 +164,14 @@ const selector = createGameSelector({
 });
 
 interact.addEventListener("click", () => world?.interact());
+boardBack.addEventListener("click", () => world?.exitWhiteboard());
 
 window.addEventListener("keydown", (event) => {
   if (selector.handleKey(event)) return;
   if (installHelp.handleKey(event)) return;
   if (event.key === "Escape") {
     if (overlay.isOpen()) overlay.close();
+    else if (world?.isViewingWhiteboard()) world.exitWhiteboard();
     else if (installHelp.isOpen()) installHelp.close();
     else if (selector.isOpen()) selector.close();
     else if (dialogue.isOpen()) dialogue.close();
@@ -174,6 +187,7 @@ window.addEventListener("keydown", (event) => {
 
 document.addEventListener("visibilitychange", () => {
   world?.setInputEnabled(document.visibilityState === "visible" && inputEnabled);
+  music.setPaused(document.visibilityState !== "visible" || overlay.isOpen());
   if (document.visibilityState === "visible") statusPoller.refresh();
 });
 
@@ -194,7 +208,7 @@ async function bootWorld() {
       prototypes: visiblePrototypes,
       onTalk: () => dialogue.open(),
       onInstallHelp: () => installHelp.open(),
-      onPlay: (entry) => overlay.open(entry),
+      onPlay: (entry) => openPrototype(entry),
       onWhiteboardReady: (controller) => {
         fallbackWhiteboard = controller;
         startFallbackWhiteboardLoop();
@@ -228,7 +242,7 @@ async function bootWorld() {
           inputEnabled = false;
           world?.setInputEnabled(false);
           interact.hidden = true;
-          overlay.open(entry);
+          openPrototype(entry);
         };
       },
       onTalk: () => dialogue.open(),
@@ -237,17 +251,24 @@ async function bootWorld() {
         selector.open(index);
       },
       onTarget: (label) => {
-        if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen()) {
+        if (viewingBoard || !inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen()) {
           interact.hidden = true;
           return;
         }
         interact.hidden = label == null;
         interact.textContent = label ?? "";
       },
+      onBoardView: (open) => {
+        viewingBoard = open;
+        document.body.classList.toggle("reading-board", open);
+        boardBack.hidden = !open;
+        if (open) interact.hidden = true;
+      },
       onWhiteboardReady: (controller) => {
         lobbyWhiteboard = controller;
         flushProposalStatusToBoards();
       },
+      onGesture: () => music.unlock(),
     });
   } catch (error) {
     console.error("No se ha podido encender el laboratorio en 3D");
@@ -256,7 +277,7 @@ async function bootWorld() {
       prototypes: visiblePrototypes,
       onTalk: () => dialogue.open(),
       onInstallHelp: () => installHelp.open(),
-      onPlay: (entry) => overlay.open(entry),
+      onPlay: (entry) => openPrototype(entry),
       onWhiteboardReady: (controller) => {
         fallbackWhiteboard = controller;
         startFallbackWhiteboardLoop();

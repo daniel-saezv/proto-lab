@@ -5,6 +5,7 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
+  Object3D,
   PlaneGeometry,
   PointLight,
   Scene,
@@ -15,6 +16,7 @@ import {
 } from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
+import { CEILING_UNDERSIDE, LAYOUT } from "./navigation";
 
 const PAL = {
   desk: 0x6d4b32,
@@ -37,6 +39,8 @@ const PAL = {
   wrapper: 0xffb703,
 };
 
+export type SwayPlant = { mesh: Object3D; phase: number };
+
 export type CornerInteractables = {
   catHead: Mesh;
   dogSnore: HTMLDivElement;
@@ -45,27 +49,29 @@ export type CornerInteractables = {
   windowMats: MeshBasicMaterial[];
   pcScreen: MeshBasicMaterial;
   neonMat: MeshBasicMaterial;
+  sway: SwayPlant[];
+  lamps: PointLight[];
 };
 
 export function addStoryCorners(f: AmbientFactories): {
   colliders: AmbientCollider[];
   interact: CornerInteractables;
 } {
-  const colliders: AmbientCollider[] = [
-    { id: "desk", x: 6.55, z: -5.35, collider: 0.38 },
-    { id: "shelves", x: 7.05, z: -4.15, collider: 0.28 },
-    { id: "pinball", x: -4.85, z: 5.55, collider: 0.4 },
-    { id: "fridge", x: 7.35, z: 5.2, collider: 0.32 },
-    { id: "dog", x: 6.15, z: 5.85, collider: 0.24 },
-  ];
+  const decor = ["desk", "shelves", "pinball", "fridge", "dog", "crates", "plant", "radio", "plantPinball", "plantRest"] as const;
+  const colliders: AmbientCollider[] = decor.map((id) => ({
+    id,
+    x: LAYOUT[id].x,
+    z: LAYOUT[id].z,
+    collider: LAYOUT[id].collider,
+  }));
 
   const work = addWorkCorner(f);
   addPinballRepair(f);
   addNeonAndPizza(f, work.neonMat);
   addWhiteboardDoodles(f);
-  addExtraPlants(f);
+  addExtraPlants(f, work.sway);
   addAccentRug(f);
-  addWarmLamps(f);
+  addWarmLamps(f, work.lamps);
   addCeilingFan(f, work.fan);
   upgradeWindows(f, work.windowMats);
 
@@ -73,39 +79,39 @@ export function addStoryCorners(f: AmbientFactories): {
 }
 
 function addWorkCorner(f: AmbientFactories): CornerInteractables {
-  const dx = 6.55;
-  const dz = -5.35;
-  f.box(f.scene, 1.35, 0.72, 0.75, dx, 0.36, dz, PAL.desk);
-  f.box(f.scene, 0.9, 0.04, 0.55, dx + 0.15, 0.74, dz + 0.05, PAL.deskDark, false);
-  f.box(f.scene, 0.38, 0.28, 0.08, dx - 0.35, 0.88, dz + 0.28, PAL.monitor);
+  const dx = LAYOUT.desk.x;
+  const dz = LAYOUT.desk.z;
+  f.box(f.scene, 1.4, 0.72, 0.7, dx, 0.36, dz, PAL.desk);
+  f.box(f.scene, 0.9, 0.04, 0.5, dx + 0.12, 0.74, dz + 0.08, PAL.deskDark, false);
+  f.box(f.scene, 0.38, 0.28, 0.08, dx - 0.28, 0.88, dz + 0.3, PAL.monitor);
   const pcScreen = createBlinkingScreen(f.materials, "#8fd8ff", "code");
   const screen = new Mesh(f.geo(new PlaneGeometry(0.32, 0.22)), pcScreen);
-  screen.position.set(dx - 0.35, 0.9, dz + 0.33);
+  screen.position.set(dx - 0.28, 0.9, dz + 0.35);
   f.scene.add(screen);
-  f.box(f.scene, 0.08, 0.04, 0.2, dx + 0.42, 0.78, dz - 0.05, PAL.wrapper, false);
-  f.box(f.scene, 0.25, 0.08, 0.18, dx - 0.05, 0.78, dz - 0.18, 0xf4efe4, false);
-  f.box(f.scene, 0.14, 0.06, 0.14, dx + 0.28, 0.77, dz + 0.12, PAL.cartridge, false);
+  f.box(f.scene, 0.08, 0.04, 0.2, dx + 0.4, 0.78, dz + 0.02, PAL.wrapper, false);
+  f.box(f.scene, 0.25, 0.08, 0.18, dx + 0.15, 0.78, dz - 0.08, 0xf4efe4, false);
+  f.box(f.scene, 0.14, 0.06, 0.14, dx + 0.42, 0.77, dz + 0.16, PAL.cartridge, false);
 
-  const sx = 7.05;
-  const sz = -4.15;
-  f.box(f.scene, 0.95, 1.25, 0.32, sx, 0.62, sz, PAL.shelf);
+  const sx = LAYOUT.shelves.x;
+  const sz = LAYOUT.shelves.z;
+  f.box(f.scene, 0.26, 1.35, 1.15, sx, 0.68, sz, PAL.shelf);
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 4; col++) {
       const color = col % 2 === 0 ? PAL.cartridge : 0x1f8a80;
-      f.box(f.scene, 0.14, 0.18, 0.1, sx - 0.28 + col * 0.18, 0.35 + row * 0.38, sz + 0.18, color, false);
+      f.box(f.scene, 0.08, 0.16, 0.14, sx - 0.16, 0.32 + row * 0.4, sz - 0.4 + col * 0.26, color, false);
     }
   }
   const trophy = new Mesh(f.geo(new CylinderGeometry(0.08, 0.12, 0.22, 8)), new MeshBasicMaterial({ color: PAL.trophy }));
   f.materials.push(trophy.material);
-  trophy.position.set(sx, 1.32, sz + 0.12);
+  trophy.position.set(sx - 0.18, 1.42, sz);
   f.scene.add(trophy);
 
   const neonMat = new MeshBasicMaterial({ color: PAL.neon });
   f.materials.push(neonMat);
   const fan = new Group();
-  fan.position.set(-6.3, 2.95, -4.3);
   f.scene.add(fan);
   const windowMats: MeshBasicMaterial[] = [];
+  const sway: SwayPlant[] = [];
 
   return {
     catHead: addCatOnCrates(f),
@@ -115,12 +121,14 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
     windowMats,
     pcScreen,
     neonMat,
+    sway,
+    lamps: [],
   };
 }
 
 function addPinballRepair(f: AmbientFactories) {
-  const x = -4.85;
-  const z = 5.55;
+  const x = LAYOUT.pinball.x;
+  const z = LAYOUT.pinball.z;
   f.box(f.scene, 0.95, 0.55, 0.7, x, 0.28, z, PAL.pinball);
   f.box(f.scene, 0.7, 0.12, 0.55, x, 0.62, z, 0x171225, false);
   const glass = new Mesh(f.geo(new PlaneGeometry(0.62, 0.32)), new MeshBasicMaterial({ color: 0x8fd8ff, transparent: true, opacity: 0.45 }));
@@ -133,17 +141,16 @@ function addPinballRepair(f: AmbientFactories) {
 }
 
 function addNeonAndPizza(f: AmbientFactories, neonMat: MeshBasicMaterial) {
-  const sign = new Mesh(f.geo(new PlaneGeometry(1.4, 0.35)), neonMat);
-  sign.position.set(1.2, 2.05, -7.33);
+  const sign = new Mesh(f.geo(new PlaneGeometry(1.35, 0.32)), neonMat);
+  sign.position.set(0.78, 2.15, -7.33);
   f.scene.add(sign);
   f.pulses.push(neonMat);
 
-  const stackX = 7.1;
-  const stackZ = -2.2;
+  const stackX = LAYOUT.desk.x + 0.48;
+  const stackZ = LAYOUT.desk.z + 0.02;
   for (let i = 0; i < 3; i++) {
-    f.box(f.scene, 0.42, 0.06, 0.42, stackX, 0.05 + i * 0.07, stackZ, PAL.pizza, false);
+    f.box(f.scene, 0.28, 0.045, 0.28, stackX, 0.78 + i * 0.05, stackZ, PAL.pizza, false);
   }
-  f.box(f.scene, 0.35, 0.04, 0.35, stackX + 0.05, 0.26, stackZ + 0.08, 0xf4efe4, false);
 }
 
 function addWhiteboardDoodles(f: AmbientFactories) {
@@ -171,40 +178,50 @@ function addWhiteboardDoodles(f: AmbientFactories) {
   const material = new MeshBasicMaterial({ map: texture });
   f.materials.push(material);
   const board = new Mesh(f.geo(new PlaneGeometry(1.1, 0.72)), material);
-  board.position.set(5.6, 1.45, -7.34);
+  board.position.set(7.55, 1.55, -7.34);
   f.scene.add(board);
 }
 
-function addExtraPlants(f: AmbientFactories) {
-  addPottedPlant(f, -2.2, 4.8);
-  addPottedPlant(f, 4.5, 6.0, 0.85);
+function addExtraPlants(f: AmbientFactories, sway: SwayPlant[]) {
+  sway.push(addPottedPlant(f, LAYOUT.plant.x, LAYOUT.plant.z, 1.15, 0.4));
+  sway.push(addPottedPlant(f, LAYOUT.plantPinball.x, LAYOUT.plantPinball.z, 0.9, 1.7));
+  sway.push(addPottedPlant(f, LAYOUT.plantRest.x, LAYOUT.plantRest.z, 0.85, 2.4));
 }
 
-function addPottedPlant(f: AmbientFactories, x: number, z: number, scale = 1) {
-  const pot = new Mesh(f.geo(new CylinderGeometry(0.18 * scale, 0.14 * scale, 0.22 * scale, 8)), f.mat(PAL.pot));
-  pot.position.set(x, 0.11 * scale, z);
+function addPottedPlant(f: AmbientFactories, x: number, z: number, scale: number, phase: number): SwayPlant {
+  const pot = new Mesh(f.geo(new CylinderGeometry(0.16 * scale, 0.12 * scale, 0.2 * scale, 8)), f.mat(PAL.pot));
+  pot.position.set(x, 0.1 * scale, z);
   pot.castShadow = f.shadows;
   f.scene.add(pot);
-  const leaf = new Mesh(f.geo(new SphereGeometry(0.28 * scale, 8, 6)), f.mat(PAL.leaf));
-  leaf.position.set(x, 0.48 * scale, z);
-  leaf.castShadow = f.shadows;
-  f.scene.add(leaf);
+  const crown = new Group();
+  crown.position.set(x, 0.36 * scale, z);
+  const leafGeo = f.geo(new SphereGeometry(0.16 * scale, 7, 5));
+  const leafMat = f.mat(PAL.leaf);
+  for (let i = 0; i < 3; i++) {
+    const leaf = new Mesh(leafGeo, leafMat);
+    const angle = (i / 3) * Math.PI * 2;
+    leaf.position.set(Math.cos(angle) * 0.08 * scale, 0.1 * scale, Math.sin(angle) * 0.08 * scale);
+    leaf.scale.set(0.85, 1.25, 0.85);
+    crown.add(leaf);
+  }
+  f.scene.add(crown);
+  return { mesh: crown, phase };
 }
 
 function addAccentRug(f: AmbientFactories) {
   const rug = new Mesh(f.geo(new PlaneGeometry(2.2, 1.4)), f.mat(PAL.rugAccent));
   rug.rotation.x = -Math.PI / 2;
-  rug.position.set(-4.2, 0.008, 4.6);
+  rug.position.set(7.15, 0.008, 4.55);
   rug.receiveShadow = f.shadows;
   f.scene.add(rug);
 }
 
-function addWarmLamps(f: AmbientFactories) {
-  addFloorLamp(f, -8.55, 6.4, 0.55);
-  addFloorLamp(f, 8.55, -6.15, 0.55);
+function addWarmLamps(f: AmbientFactories, lamps: PointLight[]) {
+  lamps.push(addFloorLamp(f, -8.35, 7.7, 0.5, 0.6));
+  lamps.push(addFloorLamp(f, 8.55, -2.15, 0.5, 2.1));
 }
 
-function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale = 1) {
+function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale: number, phase: number): PointLight {
   f.box(f.scene, 0.06, 0.05, 0.06, x, 0.025, z, 0x8d97a8, false);
   const pole = new Mesh(f.geo(new CylinderGeometry(0.03, 0.03, 1.1, 8)), f.mat(0x8d97a8));
   pole.position.set(x, 0.58, z);
@@ -214,21 +231,28 @@ function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale 
   const bulb = new Mesh(f.geo(new SphereGeometry(0.11, 10, 8)), bulbMat);
   bulb.position.set(x, 1.18, z);
   f.scene.add(bulb);
-  const light = new PointLight(PAL.wrapper, 5 * intensityScale, 4.2, 2);
+  const light = new PointLight(PAL.wrapper, 4.2 * intensityScale, 4.2, 2);
   light.position.set(x, 1.15, z);
+  light.userData.phase = phase;
+  light.userData.base = 4.2 * intensityScale;
   f.scene.add(light);
+  return light;
 }
 
 function addCeilingFan(f: AmbientFactories, fan: Group) {
-  const hub = new Mesh(f.geo(new CylinderGeometry(0.08, 0.08, 0.12, 10)), f.mat(PAL.fan));
-  hub.position.set(0, 0, 0);
+  fan.position.set(0.2, CEILING_UNDERSIDE - 0.08, 1.7);
+  const hub = new Mesh(f.geo(new CylinderGeometry(0.07, 0.07, 0.08, 8)), f.mat(PAL.fan));
   fan.add(hub);
-  const bladeGeo = f.geo(new PlaneGeometry(0.75, 0.12));
+  const bladeGeo = f.geo(new PlaneGeometry(0.72, 0.12));
+  const bladeMat = f.mat(PAL.fan);
   for (let i = 0; i < 3; i++) {
-    const blade = new Mesh(bladeGeo, f.mat(PAL.fan));
-    blade.rotation.z = (i * Math.PI * 2) / 3;
-    blade.position.y = -0.04;
-    fan.add(blade);
+    const pivot = new Group();
+    pivot.rotation.y = (i * Math.PI * 2) / 3;
+    const blade = new Mesh(bladeGeo, bladeMat);
+    blade.rotation.x = -Math.PI / 2;
+    blade.position.x = 0.4;
+    pivot.add(blade);
+    fan.add(pivot);
   }
 }
 
@@ -336,11 +360,11 @@ function paintScreen(
 }
 
 function addCatOnCrates(f: AmbientFactories): Mesh {
-  const x = 5.75;
-  const z = 1.45;
+  const x = LAYOUT.crates.x;
+  const z = LAYOUT.crates.z;
   const y = 0.62;
-  f.box(f.scene, 0.55, 0.55, 0.55, 5.7, 0.28, 1.35, 0x8d5a34);
-  f.box(f.scene, 0.4, 0.4, 0.4, 6.15, 0.7, 1.6, 0x8d5a34);
+  f.box(f.scene, 0.55, 0.55, 0.55, x - 0.05, 0.28, z - 0.1, 0x8d5a34);
+  f.box(f.scene, 0.4, 0.4, 0.4, x + 0.28, 0.62, z + 0.12, 0x8d5a34);
   f.box(f.scene, 0.28, 0.18, 0.38, x, y, z, PAL.cat);
   const head = new Mesh(f.geo(new SphereGeometry(0.14, 10, 8)), f.mat(PAL.cat));
   head.position.set(x + 0.18, y + 0.08, z);
@@ -352,23 +376,24 @@ function addCatOnCrates(f: AmbientFactories): Mesh {
 }
 
 function addRadio(f: AmbientFactories): MeshBasicMaterial {
-  const x = -4.35;
-  const z = -0.85;
-  f.box(f.scene, 0.38, 0.22, 0.24, x, 0.92, z, PAL.radio);
-  f.box(f.scene, 0.04, 0.18, 0.04, x + 0.12, 1.08, z, 0x8d97a8, false);
+  const x = LAYOUT.radio.x;
+  const z = LAYOUT.radio.z;
+  f.box(f.scene, 0.42, 0.36, 0.36, x, 0.18, z, 0x6d4b32);
+  f.box(f.scene, 0.36, 0.2, 0.22, x, 0.48, z, PAL.radio);
+  f.box(f.scene, 0.03, 0.16, 0.03, x + 0.1, 0.64, z, 0x8d97a8, false);
   const dialMat = new MeshBasicMaterial({ color: PAL.wrapper });
   f.materials.push(dialMat);
   f.pulses.push(dialMat);
   const dial = new Mesh(f.geo(new CylinderGeometry(0.045, 0.045, 0.02, 10)), dialMat);
   dial.rotation.x = Math.PI / 2;
-  dial.position.set(x - 0.08, 0.94, z + 0.13);
+  dial.position.set(x - 0.08, 0.5, z + 0.12);
   f.scene.add(dial);
   return dialMat;
 }
 
 function addSleepingDog(f: AmbientFactories): HTMLDivElement {
-  const x = 6.15;
-  const z = 5.85;
+  const x = LAYOUT.dog.x;
+  const z = LAYOUT.dog.z;
   f.box(f.scene, 0.55, 0.14, 0.24, x, 0.08, z, PAL.dog);
   const head = new Mesh(f.geo(new SphereGeometry(0.12, 10, 8)), f.mat(PAL.dog));
   head.position.set(x - 0.32, 0.1, z + 0.04);
@@ -390,10 +415,13 @@ export function tickCornerReactions(
   interact: CornerInteractables,
   player: Vector3,
   time: number,
+  dt: number,
   reduced: boolean,
+  beatBass = 0,
+  beatMid = 0,
 ) {
-  const catX = 5.93;
-  const catZ = 1.45;
+  const catX = LAYOUT.crates.x + 0.18;
+  const catZ = LAYOUT.crates.z;
   const nearCat = Math.hypot(player.x - catX, player.z - catZ) < 2.4;
   if (nearCat) {
     const angle = Math.atan2(player.x - catX, player.z - catZ);
@@ -402,27 +430,39 @@ export function tickCornerReactions(
     interact.catHead.rotation.y *= 0.92;
   }
 
-  const nearDog = Math.hypot(player.x - 6.15, player.z - 5.85) < 2.2;
+  const nearDog = Math.hypot(player.x - LAYOUT.dog.x, player.z - LAYOUT.dog.z) < 2.2;
   interact.dogSnore.hidden = !nearDog;
 
-  const nearRadio = Math.hypot(player.x + 4.35, player.z + 0.85) < 2.1;
+  const nearRadio = Math.hypot(player.x - LAYOUT.radio.x, player.z - LAYOUT.radio.z) < 2.1;
   if (nearRadio && !reduced) {
     const hue = 0.55 + Math.sin(time * 2.3) * 0.45;
     interact.radioDial.color.setHSL(hue, 0.85, 0.55);
   }
 
   if (!reduced) {
-    interact.fan.rotation.y += 0.02;
+    interact.fan.rotation.y += dt * 1.7 * (1 + beatBass * 0.35);
+    for (const plant of interact.sway) {
+      const sway = 0.09 + beatMid * 0.02;
+      plant.mesh.rotation.z = Math.sin(time * 1.15 + plant.phase) * sway;
+      plant.mesh.rotation.x = Math.cos(time * 0.9 + plant.phase) * 0.04;
+    }
+    for (const lamp of interact.lamps) {
+      const phase = (lamp.userData.phase as number) ?? 0;
+      const base = (lamp.userData.base as number) ?? 2;
+      const blink = Math.sin(time * 7.4 + phase) > 0.984 ? 0.72 : 1;
+      lamp.intensity = base * (0.93 + Math.sin(time * 1.8 + phase) * 0.07) * blink * (1 + beatBass * 0.18);
+    }
     paintNightWindows(interact.windowMats, time);
     blinkScreenMaterial(interact.pcScreen, time);
-    const neonPulse = 0.75 + Math.sin(time * 2.8) * 0.25;
+    interact.pcScreen.color.setScalar(1 + beatMid * 0.22);
+    const neonPulse = (0.75 + Math.sin(time * 2.8) * 0.25) * (1 + beatMid * 0.12);
     interact.neonMat.color.setScalar(neonPulse);
   }
 }
 
 function addFridgeHum(f: AmbientFactories): Mesh {
-  const x = 7.35;
-  const z = 5.2;
+  const x = LAYOUT.fridge.x;
+  const z = LAYOUT.fridge.z;
   f.box(f.scene, 0.72, 1.35, 0.58, x, 0.68, z, 0xd8e4ef);
   f.box(f.scene, 0.68, 0.04, 0.54, x, 1.36, z, 0xb8c5d0, false);
   f.box(f.scene, 0.04, 0.35, 0.06, x - 0.32, 0.85, z + 0.32, 0x8d97a8, false);

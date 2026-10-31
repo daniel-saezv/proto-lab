@@ -86,6 +86,74 @@ test("el tablón en la pizarra 3D refleja el estado simulado", async ({ page }) 
   await waitForLobbyWhiteboard(page);
 });
 
+test("ver la pizarra encuadra la cámara y vuelve sin abrir un diálogo", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("chalkboard"));
+  const interact = page.getByTestId("interact");
+  await expect(interact).toHaveText("Ver la pizarra");
+  await interact.click();
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.whiteboardView?.() ?? null)).toMatchObject({
+    phase: "hold",
+    playerVisible: false,
+  });
+  const framed = await page.evaluate(() => window.__protoLab?.whiteboardView?.());
+  expect(framed).toBeTruthy();
+  expect(framed!.x).toBeCloseTo(-4.6, 0);
+  expect(framed!.y).toBeCloseTo(1.55, 1);
+  expect(framed!.z).toBeGreaterThan(-7.2);
+  expect(framed!.z).toBeLessThan(-3);
+  const back = page.getByTestId("board-back");
+  await expect(back).toBeVisible();
+  await expect(back).toHaveText("Volver");
+  await back.click();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
+  await expect(back).toBeHidden();
+  await expect(interact).toHaveText("Ver la pizarra");
+  await page.keyboard.press("e");
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
+});
+
+test("en vertical la pizarra se lee con un botón de volver dentro de la pantalla", async ({ browser }) => {
+  const viewport = { width: 390, height: 844 };
+  const context = await browser.newContext({
+    viewport,
+    isMobile: true,
+    hasTouch: true,
+    locale: "es-ES",
+    baseURL: "http://127.0.0.1:4173",
+  });
+  const page = await context.newPage();
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("chalkboard"));
+  await page.getByTestId("interact").tap();
+  const back = page.getByTestId("board-back");
+  await expect(back).toBeVisible();
+  const box = await back.boundingBox();
+  expect(box).toBeTruthy();
+  expect(box!.x).toBeGreaterThanOrEqual(-1);
+  expect(box!.y).toBeGreaterThanOrEqual(-1);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height + 1);
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.whiteboardView?.() ?? null)).toMatchObject({
+    phase: "hold",
+    playerVisible: false,
+  });
+  const framed = await page.evaluate(() => window.__protoLab?.whiteboardView?.());
+  expect(framed).toBeTruthy();
+  expect(framed!.z).toBeGreaterThan(-4);
+  expect(framed!.z).toBeLessThan(1);
+  await context.close();
+});
+
 test("el laboratorio carga, se propone una idea y se abre el prototipo", async ({ page, isMobile }) => {
   const proposal = page.waitForRequest("**/api/proposals");
   await page.goto("/?e2e=1");
@@ -533,6 +601,137 @@ test("en horizontal las acciones de confirmación del diálogo caben en pantalla
     expect(box!.y).toBeGreaterThanOrEqual(-1);
   }
   await context.close();
+});
+
+test("la música se sirve y no entra en la precarga del service worker", async ({ page }) => {
+  const sw = await page.request.get("/sw.js");
+  expect(sw.ok()).toBeTruthy();
+  const source = await sw.text();
+  expect(source).not.toContain("life-in-fragments");
+  expect(source).not.toContain("luanda.m4a");
+  expect(source).not.toContain("lemonade.m4a");
+  const track = await page.request.get("/protos/audio/life-in-fragments.m4a");
+  expect(track.ok()).toBeTruthy();
+  expect(track.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
+  const credits = await page.request.get("/protos/audio/CREDITS.md");
+  expect(credits.ok()).toBeTruthy();
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  const bodyText = await page.locator("body").innerText();
+  expect(bodyText.toLowerCase()).not.toContain("credit");
+  expect(bodyText.toLowerCase()).not.toContain("crédito");
+});
+
+test("un toque en el laboratorio arranca la música sin pasar por silenciar", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes(".m4a")) requests.push(request.url());
+  });
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.waitForTimeout(400);
+  expect(requests).toHaveLength(0);
+  const canvas = page.locator("#viewport canvas");
+  // Esquina: el centro del lienzo puede caer sobre la máquina y abrir el selector.
+  await canvas.click({ position: { x: 12, y: 96 } });
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  const mute = page.getByTestId("mute-music");
+  await expect(mute).toHaveAttribute("data-playback", "playing");
+  await page.evaluate(() => {
+    const proto = Document.prototype;
+    const current = Object.getOwnPropertyDescriptor(proto, "visibilityState");
+    Object.defineProperty(proto, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    if (current) Object.defineProperty(proto, "visibilityState", current);
+  });
+  await expect(mute).not.toHaveAttribute("data-playback", "playing");
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.keyboard.press("Shift");
+  await expect(mute).toHaveAttribute("data-playback", "playing");
+});
+
+test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un botón", async ({ page, browserName }) => {
+  test.skip(browserName !== "webkit", "el gesto táctil se comprueba en WebKit iPhone");
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes(".m4a")) requests.push(request.url());
+  });
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(requests).toHaveLength(0);
+
+  const joy = page.getByTestId("joystick");
+  await expect(joy).toBeVisible();
+  const box = await joy.boundingBox();
+  expect(box).toBeTruthy();
+  await dispatchTouchDrag(page, box!.x + box!.width / 2, box!.y + box!.height / 2, 0, -48);
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  const mute = page.getByTestId("mute-music");
+  await expect(mute).toHaveAttribute("data-playback", "playing");
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.locator("#game-selector")).toBeHidden();
+
+  const started = requests.length;
+  await page.reload();
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(requests).toHaveLength(started);
+  const canvas = await page.locator("#viewport canvas").boundingBox();
+  expect(canvas).toBeTruthy();
+  await dispatchTouchDrag(page, canvas!.x + canvas!.width * 0.72, canvas!.y + canvas!.height * 0.42, 0, 0);
+  await expect.poll(() => requests.length).toBeGreaterThan(started);
+  await expect(mute).toHaveAttribute("data-playback", "playing");
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.locator("#game-selector")).toBeHidden();
+});
+
+async function dispatchTouchDrag(
+  page: import("@playwright/test").Page,
+  x: number,
+  y: number,
+  dx: number,
+  dy: number,
+) {
+  await page.evaluate(
+    ({ x, y, dx, dy }) => {
+      const target = document.elementFromPoint(x, y);
+      if (!(target instanceof Element)) throw new Error("no hay elemento bajo el toque");
+      // WebKit no deja construir Touch. El listener solo necesita el tipo de evento;
+      // TouchEventInit no tiene clientX.
+      const fire = (type: string) => {
+        target.dispatchEvent(
+          new TouchEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+          }),
+        );
+      };
+      fire("touchstart");
+      if (dx !== 0 || dy !== 0) fire("touchmove");
+      fire("touchend");
+    },
+    { x, y, dx, dy },
+  );
+}
+
+test("el botón de silenciar alterna y persiste", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  const mute = page.getByTestId("mute-music");
+  await expect(mute).toBeVisible();
+  await expect(mute).toHaveAttribute("aria-pressed", "false");
+  await expect(mute).toHaveText("Silenciar");
+  await mute.click();
+  await expect(mute).toHaveAttribute("aria-pressed", "true");
+  await expect(mute).toHaveAttribute("aria-label", "Activar música");
+  await page.reload();
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await expect(page.getByTestId("mute-music")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("mute-music")).toHaveText("Activar");
 });
 
 test("en horizontal el botón de interacción queda en la mitad inferior", async ({ browser }) => {

@@ -1,3 +1,5 @@
+import { shapeStick } from "./locomotion";
+
 export type InputHandle = {
   read: () => { forward: number; right: number; lookX: number; lookY: number };
   resetLook: () => void;
@@ -9,6 +11,8 @@ export function attachInput(options: {
   joystick: HTMLElement;
   knob: HTMLElement;
   isBlocked: () => boolean;
+  /** En el turno de touchend/pointerup, antes de cualquier otra cosa. */
+  onGesture?: () => void;
 }): InputHandle {
   const keys = new Set<string>();
   let joyForward = 0;
@@ -50,7 +54,11 @@ export function attachInput(options: {
     lastX = event.clientX;
     lastY = event.clientY;
   };
+  const onGesture = () => {
+    options.onGesture?.();
+  };
   const onPointerUp = () => {
+    onGesture();
     dragging = false;
   };
 
@@ -65,6 +73,7 @@ export function attachInput(options: {
     moveJoy(event);
   };
   const onJoyUp = () => {
+    onGesture();
     joyActive = false;
     joyForward = 0;
     joyRight = 0;
@@ -88,14 +97,17 @@ export function attachInput(options: {
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", onBlur);
+  const gestureCapture: AddEventListenerOptions = { capture: true };
   options.canvas.addEventListener("pointerdown", onPointerDown);
   options.canvas.addEventListener("pointermove", onPointerMove);
   options.canvas.addEventListener("pointerup", onPointerUp);
   options.canvas.addEventListener("pointercancel", onPointerUp);
+  options.canvas.addEventListener("touchend", onGesture, gestureCapture);
   options.joystick.addEventListener("pointerdown", onJoyDown);
   options.joystick.addEventListener("pointermove", onJoyMove);
   options.joystick.addEventListener("pointerup", onJoyUp);
   options.joystick.addEventListener("pointercancel", onJoyUp);
+  options.joystick.addEventListener("touchend", onGesture, gestureCapture);
 
   return {
     read() {
@@ -107,8 +119,9 @@ export function attachInput(options: {
       if (keys.has("d") || keys.has("arrowright")) right += 1;
       if (keys.has("a") || keys.has("arrowleft")) right -= 1;
       if (joyActive) {
-        forward = joyForward;
-        right = joyRight;
+        const shaped = shapeStick(joyRight, joyForward);
+        forward = shaped.y;
+        right = shaped.x;
       }
       const length = Math.hypot(forward, right);
       if (length > 1) {
@@ -125,14 +138,17 @@ export function attachInput(options: {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
+      const gestureCapture: AddEventListenerOptions = { capture: true };
       options.canvas.removeEventListener("pointerdown", onPointerDown);
       options.canvas.removeEventListener("pointermove", onPointerMove);
       options.canvas.removeEventListener("pointerup", onPointerUp);
       options.canvas.removeEventListener("pointercancel", onPointerUp);
+      options.canvas.removeEventListener("touchend", onGesture, gestureCapture);
       options.joystick.removeEventListener("pointerdown", onJoyDown);
       options.joystick.removeEventListener("pointermove", onJoyMove);
       options.joystick.removeEventListener("pointerup", onJoyUp);
       options.joystick.removeEventListener("pointercancel", onJoyUp);
+      options.joystick.removeEventListener("touchend", onGesture, gestureCapture);
     },
   };
 }

@@ -4,6 +4,7 @@ interface Window {
     visitSlacker?: () => void;
     visitCorner?: (which: "workshop" | "pinball") => void;
     probeWalkable?: () => { target: { x: number; z: number }; moved: number; remaining: number }[];
+    whiteboardView?: () => { phase: string; x: number; y: number; z: number; playerVisible: boolean };
     viewpoints?: () => { id: string; label: string }[];
     setViewpoint?: (id: string) => boolean;
     setDebug?: (on: boolean) => void;

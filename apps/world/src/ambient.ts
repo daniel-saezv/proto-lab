@@ -19,6 +19,7 @@ import {
 } from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { addFridgeCorner, addStoryCorners, tickCornerReactions } from "./ambient-corners";
+import { LAYOUT } from "./navigation";
 
 const PALETTE = {
   couch: 0x5c4038,
@@ -85,7 +86,7 @@ export type AmbientFactories = {
 export type AmbientHandle = {
   colliders: AmbientCollider[];
   slacker: { x: number; z: number; radius: number };
-  tick: (time: number, dt: number, player: Vector3) => void;
+  tick: (time: number, dt: number, player: Vector3, beatBass?: number, beatMid?: number) => void;
 };
 
 export function addAmbient(f: AmbientFactories): AmbientHandle {
@@ -93,8 +94,8 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
   lounge.name = "ambient-lounge";
   f.scene.add(lounge);
 
-  const slackerX = -7.15;
-  const slackerZ = -4.65;
+  const slackerX = LAYOUT.couch.x;
+  const slackerZ = LAYOUT.couch.z;
 
   addCouch(lounge, slackerX, slackerZ, f);
   const { arm, ember, smokes, tvLight, tvMaterial, tvCanvas, tvCtx } = addSlackerAndTv(lounge, slackerX, slackerZ, f);
@@ -117,9 +118,9 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
   let lineShown = -1;
 
   return {
-    colliders: [{ id: "couch", x: slackerX, z: slackerZ, collider: 0.48 }, ...corners.colliders],
+    colliders: [{ id: "couch", x: slackerX, z: slackerZ, collider: LAYOUT.couch.collider }, ...corners.colliders],
     slacker: { x: slackerX, z: slackerZ, radius: 2.35 },
-    tick(time, dt, player) {
+    tick(time, dt, player, beatBass = 0, beatMid = 0) {
       const near =
         Math.hypot(player.x - slackerX, player.z - slackerZ) <= 2.35;
       if (near && lineShown < 0) {
@@ -155,18 +156,21 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
         flickerTv(tvCtx, tvCanvas, tvMaterial);
       }
       const flick = 0.7 + Math.sin(time * 11) * 0.15 + Math.sin(time * 23.7) * 0.1;
-      tvLight.intensity = 4.5 * flick;
+      tvLight.intensity = 4.5 * flick * (1 + beatMid * 0.1);
       tvMaterial.color.setRGB(0.55 + flick * 0.35, 0.65 + flick * 0.25, 1);
 
       for (let i = 0; i < dust.length; i++) {
         const m = dust[i]!;
         const base = m.userData.base as { x: number; y: number; z: number; phase: number };
-        m.position.y = base.y + Math.sin(time * 0.35 + base.phase) * 0.08;
-        m.position.x = base.x + Math.sin(time * 0.22 + base.phase * 2) * 0.04;
+        const cycle = (time * 0.07 + base.phase) % 1;
+        m.position.y = 0.35 + cycle * 2.15 + beatMid * 0.08;
+        m.position.x = base.x + Math.sin(time * 0.22 + base.phase * 2) * 0.12;
+        m.position.z = base.z + Math.cos(time * 0.18 + base.phase) * 0.1;
+        m.scale.setScalar(1 + beatMid * 0.12);
       }
 
       fridgeHum.scale.set(1, 1 + Math.sin(time * 16) * 0.4, 1);
-      tickCornerReactions(corners.interact, player, time, f.reduced);
+      tickCornerReactions(corners.interact, player, time, dt, f.reduced, beatBass, beatMid);
     },
   };
 }
@@ -297,8 +301,8 @@ function addSnackClutter(parent: Group, x: number, z: number, f: AmbientFactorie
 }
 
 function addPosters(scene: Scene, f: AmbientFactories) {
-  addPoster(scene, f, -2.1, 1.45, -7.34, PALETTE.posterA, "ARCADE");
-  addPoster(scene, f, 4.8, 1.35, -7.34, PALETTE.posterB, "ZEN");
+  addPoster(scene, f, -9.38, 1.7, -4.55, PALETTE.posterB, "ZEN", Math.PI / 2);
+  addPoster(scene, f, 9.38, 1.65, 0.4, PALETTE.posterA, "ARCADE", -Math.PI / 2);
 }
 
 function addPoster(
@@ -309,6 +313,7 @@ function addPoster(
   z: number,
   accent: number,
   label: string,
+  rotationY = 0,
 ) {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
@@ -328,34 +333,24 @@ function addPoster(
   f.materials.push(material);
   const poster = new Mesh(f.geo(new PlaneGeometry(0.55, 0.78)), material);
   poster.position.set(x, y, z);
+  poster.rotation.y = rotationY;
   scene.add(poster);
 }
 
 function addFloorCables(scene: Scene, f: AmbientFactories) {
-  const y = 0.034;
-  const radius = 0.024;
-  const cableGeoZ = f.geo(new CylinderGeometry(radius, radius, 2.4, 8));
-  const cableGeoX = f.geo(new CylinderGeometry(radius, radius, 1.1, 8));
-  const cableGeoZShort = f.geo(new CylinderGeometry(radius, radius, 1.2, 8));
+  const y = 0.03;
+  const radius = 0.02;
   const cableMat = f.mat(PALETTE.cable);
-
-  const runZ1 = new Mesh(cableGeoZ, cableMat);
-  runZ1.rotation.x = Math.PI / 2;
-  runZ1.position.set(2.8, y, -0.2);
-  scene.add(runZ1);
-
-  const runX = new Mesh(cableGeoX, cableMat);
-  runX.rotation.z = Math.PI / 2;
-  runX.position.set(3.2, y, 0.95);
-  scene.add(runX);
-
-  const runZ2 = new Mesh(cableGeoZShort, cableMat);
-  runZ2.rotation.x = Math.PI / 2;
-  runZ2.position.set(5.2, y, 2.1);
-  scene.add(runZ2);
-
-  f.box(scene, 0.07, 0.04, 0.07, 2.8, y - 0.008, -1.35, PALETTE.cablePlug, false);
-  f.box(scene, 0.07, 0.04, 0.07, 3.75, y - 0.008, 0.95, PALETTE.cablePlug, false);
+  const alongZ = new Mesh(f.geo(new CylinderGeometry(radius, radius, 1.15, 6)), cableMat);
+  alongZ.rotation.x = Math.PI / 2;
+  alongZ.position.set(LAYOUT.arcade.x + 0.95, y, LAYOUT.arcade.z + 0.15);
+  scene.add(alongZ);
+  const alongWall = new Mesh(f.geo(new CylinderGeometry(radius, radius, 1.6, 6)), cableMat);
+  alongWall.rotation.x = Math.PI / 2;
+  alongWall.position.set(8.35, y, LAYOUT.desk.z + 0.85);
+  scene.add(alongWall);
+  f.box(scene, 0.06, 0.03, 0.06, LAYOUT.arcade.x + 0.95, y, LAYOUT.arcade.z - 0.45, PALETTE.cablePlug, false);
+  f.box(scene, 0.06, 0.03, 0.06, 8.35, y, LAYOUT.desk.z + 0.05, PALETTE.cablePlug, false);
 }
 
 function addDust(scene: Scene, f: AmbientFactories): Mesh[] {
@@ -364,14 +359,18 @@ function addDust(scene: Scene, f: AmbientFactories): Mesh[] {
   f.materials.push(dustMat);
   const meshes: Mesh[] = [];
   const spots = [
-    [-1.2, 0.35, 0.4],
-    [0.8, 0.55, -1.1],
-    [2.4, 0.42, 1.8],
-    [-3.5, 0.48, 2.2],
-    [4.2, 0.38, 3.1],
-    [-0.4, 0.62, 2.8],
-    [1.5, 0.28, -2.4],
-    [-5.5, 0.52, -0.5],
+    [-1.2, 1.1, 0.4],
+    [0.4, 1.8, 1.6],
+    [2.2, 0.9, 3.4],
+    [-3.2, 1.4, 2.6],
+    [5.4, 1.2, 4.8],
+    [-0.6, 2.1, -1.2],
+    [3.6, 1.5, -2.2],
+    [-5.2, 1.3, -1.4],
+    [1.1, 2.3, 2.2],
+    [6.8, 1.1, 6.4],
+    [-6.4, 1.6, 5.2],
+    [0.2, 0.8, 6.8],
   ];
   for (let i = 0; i < spots.length; i++) {
     const [x, y, z] = spots[i]!;
