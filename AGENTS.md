@@ -82,6 +82,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Tests con viewport o dispositivo fijo (`Pixel 7`, iPhone, `isMobile` manual) solo en **un** proyecto Playwright (`chromium` o `webkit-iphone`, según corresponda).
 - Tests solo WebKit para comportamiento Safari/iOS (gestos táctiles, desbloqueo de audio, pantalla completa, safe areas).
 - En local itera con `pnpm exec playwright test <spec>`; ejecuta la suite completa una vez antes del commit final.
+- En CI, `playwright.config.ts` usa **1 worker** en Chromium (SwiftShader compite en runners de 2 vCPU) y **2** en webkit-iphone si el job lo lanza con `--project=webkit-iphone`.
 - Un test que solo pasa en reintento hay que arreglarlo o quitarlo; no subas reintentos ni timeouts para ocultarlo.
 
 ## Buenas prácticas
