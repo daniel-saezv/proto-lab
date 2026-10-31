@@ -288,6 +288,8 @@ test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browse
   });
   await openChispa(page, true);
   await expect(page.getByTestId("prototype-error")).toBeVisible();
+  await expect(page.getByTestId("prototype-error")).toContainText("volver al laboratorio");
+  await expect(page.getByTestId("prototype-error")).not.toContainText("salir del laboratorio");
   await expect(page.locator("iframe")).toHaveCount(0);
   await page.getByTestId("close-prototype").tap();
   await expect(page.getByTestId("prototype-player")).toBeHidden();
@@ -497,4 +499,76 @@ test("el service worker no cachea prototipos", async ({ page }) => {
   const proto = await page.request.get("/protos/chispa/");
   expect(proto.ok()).toBeTruthy();
   expect(await proto.text()).toContain("Pozo de bolas");
+});
+
+test("con el diálogo del Inventor abierto no se ve el joystick", async ({ browser }) => {
+  const context = await browser.newContext({
+    ...devices["Pixel 7"],
+    baseURL: "http://127.0.0.1:4173",
+    locale: "es-ES",
+  });
+  const page = await context.newPage();
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await expect(page.getByTestId("joystick")).toBeVisible();
+  await openInventorDialogue(page);
+  await expect(page.getByTestId("joystick")).toBeHidden();
+  await expect(page.getByTestId("interact")).toBeHidden();
+  await page.getByTestId("choice-bye").click();
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await expect(page.getByTestId("joystick")).toBeVisible();
+  await context.close();
+});
+
+async function reachConfirmStep(page: import("@playwright/test").Page) {
+  await openInventorDialogue(page);
+  await page.getByTestId("choice-propose").click();
+  await page.getByTestId("dialogue-input").fill("Cometa lunar");
+  await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa con el dedo.");
+  await page.getByTestId("dialogue-send").click();
+  await expect(page.getByTestId("choice-confirm")).toBeVisible();
+}
+
+test("en horizontal las acciones de confirmación del diálogo caben en pantalla", async ({ browser }) => {
+  const viewport = { width: 844, height: 390 };
+  const context = await browser.newContext({
+    viewport,
+    isMobile: true,
+    hasTouch: true,
+    locale: "es-ES",
+    baseURL: "http://127.0.0.1:4173",
+  });
+  const page = await context.newPage();
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await reachConfirmStep(page);
+  for (const id of ["choice-confirm", "choice-edit", "choice-cancel"] as const) {
+    const box = await page.getByTestId(id).boundingBox();
+    expect(box).toBeTruthy();
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height + 1);
+    expect(box!.y).toBeGreaterThanOrEqual(-1);
+  }
+  await context.close();
+});
+
+test("en horizontal el botón de interacción queda en la mitad inferior", async ({ browser }) => {
+  const viewport = { width: 844, height: 390 };
+  const context = await browser.newContext({
+    viewport,
+    isMobile: true,
+    hasTouch: true,
+    locale: "es-ES",
+    baseURL: "http://127.0.0.1:4173",
+  });
+  const page = await context.newPage();
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("arcade"));
+  await expect(page.getByTestId("interact")).toBeVisible();
+  const midline = viewport.height / 2;
+  const box = await page.getByTestId("interact").boundingBox();
+  expect(box).toBeTruthy();
+  expect(box!.y + box!.height / 2).toBeGreaterThanOrEqual(midline - 1);
+  await context.close();
 });
