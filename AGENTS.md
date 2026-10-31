@@ -30,7 +30,7 @@ GitHub omite workflows `on: push` / `on: pull_request` si el mensaje del commit 
 
 ## Stack y estructura
 
-TypeScript, Vite 7 y pnpm 10 (workspaces). El laboratorio usa Three.js 0.187 (geometría procedural, sin modelos de terceros). El prototipo de ejemplo usa Phaser 3.90.
+TypeScript, Vite 8 y pnpm 12 (workspaces). El laboratorio usa Three.js 0.187 (geometría procedural, sin modelos de terceros). El prototipo de ejemplo usa Phaser 3.90.
 
 - `apps/world`: laboratorio 3D, diálogo del Inventor, PWA y service worker de la carcasa.
 - `protos/<slug>`: un prototipo. Manifiesto en `protos/<slug>/proto.json`. Build con `base` `/protos/<slug>/`.
