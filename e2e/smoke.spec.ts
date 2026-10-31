@@ -204,6 +204,110 @@ test("se suelta una bola y dos del mismo tamaño se funden", async ({ page }) =>
   await expect.poll(() => canvas.evaluate(() => window.__chispa?.score() ?? 0), { timeout: 8000 }).toBeGreaterThan(0);
 });
 
+async function abrirPozo(page: import("@playwright/test").Page, isMobile: boolean) {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("chispa"));
+  const interact = page.getByTestId("interact");
+  await expect(interact).toHaveText("Jugar a Pozo de bolas");
+  if (isMobile) await interact.tap();
+  else await interact.click();
+  await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+}
+
+test("si la pantalla completa nativa falla, el overlay ocupa la pantalla", async ({ page, isMobile }) => {
+  await abrirPozo(page, isMobile);
+  await page.evaluate(() => {
+    const stage = document.querySelector("#stage") as HTMLElement & { webkitRequestFullscreen?: () => void };
+    Object.defineProperty(stage, "requestFullscreen", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("solo vídeo", "NotSupportedError")),
+    });
+    stage.webkitRequestFullscreen = () => {
+      throw new DOMException("solo vídeo", "NotSupportedError");
+    };
+  });
+  const full = page.getByTestId("fullscreen");
+  await expect(full).toHaveText("Pantalla completa");
+  if (isMobile) await full.tap();
+  else await full.click();
+  const stage = page.locator("#stage");
+  await expect(stage).toHaveClass(/is-pseudo-fullscreen/);
+  await expect(full).toHaveText("Salir");
+  const box = await stage.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const html = getComputedStyle(document.documentElement);
+    const lab = getComputedStyle(document.querySelector("#viewport") as Element);
+    const rect = element.getBoundingClientRect();
+    return {
+      position: style.position,
+      width: rect.width,
+      height: rect.height,
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+      htmlPosition: html.position,
+      lab: lab.visibility,
+    };
+  });
+  expect(box.position).toBe("fixed");
+  expect(box.htmlPosition).toBe("fixed");
+  expect(box.lab).toBe("hidden");
+  expect(box.width).toBeGreaterThanOrEqual(box.vw - 1);
+  expect(box.height).toBeGreaterThanOrEqual(box.vh - 1);
+  if (isMobile) await full.tap();
+  else await full.click();
+  await expect(stage).not.toHaveClass(/is-pseudo-fullscreen/);
+  await expect(full).toHaveText("Pantalla completa");
+  await expect(page.locator("html")).not.toHaveClass(/is-pseudo-fullscreen/);
+  const back = page.getByTestId("close-prototype");
+  if (isMobile) await back.tap();
+  else await back.click();
+  await expect(page.getByTestId("prototype-player")).toBeHidden();
+  await expect(page.locator("html")).not.toHaveClass(/is-pseudo-fullscreen/);
+});
+
+test("en escritorio la pantalla completa nativa no usa el modo CSS", async ({ page, isMobile, browserName }) => {
+  test.skip(isMobile || browserName !== "chromium", "la API nativa se comprueba en Chromium de escritorio");
+  await abrirPozo(page, false);
+  await page.evaluate(() => {
+    const stage = document.querySelector("#stage") as HTMLElement;
+    Object.defineProperty(stage, "requestFullscreen", {
+      configurable: true,
+      value() {
+        Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => stage });
+        document.dispatchEvent(new Event("fullscreenchange"));
+        return Promise.resolve();
+      },
+    });
+    document.exitFullscreen = () => {
+      Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => null });
+      document.dispatchEvent(new Event("fullscreenchange"));
+      return Promise.resolve();
+    };
+  });
+  const full = page.getByTestId("fullscreen");
+  await full.click();
+  await expect(full).toHaveText("Salir");
+  await expect(page.locator("#stage")).not.toHaveClass(/is-pseudo-fullscreen/);
+  await expect(page.locator("#stage")).toHaveAttribute("data-fs", "native");
+  await full.click();
+  await expect(full).toHaveText("Pantalla completa");
+  await expect(page.locator("#stage")).not.toHaveAttribute("data-fs", "native");
+});
+
+test("en el iPhone se apunta tocando la parte baja y al soltar cae una bola", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "hace falta el perfil táctil");
+  await abrirPozo(page, true);
+  const canvas = page.frameLocator("iframe").locator("canvas");
+  await canvas.waitFor();
+  await expect(page.frameLocator("iframe").getByTestId("next")).toContainText("Siguiente");
+  const before = await canvas.evaluate(() => window.__chispa?.ballCount() ?? 0);
+  const box = await canvas.boundingBox();
+  expect(box).toBeTruthy();
+  await canvas.tap({ position: { x: Math.max(12, (box?.width ?? 0) * 0.22), y: (box?.height ?? 0) * 0.78 } });
+  await expect.poll(() => canvas.evaluate(() => window.__chispa?.ballCount() ?? 0)).toBeGreaterThan(before);
+});
+
 test("el service worker no cachea prototipos", async ({ page }) => {
   const response = await page.request.get("/sw.js");
   expect(response.ok()).toBeTruthy();

@@ -1,10 +1,12 @@
 import Phaser from "phaser";
-import { COLORS, MAX_TIER, RADII, isRareWild, mergeOutcome, mergePoints } from "./rules";
+import { COLORS, MAX_TIER, RADII, dropCooldown, dropKind, mergeOutcome, mergePoints, type DropKind } from "./rules";
 
 type Hud = {
   setScore: (score: number) => void;
   setBest: (best: number) => void;
-  setCombo: (combo: number) => void;
+  setCombo: (combo: number, left?: number) => void;
+  setFever: (on: boolean) => void;
+  setNext: (label: string) => void;
   showOver: (restart: () => void) => void;
   hideOver: () => void;
 };
@@ -17,6 +19,7 @@ type Ball = {
   danger: number;
   radius: number;
   pending: boolean;
+  bomb: boolean;
 };
 
 type Spark = {
@@ -27,6 +30,8 @@ type Spark = {
   max: number;
 };
 
+type TextureKind = "normal" | "wild" | "bomb";
+
 function shade(hex: string, amount: number): string {
   const value = Number.parseInt(hex.slice(1), 16);
   const red = Math.round(((value >> 16) & 255) * amount);
@@ -35,11 +40,24 @@ function shade(hex: string, amount: number): string {
   return `rgb(${red},${green},${blue})`;
 }
 
-const WALL = 28;
-const LINE = 168;
-const DROP_Y = 108;
+function buzz(pattern: number | number[]): void {
+  const vibrate = navigator.vibrate?.bind(navigator);
+  if (!vibrate) return;
+  try {
+    vibrate(pattern);
+  } catch {
+    // Safari en iOS no implementa vibrate.
+  }
+}
+
+const WALL = 16;
+const LINE = 150;
+const DROP_Y = 92;
 const MAX_BALLS = 36;
 const MAX_SPARKS = 40;
+const COMBO_MS = 1500;
+const FEVER_MS = 4800;
+const QUIET_MS = 4200;
 
 let bestScore = 0;
 
@@ -77,21 +95,78 @@ class PlayScene extends Phaser.Scene {
   private sparks: Spark[] = [];
   private freeSparks: Spark[] = [];
   private queue: Array<[Ball, Ball]> = [];
+  private bombQueue: Ball[] = [];
   private preview!: Phaser.GameObjects.Image;
   private guide!: Phaser.GameObjects.Graphics;
   private bin!: Phaser.GameObjects.Graphics;
+  private feverVeil!: Phaser.GameObjects.Rectangle;
   private aimX = 270;
   private nextTier = 0;
   private nextWild = false;
+  private nextBomb = false;
   private dropIndex = 0;
   private score = 0;
   private combo = 1;
   private lastMerge = 0;
+  private lastSpark = 0;
   private over = false;
   private lockUntil = 0;
   private slowUntil = 0;
+  private feverUntil = 0;
+  private feverOn = false;
   private reduced = false;
   private floaters = 0;
+  private queuedDrop = false;
+  private aiming = false;
+  private pointerId: number | null = null;
+  private pointerTarget: HTMLElement | null = null;
+  private readonly onPointerDown = (event: PointerEvent) => {
+    if (this.over) return;
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    event.preventDefault();
+    this.synth.unlock();
+    this.pointerTarget?.focus();
+    this.pointerId = event.pointerId;
+    this.aiming = true;
+    try {
+      this.pointerTarget?.setPointerCapture(event.pointerId);
+    } catch {
+      // El puntero puede cancelarse antes de capturarlo.
+    }
+    this.aimX = this.clientToAim(event.clientX);
+  };
+  private readonly onPointerMove = (event: PointerEvent) => {
+    if (!this.aiming || event.pointerId !== this.pointerId) return;
+    event.preventDefault();
+    this.aimX = this.clientToAim(event.clientX);
+  };
+  private readonly onPointerUp = (event: PointerEvent) => {
+    if (!this.aiming || event.pointerId !== this.pointerId) return;
+    this.aiming = false;
+    this.pointerId = null;
+    this.aimX = this.clientToAim(event.clientX);
+    this.release(this.aimX);
+  };
+  private readonly onPointerCancel = (event: PointerEvent) => {
+    if (event.pointerId !== this.pointerId) return;
+    this.aiming = false;
+    this.pointerId = null;
+  };
+  private readonly blockGesture = (event: Event) => {
+    event.preventDefault();
+  };
+  private readonly onCollide = (event: { pairs: Array<{ bodyA: MatterJS.BodyType; bodyB: MatterJS.BodyType }> }) => {
+    for (const pair of event.pairs) this.consider(pair.bodyA, pair.bodyB);
+  };
+  private readonly nudgeLeft = () => {
+    this.aimX = this.clampX(this.aimX - 28);
+  };
+  private readonly nudgeRight = () => {
+    this.aimX = this.clampX(this.aimX + 28);
+  };
+  private readonly dropKey = () => {
+    this.release(this.aimX);
+  };
 
   constructor() {
     super("play");
@@ -103,69 +178,65 @@ class PlayScene extends Phaser.Scene {
     this.combo = 1;
     this.over = false;
     this.balls = [];
+    this.sparks = [];
+    this.freeSparks = [];
     this.queue = [];
+    this.bombQueue = [];
     this.dropIndex = 0;
     this.nextTier = 0;
     this.nextWild = false;
+    this.nextBomb = false;
     this.floaters = 0;
+    this.queuedDrop = false;
+    this.aiming = false;
+    this.pointerId = null;
+    this.feverOn = false;
+    this.feverUntil = 0;
+    this.lockUntil = 0;
+    this.slowUntil = 0;
+    this.lastMerge = 0;
     this.reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.hud.hideOver();
     this.hud.setScore(0);
     this.hud.setBest(bestScore);
     this.hud.setCombo(1);
+    this.hud.setFever(false);
     this.time.timeScale = 1;
 
     const { width, height } = this.scale;
     this.aimX = width / 2;
+    this.lastSpark = this.game.loop.time;
     this.paintTextures();
     this.drawBin(width, height);
     this.buildWalls(width, height);
+    this.feverVeil = this.add.rectangle(width / 2, height / 2, width, height, 0xff4d8d, 0).setDepth(1);
 
     this.preview = this.add.image(this.aimX, DROP_Y, "ball-0").setDepth(4);
-    this.guide = this.add.graphics().setDepth(1);
+    this.guide = this.add.graphics().setDepth(3);
     this.prepareNext(true);
-    this.spawnBall(width / 2 - 58, height - 90, 0, false, false);
-    this.spawnBall(width / 2 + 58, height - 96, 0, false, false);
+    this.spawnBall(width / 2 - 150, height - 90, 0, false, false, false);
+    this.spawnBall(width / 2 + 150, height - 96, 0, false, false, false);
 
-    this.matter.world.on("collisionstart", (event: { pairs: Array<{ bodyA: MatterJS.BodyType; bodyB: MatterJS.BodyType }> }) => {
-      for (const pair of event.pairs) this.queuePair(pair.bodyA, pair.bodyB);
+    this.matter.world.off("collisionstart", this.onCollide);
+    this.matter.world.on("collisionstart", this.onCollide);
+    this.bindPointer();
+    this.bindKeys();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.matter.world.off("collisionstart", this.onCollide);
+      this.unbindPointer();
+      this.unbindKeys();
     });
 
-    this.input.on("pointerdown", () => this.synth.unlock());
-    this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-      this.aimX = this.clampX(pointer.x);
-    });
-    this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
-      this.synth.unlock();
-      this.aimX = this.clampX(pointer.x);
-      this.release(this.aimX);
-    });
-
-    const keyboard = this.input.keyboard;
-    if (keyboard) {
-      keyboard.on("keydown-LEFT", () => {
-        this.aimX = this.clampX(this.aimX - 22);
-      });
-      keyboard.on("keydown-RIGHT", () => {
-        this.aimX = this.clampX(this.aimX + 22);
-      });
-      keyboard.on("keydown-A", () => {
-        this.aimX = this.clampX(this.aimX - 22);
-      });
-      keyboard.on("keydown-D", () => {
-        this.aimX = this.clampX(this.aimX + 22);
-      });
-      keyboard.on("keydown-SPACE", () => this.release(this.aimX));
-      keyboard.on("keydown-DOWN", () => this.release(this.aimX));
-    }
-
-    const hello = this.add.text(width / 2, 210, "¡Suelta!", {
-      fontFamily: "Segoe UI, sans-serif",
-      fontSize: "42px",
-      fontStyle: "700",
-      color: "#fff6d8",
-    }).setOrigin(0.5).setDepth(6);
-    this.tweens.add({ targets: hello, alpha: 0, y: 180, delay: 700, duration: 500, onComplete: () => hello.destroy() });
+    const hello = this.add
+      .text(width / 2, 210, "¡Arrastra!", {
+        fontFamily: "Segoe UI, sans-serif",
+        fontSize: "42px",
+        fontStyle: "700",
+        color: "#fff6d8",
+      })
+      .setOrigin(0.5)
+      .setDepth(6);
+    this.tweens.add({ targets: hello, alpha: 0, y: 170, delay: 700, duration: 420, onComplete: () => hello.destroy() });
 
     window.__chispa = {
       drop: (x?: number) => this.release(x ?? this.aimX),
@@ -181,23 +252,40 @@ class PlayScene extends Phaser.Scene {
       this.time.timeScale = 1;
       this.slowUntil = 0;
     }
-    if (!this.over && this.combo > 1 && now - this.lastMerge > 1100) {
+    if (this.queuedDrop && now >= this.lockUntil) this.release(this.aimX);
+    if (!this.over && this.combo > 1 && now - this.lastMerge > COMBO_MS) {
       this.combo = 1;
-      this.hud.setCombo(1);
+      this.hud.setCombo(1, 0);
+    } else if (!this.over && this.combo > 1) {
+      this.hud.setCombo(this.combo, 1 - (now - this.lastMerge) / COMBO_MS);
     }
+    const fever = now < this.feverUntil;
+    if (this.feverOn && !fever) {
+      this.feverOn = false;
+      this.hud.setFever(false);
+    }
+    if (!this.reduced) this.feverVeil.setAlpha(fever ? 0.1 + Math.sin(now / 90) * 0.04 : 0);
+    else this.feverVeil.setAlpha(fever ? 0.08 : 0);
+    this.flushBombs();
     this.flushMerges();
     this.drawGuide();
     this.preview.setPosition(this.aimX, DROP_Y);
+    if (fever && !this.reduced) {
+      const pulse = 1 + Math.sin(now / 70) * 0.06;
+      const radius = this.nextRadius();
+      this.preview.setDisplaySize(radius * 2 * pulse, radius * 2 * pulse);
+    }
     this.stepSparks(delta);
     if (!this.over) this.watchOverflow(now, delta);
   }
 
   private paintTextures(): void {
-    for (let tier = 0; tier <= MAX_TIER; tier += 1) this.addTexture(`ball-${tier}`, tier, false);
-    this.addTexture("ball-wild", 2, true);
+    for (let tier = 0; tier <= MAX_TIER; tier += 1) this.addTexture(`ball-${tier}`, tier, "normal");
+    this.addTexture("ball-wild", 2, "wild");
+    this.addTexture("ball-bomb", 2, "bomb");
   }
 
-  private addTexture(key: string, tier: number, wild: boolean): void {
+  private addTexture(key: string, tier: number, kind: TextureKind): void {
     if (this.textures.exists(key)) return;
     const radius = RADII[tier] ?? RADII[2];
     const scale = 2;
@@ -210,11 +298,16 @@ class PlayScene extends Phaser.Scene {
     const center = size / 2;
     const rad = radius * scale;
     const gradient = ctx.createRadialGradient(center - rad * 0.32, center - rad * 0.38, rad * 0.08, center, center, rad);
-    if (wild) {
+    if (kind === "wild") {
       gradient.addColorStop(0, "#fffde8");
       gradient.addColorStop(0.35, "#ff6ad5");
       gradient.addColorStop(0.7, "#7a7bff");
       gradient.addColorStop(1, "#3ec6ff");
+    } else if (kind === "bomb") {
+      gradient.addColorStop(0, "#ffe1a8");
+      gradient.addColorStop(0.35, "#ff7a18");
+      gradient.addColorStop(0.72, "#3a2418");
+      gradient.addColorStop(1, "#1a120c");
     } else {
       const color = COLORS[tier] ?? "#ffffff";
       gradient.addColorStop(0, "#ffffff");
@@ -225,22 +318,35 @@ class PlayScene extends Phaser.Scene {
     ctx.beginPath();
     ctx.arc(center, center, rad, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.55)";
-    ctx.beginPath();
-    ctx.ellipse(center - rad * 0.28, center - rad * 0.34, rad * 0.22, rad * 0.12, -0.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#24160f";
-    const eye = Math.max(2, rad * 0.09);
-    ctx.beginPath();
-    ctx.arc(center - rad * 0.26, center - rad * 0.05, eye, 0, Math.PI * 2);
-    ctx.arc(center + rad * 0.26, center - rad * 0.05, eye, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#24160f";
-    ctx.lineWidth = Math.max(2, rad * 0.07);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.arc(center, center + rad * 0.08, rad * 0.28, 0.18 * Math.PI, 0.82 * Math.PI);
-    ctx.stroke();
+    if (kind === "bomb") {
+      ctx.strokeStyle = "#ffd23f";
+      ctx.lineWidth = Math.max(3, rad * 0.12);
+      ctx.beginPath();
+      ctx.arc(center, center, rad * 0.62, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "#fff6d8";
+      ctx.font = `700 ${Math.round(rad * 0.7)}px Segoe UI, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("!", center, center + rad * 0.04);
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.beginPath();
+      ctx.ellipse(center - rad * 0.28, center - rad * 0.34, rad * 0.22, rad * 0.12, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#24160f";
+      const eye = Math.max(2, rad * 0.09);
+      ctx.beginPath();
+      ctx.arc(center - rad * 0.26, center - rad * 0.05, eye, 0, Math.PI * 2);
+      ctx.arc(center + rad * 0.26, center - rad * 0.05, eye, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#24160f";
+      ctx.lineWidth = Math.max(2, rad * 0.07);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(center, center + rad * 0.08, rad * 0.28, 0.18 * Math.PI, 0.82 * Math.PI);
+      ctx.stroke();
+    }
     this.textures.addCanvas(key, canvas);
   }
 
@@ -256,76 +362,120 @@ class PlayScene extends Phaser.Scene {
   }
 
   private buildWalls(width: number, height: number): void {
-    const floor = this.matter.add.rectangle(width / 2, height - 16, width, 36, { isStatic: true, friction: 0.4 });
-    const left = this.matter.add.rectangle(16, height / 2, 36, height, { isStatic: true, friction: 0.2 });
-    const right = this.matter.add.rectangle(width - 16, height / 2, 36, height, { isStatic: true, friction: 0.2 });
+    const floor = this.matter.add.rectangle(width / 2, height - 16, width, 36, { isStatic: true, friction: 0.4, restitution: 0.2 });
+    const left = this.matter.add.rectangle(16, height / 2, 36, height, { isStatic: true, friction: 0.04, restitution: 0.35 });
+    const right = this.matter.add.rectangle(width - 16, height / 2, 36, height, { isStatic: true, friction: 0.04, restitution: 0.35 });
     floor.label = "wall";
     left.label = "wall";
     right.label = "wall";
   }
 
+  private nextRadius(): number {
+    if (this.nextBomb || this.nextWild) return RADII[2];
+    return RADII[this.nextTier] ?? RADII[0];
+  }
+
+  private nextLabel(): string {
+    if (this.nextBomb) return "Siguiente: bomba";
+    if (this.nextWild) return "Siguiente: arcoíris";
+    return this.nextTier === 0 ? "Siguiente: pequeña" : "Siguiente: mediana";
+  }
+
   private prepareNext(first = false): void {
-    this.dropIndex += first ? 0 : 1;
-    this.nextWild = isRareWild(this.dropIndex);
-    this.nextTier = this.nextWild ? 2 : this.dropIndex % 5 === 4 ? 1 : 0;
-    const key = this.nextWild ? "ball-wild" : `ball-${this.nextTier}`;
+    if (!first) this.dropIndex += 1;
+    let kind: DropKind = dropKind(this.dropIndex);
+    const quiet = !first && this.game.loop.time - this.lastSpark > QUIET_MS;
+    if (quiet && kind === "normal") kind = this.dropIndex % 2 === 0 ? "wild" : "bomb";
+    this.nextWild = kind === "wild";
+    this.nextBomb = kind === "bomb";
+    this.nextTier = this.nextWild || this.nextBomb ? 2 : this.dropIndex % 5 === 4 ? 1 : 0;
+    const key = this.nextBomb ? "ball-bomb" : this.nextWild ? "ball-wild" : `ball-${this.nextTier}`;
     this.preview.setTexture(key);
-    const radius = this.nextWild ? RADII[2] : RADII[this.nextTier];
+    const radius = this.nextRadius();
     this.preview.setDisplaySize(radius * 2, radius * 2);
     this.aimX = this.clampX(this.aimX);
+    this.hud.setNext(this.nextLabel());
+    if (kind !== "normal") this.lastSpark = this.game.loop.time;
   }
 
   private release(x: number): void {
     if (this.over) return;
     const now = this.game.loop.time;
-    if (now < this.lockUntil) return;
+    this.aimX = this.clampX(x, this.nextRadius());
+    if (now < this.lockUntil) {
+      this.queuedDrop = true;
+      return;
+    }
     if (this.balls.length >= MAX_BALLS) return;
+    this.queuedDrop = false;
     const tier = this.nextTier;
     const wild = this.nextWild;
-    const radius = wild ? RADII[2] : RADII[tier];
+    const bomb = this.nextBomb;
+    const radius = this.nextRadius();
     const cx = this.clampX(x, radius);
-    this.spawnBall(cx, DROP_Y, tier, true, wild);
-    this.synth.blip(220 + tier * 30, 0.08, 0.05, "triangle");
-    this.lockUntil = now + 380;
+    this.spawnBall(cx, DROP_Y, tier, true, wild, bomb);
+    this.synth.blip(bomb ? 140 : wild ? 520 : 240 + tier * 36, 0.08, 0.06, bomb ? "square" : "triangle");
+    buzz(bomb ? 18 : 8);
+    const fever = now < this.feverUntil;
+    this.lockUntil = now + dropCooldown(fever);
     this.prepareNext();
   }
 
   private spawnPair(tier: number): void {
     const safe = Phaser.Math.Clamp(tier, 0, MAX_TIER);
-    const radius = RADII[safe];
+    const radius = RADII[safe] ?? RADII[0];
     const y = 430;
-    this.spawnBall(this.scale.width / 2 - radius + 1, y, safe, false, false);
-    this.spawnBall(this.scale.width / 2 + radius - 6, y, safe, false, false);
+    this.spawnBall(this.scale.width / 2 - radius + 1, y, safe, false, false, false);
+    this.spawnBall(this.scale.width / 2 + radius - 6, y, safe, false, false, false);
   }
 
-  private spawnBall(x: number, y: number, tier: number, falling: boolean, wild: boolean): Ball | null {
+  private spawnBall(x: number, y: number, tier: number, falling: boolean, wild: boolean, bomb: boolean): Ball | null {
     if (this.balls.length >= MAX_BALLS) return null;
-    const radius = wild ? RADII[Math.min(tier, 3)] : RADII[tier];
-    const key = wild ? "ball-wild" : `ball-${tier}`;
+    const radius = bomb || wild ? RADII[2] : (RADII[tier] ?? RADII[0]);
+    const key = bomb ? "ball-bomb" : wild ? "ball-wild" : `ball-${tier}`;
     const image = this.matter.add.image(x, y, key);
     image.setDisplaySize(radius * 2, radius * 2);
     image.setCircle(radius);
-    image.setFriction(0.05);
-    image.setFrictionAir(0.018);
-    image.setBounce(0.18);
-    image.setDensity(0.0012 + tier * 0.00035);
+    image.setFriction(0.03);
+    image.setFrictionAir(0.008);
+    image.setBounce(bomb ? 0.55 : 0.42);
+    image.setDensity(0.0011 + tier * 0.0003);
     image.setDepth(2);
-    if (falling) image.setVelocity(0, 1);
-    const ball: Ball = { image, tier, wild, born: this.game.loop.time, danger: 0, radius, pending: false };
+    if (falling) {
+      image.setVelocity((Math.random() - 0.5) * 1.4, 6.2);
+      image.setAngularVelocity((Math.random() - 0.5) * 0.12);
+    }
+    const ball: Ball = { image, tier, wild, born: this.game.loop.time, danger: 0, radius, pending: false, bomb };
     this.balls.push(ball);
     return ball;
   }
 
-  private queuePair(bodyA: MatterJS.BodyType, bodyB: MatterJS.BodyType): void {
+  private consider(bodyA: MatterJS.BodyType, bodyB: MatterJS.BodyType): void {
     const a = this.ballFrom(bodyA);
     const b = this.ballFrom(bodyB);
-    if (!a || !b || a.pending || b.pending || a === b) return;
+    const now = this.game.loop.time;
+    for (const ball of [a, b]) {
+      if (!ball?.bomb || ball.pending) continue;
+      if (now - ball.born < 120) continue;
+      ball.pending = true;
+      this.bombQueue.push(ball);
+    }
+    if (!a || !b || a.bomb || b.bomb || a.pending || b.pending || a === b) return;
     const same = a.tier === b.tier && !a.wild && !b.wild;
     const wild = a.wild || b.wild;
     if (!same && !wild) return;
     a.pending = true;
     b.pending = true;
     this.queue.push([a, b]);
+  }
+
+  private flushBombs(): void {
+    if (this.over || this.bombQueue.length === 0) return;
+    const pending = this.bombQueue.splice(0);
+    for (const bomb of pending) {
+      if (!this.balls.includes(bomb)) continue;
+      this.detonate(bomb);
+    }
   }
 
   private flushMerges(): void {
@@ -337,44 +487,96 @@ class PlayScene extends Phaser.Scene {
     }
   }
 
-  private merge(a: Ball, b: Ball): void {
+  private detonate(ball: Ball): void {
     const now = this.game.loop.time;
-    this.combo = now - this.lastMerge < 1100 ? this.combo + 1 : 1;
-    this.lastMerge = now;
-    const x = (a.image.x + b.image.x) / 2;
-    const y = (a.image.y + b.image.y) / 2;
-    const baseTier = a.wild ? b.tier : b.wild ? a.tier : a.tier;
-    const outcome = mergeOutcome(baseTier);
-    this.removeBall(a);
-    this.removeBall(b);
-    const gained = mergePoints(outcome.tier, this.combo, outcome.mega);
+    const x = ball.image.x;
+    const y = ball.image.y;
+    this.removeBall(ball);
+    this.lastSpark = now;
+    const fever = now < this.feverUntil;
+    const gained = 200 * (fever ? 2 : 1);
     this.score += gained;
     if (this.score > bestScore) {
       bestScore = this.score;
       this.hud.setBest(bestScore);
     }
     this.hud.setScore(this.score);
-    this.hud.setCombo(this.combo);
-    if (!outcome.mega) {
-      const born = this.spawnBall(x, y, outcome.tier, false, false);
-      born?.image.setVelocity((a.image.body?.velocity.x ?? 0) * 0.2, -1.5);
+    this.shove(x, y, 9 + (fever ? 2 : 0));
+    this.burst(x, y, 0xffb703, 18);
+    this.floatText(x, y - 12, "¡BOMBA!", 44);
+    this.floatText(x, y - 56, `+${gained}`, 30);
+    this.synth.blip(90, 0.22, 0.1, "square");
+    this.synth.blip(180, 0.16, 0.06, "sawtooth");
+    buzz(40);
+    if (!this.reduced) this.cameras.main.shake(200, 0.016);
+  }
+
+  private merge(a: Ball, b: Ball): void {
+    const now = this.game.loop.time;
+    this.combo = now - this.lastMerge < COMBO_MS ? this.combo + 1 : 1;
+    this.lastMerge = now;
+    this.lastSpark = now;
+    const x = (a.image.x + b.image.x) / 2;
+    const y = (a.image.y + b.image.y) / 2;
+    const baseTier = a.wild ? b.tier : b.wild ? a.tier : a.tier;
+    const outcome = mergeOutcome(baseTier);
+    this.removeBall(a);
+    this.removeBall(b);
+    const fever = this.combo >= 3 || now < this.feverUntil;
+    if (this.combo >= 3) {
+      this.feverUntil = now + FEVER_MS;
+      if (!this.feverOn) {
+        this.feverOn = true;
+        this.hud.setFever(true);
+        buzz([12, 24, 16]);
+      }
     }
+    const gained = mergePoints(outcome.tier, this.combo, outcome.mega) * (fever ? 2 : 1);
+    this.score += gained;
+    if (this.score > bestScore) {
+      bestScore = this.score;
+      this.hud.setBest(bestScore);
+    }
+    this.hud.setScore(this.score);
+    this.hud.setCombo(this.combo, 1);
+    if (!outcome.mega) {
+      const born = this.spawnBall(x, y, outcome.tier, false, false, false);
+      const pop = -2.6 - Math.min(this.combo, 5) * 0.45;
+      born?.image.setVelocity((Math.random() - 0.5) * 2.4, pop);
+    }
+    this.shove(x, y, (outcome.mega ? 7.5 : 3.4) + Math.min(this.combo, 8) * 0.65);
     this.juice(x, y, outcome.tier, outcome.mega, gained);
   }
 
+  private shove(x: number, y: number, power: number): void {
+    const reach = 150 + power * 10;
+    for (const ball of this.balls) {
+      const dx = ball.image.x - x;
+      const dy = ball.image.y - y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > reach) continue;
+      const falloff = 1 - dist / reach;
+      const kick = power * falloff;
+      const vx = ball.image.body?.velocity.x ?? 0;
+      const vy = ball.image.body?.velocity.y ?? 0;
+      ball.image.setVelocity(vx + (dx / dist) * kick, vy + (dy / dist) * kick * 0.72);
+    }
+  }
+
   private juice(x: number, y: number, tier: number, mega: boolean, gained: number): void {
-    const burst = mega ? 16 : Math.min(6 + tier * 2, 14);
-    this.burst(x, y, mega ? 0xfff1a8 : parseInt((COLORS[tier] ?? "#ffffff").slice(1), 16), burst);
-    this.floatText(x, y - 10, mega ? "¡MEGA!" : `+${gained}`, mega ? 46 : 28 + this.combo);
-    if (this.combo > 1) this.floatText(x, y - 48, `x${this.combo}`, 34);
-    const pitch = 320 * Math.pow(1.16, tier) * (1 + (this.combo - 1) * 0.08);
-    this.synth.blip(pitch, mega ? 0.28 : 0.14, mega ? 0.1 : 0.07, mega ? "triangle" : "sine");
-    if (mega) this.synth.blip(pitch * 1.5, 0.32, 0.06, "square");
+    const punch = Math.min(this.combo, 8);
+    const burst = Math.min(22, (mega ? 14 : 7) + punch * 2);
+    this.burst(x, y, mega ? 0xfff1a8 : Number.parseInt((COLORS[tier] ?? "#ffffff").slice(1), 16), burst);
+    this.floatText(x, y - 10, mega ? "¡MEGA!" : `+${gained}`, mega ? 48 : 26 + punch * 2);
+    if (this.combo > 1) this.floatText(x, y - 52, `x${this.combo}`, 32 + punch);
+    const pitch = 340 * Math.pow(1.16, tier) * (1 + (this.combo - 1) * 0.07);
+    this.synth.blip(pitch, mega ? 0.22 : 0.1, mega ? 0.1 : 0.07, mega ? "triangle" : "sine");
+    if (mega || punch >= 4) this.synth.blip(pitch * 1.5, 0.16, 0.05, "square");
+    buzz(mega ? [16, 20, 24] : Math.min(36, 8 + punch * 4));
     if (!this.reduced) {
-      this.cameras.main.shake(mega ? 280 : 90 + tier * 18, mega ? 0.012 : 0.002 + tier * 0.0011);
-      const scale = mega ? 0.2 : Math.max(0.28, 0.62 - tier * 0.04);
-      this.time.timeScale = scale;
-      this.slowUntil = this.game.loop.time + (mega ? 220 : 70 + tier * 12);
+      this.cameras.main.shake(mega ? 180 : 60 + punch * 10, mega ? 0.012 : 0.0025 + punch * 0.0009);
+      this.time.timeScale = mega ? 0.62 : Math.max(0.82, 0.96 - punch * 0.015);
+      this.slowUntil = this.game.loop.time + (mega ? 70 : 28);
     }
   }
 
@@ -382,8 +584,8 @@ class PlayScene extends Phaser.Scene {
     for (let i = 0; i < count; i += 1) {
       const spark = this.takeSpark(color);
       if (!spark) return;
-      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.2;
-      const speed = 80 + Math.random() * 160;
+      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.25;
+      const speed = 140 + Math.random() * 220;
       spark.dot.setPosition(x, y).setVisible(true).setAlpha(1).setDepth(8);
       spark.vx = Math.cos(angle) * speed;
       spark.vy = Math.sin(angle) * speed;
@@ -395,13 +597,13 @@ class PlayScene extends Phaser.Scene {
     const existing = this.freeSparks.pop();
     if (existing) {
       existing.dot.setFillStyle(color, 1);
-      existing.max = 380;
+      existing.max = 320;
       existing.life = existing.max;
       return existing;
     }
     if (this.sparks.length >= MAX_SPARKS) return null;
     const dot = this.add.circle(0, 0, 4 + Math.random() * 3, color).setDepth(8).setVisible(false);
-    const spark = { dot, vx: 0, vy: 0, life: 0, max: 380 };
+    const spark = { dot, vx: 0, vy: 0, life: 0, max: 320 };
     this.sparks.push(spark);
     return spark;
   }
@@ -411,7 +613,7 @@ class PlayScene extends Phaser.Scene {
     for (const spark of this.sparks) {
       if (spark.life <= 0) continue;
       spark.life -= delta;
-      spark.vy += 420 * step;
+      spark.vy += 520 * step;
       spark.dot.x += spark.vx * step;
       spark.dot.y += spark.vy * step;
       spark.dot.setAlpha(Math.max(0, spark.life / spark.max));
@@ -425,19 +627,22 @@ class PlayScene extends Phaser.Scene {
   private floatText(x: number, y: number, message: string, size: number): void {
     if (this.floaters > 10) return;
     this.floaters += 1;
-    const text = this.add.text(x, y, message, {
-      fontFamily: "Segoe UI, sans-serif",
-      fontSize: `${size}px`,
-      fontStyle: "700",
-      color: "#fff8e8",
-      stroke: "#1a1208",
-      strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(12);
+    const text = this.add
+      .text(x, y, message, {
+        fontFamily: "Segoe UI, sans-serif",
+        fontSize: `${size}px`,
+        fontStyle: "700",
+        color: "#fff8e8",
+        stroke: "#1a1208",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5)
+      .setDepth(12);
     this.tweens.add({
       targets: text,
-      y: y - 70,
+      y: y - 78,
       alpha: 0,
-      duration: 700,
+      duration: 560,
       onComplete: () => {
         text.destroy();
         this.floaters -= 1;
@@ -447,14 +652,14 @@ class PlayScene extends Phaser.Scene {
 
   private watchOverflow(now: number, delta: number): void {
     for (const ball of this.balls) {
-      if (now - ball.born < 1400) {
+      if (now - ball.born < 900) {
         ball.danger = 0;
         continue;
       }
       const speed = Math.hypot(ball.image.body?.velocity.x ?? 0, ball.image.body?.velocity.y ?? 0);
-      if (ball.image.y < LINE && speed < 1.2) ball.danger += delta;
+      if (ball.image.y < LINE && speed < 1.4) ball.danger += delta;
       else ball.danger = 0;
-      if (ball.danger > 1200) {
+      if (ball.danger > 900) {
         this.finish();
         return;
       }
@@ -464,10 +669,11 @@ class PlayScene extends Phaser.Scene {
   private finish(): void {
     if (this.over) return;
     this.over = true;
+    this.queuedDrop = false;
     this.time.timeScale = 1;
     this.preview.setVisible(false);
     this.matter.world.pause();
-    this.synth.blip(140, 0.35, 0.08, "sawtooth");
+    this.synth.blip(140, 0.28, 0.08, "sawtooth");
     this.hud.showOver(() => {
       this.scene.restart();
     });
@@ -476,8 +682,17 @@ class PlayScene extends Phaser.Scene {
   private drawGuide(): void {
     this.guide.clear();
     if (this.over) return;
-    this.guide.lineStyle(2, 0xfff6d8, 0.35);
-    this.guide.lineBetween(this.aimX, DROP_Y + 24, this.aimX, LINE - 8);
+    const radius = this.nextRadius();
+    const fever = this.game.loop.time < this.feverUntil;
+    const color = fever ? 0xff6ad5 : 0xfff6d8;
+    this.guide.lineStyle(4, color, 0.95);
+    this.guide.strokeCircle(this.aimX, DROP_Y, radius + 6);
+    this.guide.lineStyle(3, color, 0.55);
+    const top = DROP_Y + radius + 12;
+    const bottom = this.scale.height - 36;
+    for (let y = top; y < bottom; y += 22) {
+      this.guide.lineBetween(this.aimX, y, this.aimX, Math.min(y + 12, bottom));
+    }
   }
 
   private removeBall(ball: Ball): void {
@@ -492,8 +707,67 @@ class PlayScene extends Phaser.Scene {
     return this.balls.find((ball) => ball.image === obj);
   }
 
-  private clampX(x: number, radius = RADII[this.nextWild ? 2 : this.nextTier]): number {
+  private clampX(x: number, radius = this.nextRadius()): number {
     return Phaser.Math.Clamp(x, WALL + radius + 8, this.scale.width - WALL - radius - 8);
+  }
+
+  private clientToAim(clientX: number): number {
+    const rect = this.game.canvas.getBoundingClientRect();
+    if (rect.width <= 0) return this.aimX;
+    const local = ((clientX - rect.left) / rect.width) * this.scale.width;
+    return this.clampX(local);
+  }
+
+  private bindPointer(): void {
+    const stage = document.querySelector<HTMLElement>("#stage");
+    if (!stage) return;
+    this.unbindPointer();
+    this.pointerTarget = stage;
+    this.game.canvas.style.touchAction = "none";
+    stage.addEventListener("pointerdown", this.onPointerDown);
+    stage.addEventListener("pointermove", this.onPointerMove);
+    stage.addEventListener("pointerup", this.onPointerUp);
+    stage.addEventListener("pointercancel", this.onPointerCancel);
+    stage.addEventListener("touchmove", this.blockGesture, { passive: false });
+    stage.addEventListener("contextmenu", this.blockGesture);
+    document.addEventListener("gesturestart", this.blockGesture);
+  }
+
+  private unbindPointer(): void {
+    const stage = this.pointerTarget;
+    if (!stage) return;
+    stage.removeEventListener("pointerdown", this.onPointerDown);
+    stage.removeEventListener("pointermove", this.onPointerMove);
+    stage.removeEventListener("pointerup", this.onPointerUp);
+    stage.removeEventListener("pointercancel", this.onPointerCancel);
+    stage.removeEventListener("touchmove", this.blockGesture);
+    stage.removeEventListener("contextmenu", this.blockGesture);
+    document.removeEventListener("gesturestart", this.blockGesture);
+    this.pointerTarget = null;
+  }
+
+  private bindKeys(): void {
+    const keyboard = this.input.keyboard;
+    if (!keyboard) return;
+    this.unbindKeys();
+    keyboard.addCapture(["LEFT", "RIGHT", "DOWN", "SPACE", "A", "D"]);
+    keyboard.on("keydown-LEFT", this.nudgeLeft);
+    keyboard.on("keydown-A", this.nudgeLeft);
+    keyboard.on("keydown-RIGHT", this.nudgeRight);
+    keyboard.on("keydown-D", this.nudgeRight);
+    keyboard.on("keydown-SPACE", this.dropKey);
+    keyboard.on("keydown-DOWN", this.dropKey);
+  }
+
+  private unbindKeys(): void {
+    const keyboard = this.input.keyboard;
+    if (!keyboard) return;
+    keyboard.off("keydown-LEFT", this.nudgeLeft);
+    keyboard.off("keydown-A", this.nudgeLeft);
+    keyboard.off("keydown-RIGHT", this.nudgeRight);
+    keyboard.off("keydown-D", this.nudgeRight);
+    keyboard.off("keydown-SPACE", this.dropKey);
+    keyboard.off("keydown-DOWN", this.dropKey);
   }
 }
 
@@ -501,10 +775,16 @@ const title = document.querySelector<HTMLElement>("#game-title");
 const score = document.querySelector<HTMLElement>("#score");
 const best = document.querySelector<HTMLElement>("#best");
 const combo = document.querySelector<HTMLElement>("#combo");
+const meter = document.querySelector<HTMLElement>("#combo-meter");
+const meterFill = meter?.querySelector("span");
+const fever = document.querySelector<HTMLElement>("#fever");
+const next = document.querySelector<HTMLElement>("#next");
 const again = document.querySelector<HTMLElement>("#again");
 const retry = document.querySelector<HTMLButtonElement>("#retry");
 const stage = document.querySelector<HTMLElement>("#stage");
-if (!title || !score || !best || !combo || !again || !retry || !stage) throw new Error("Falta el marcador del juego.");
+if (!title || !score || !best || !combo || !meter || !meterFill || !fever || !next || !again || !retry || !stage) {
+  throw new Error("Falta el marcador del juego.");
+}
 
 const hud: Hud = {
   setScore(value) {
@@ -513,9 +793,19 @@ const hud: Hud = {
   setBest(value) {
     best.textContent = `Mejor: ${value}`;
   },
-  setCombo(value) {
-    combo.hidden = value < 2;
-    combo.textContent = value >= 2 ? `Combo x${value}` : "";
+  setCombo(value, left = 0) {
+    const on = value >= 2;
+    combo.hidden = !on;
+    meter.hidden = !on;
+    combo.textContent = on ? `Combo x${value}` : "";
+    meterFill.style.transform = `scaleX(${Math.max(0, Math.min(1, left))})`;
+  },
+  setFever(on) {
+    fever.hidden = !on;
+    document.body.classList.toggle("fever", on);
+  },
+  setNext(label) {
+    next.textContent = label;
   },
   showOver(restart) {
     again.hidden = false;
@@ -542,9 +832,11 @@ const game = new Phaser.Game({
   physics: {
     default: "matter",
     matter: {
-      gravity: { x: 0, y: 1.35 },
+      gravity: { x: 0, y: 2.7 },
       debug: false,
       enableSleeping: false,
+      positionIterations: 10,
+      velocityIterations: 8,
     },
   },
   scene: [PlayScene],
@@ -556,7 +848,6 @@ const game = new Phaser.Game({
   },
 });
 
-stage.addEventListener("pointerdown", () => stage.focus());
 void game;
 
 declare global {

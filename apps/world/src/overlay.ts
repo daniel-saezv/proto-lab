@@ -3,6 +3,17 @@ import type { CatalogEntry } from "./types";
 
 const FAIL = "No he podido abrir el prototipo. Pulsa Volver para salir del laboratorio.";
 
+type FullscreenHost = HTMLElement & { webkitRequestFullscreen?: () => void };
+type FullscreenDoc = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => void;
+};
+
+function nativeFullscreenElement(): Element | null {
+  const doc = document as FullscreenDoc;
+  return document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+}
+
 export function createOverlay(root: HTMLElement, onClose: () => void) {
   let generation = 0;
   let opened = false;
@@ -16,6 +27,65 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     objectUrl = null;
   }
 
+  function setPseudo(on: boolean) {
+    root.classList.toggle("is-pseudo-fullscreen", on);
+    document.documentElement.classList.toggle("is-pseudo-fullscreen", on);
+    document.body.classList.toggle("is-pseudo-fullscreen", on);
+    if (on) root.dataset.fs = "pseudo";
+    else if (root.dataset.fs === "pseudo") delete root.dataset.fs;
+  }
+
+  function syncLabel() {
+    const button = root.querySelector<HTMLButtonElement>('[data-testid="fullscreen"]');
+    if (!button) return;
+    const on = nativeFullscreenElement() === root || root.classList.contains("is-pseudo-fullscreen");
+    button.textContent = on ? "Salir" : "Pantalla completa";
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  function exitFullscreenModes() {
+    setPseudo(false);
+    if (root.dataset.fs === "native") delete root.dataset.fs;
+    if (nativeFullscreenElement() === root) {
+      const doc = document as FullscreenDoc;
+      const exit = document.exitFullscreen?.bind(document) ?? doc.webkitExitFullscreen?.bind(document);
+      if (exit) void Promise.resolve(exit()).catch(() => {});
+    }
+    syncLabel();
+  }
+
+  async function enterFullscreen() {
+    const host = root as FullscreenHost;
+    const request = root.requestFullscreen?.bind(root) ?? host.webkitRequestFullscreen?.bind(root);
+    if (!request) {
+      setPseudo(true);
+      syncLabel();
+      return;
+    }
+    try {
+      await Promise.resolve(request());
+    } catch {
+      setPseudo(true);
+      syncLabel();
+      return;
+    }
+    if (nativeFullscreenElement() === root) {
+      setPseudo(false);
+      root.dataset.fs = "native";
+      syncLabel();
+      return;
+    }
+    setPseudo(true);
+    syncLabel();
+  }
+
+  function onFullscreenChange() {
+    if (nativeFullscreenElement() !== root && root.dataset.fs === "native") delete root.dataset.fs;
+    syncLabel();
+  }
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+
   function close() {
     if (!opened) return;
     opened = false;
@@ -23,9 +93,9 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     window.clearTimeout(aliveTimer);
     frame = null;
     revoke();
+    exitFullscreenModes();
     document.body.classList.remove("prototype-open");
-    document.querySelector(".prototype-chrome")?.remove();
-    if (document.fullscreenElement === root) void document.exitFullscreen?.();
+    root.querySelector(".prototype-chrome")?.remove();
     root.replaceChildren();
     root.hidden = true;
     onClose();
@@ -60,8 +130,9 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     frame = null;
     window.clearTimeout(aliveTimer);
     revoke();
+    exitFullscreenModes();
     document.body.classList.add("prototype-open");
-    document.querySelector(".prototype-chrome")?.remove();
+    root.querySelector(".prototype-chrome")?.remove();
     root.hidden = false;
     root.replaceChildren();
 
@@ -88,11 +159,12 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     full.className = "text-button";
     full.dataset.testid = "fullscreen";
     full.textContent = "Pantalla completa";
+    full.setAttribute("aria-pressed", "false");
     full.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (document.fullscreenElement) void document.exitFullscreen();
-      else void root.requestFullscreen?.().catch(() => {});
+      if (nativeFullscreenElement() === root || root.classList.contains("is-pseudo-fullscreen")) exitFullscreenModes();
+      else void enterFullscreen();
     });
 
     const banner = document.createElement("p");
@@ -100,8 +172,6 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     banner.hidden = true;
 
     header.append(back, title, full, banner);
-    document.body.append(header);
-
     const slot = document.createElement("div");
     slot.className = "prototype-frame";
     const status = document.createElement("p");
@@ -109,7 +179,7 @@ export function createOverlay(root: HTMLElement, onClose: () => void) {
     status.dataset.testid = "prototype-status";
     status.textContent = "Abriendo el prototipo…";
     slot.append(status);
-    root.append(slot);
+    root.append(header, slot);
 
     void fetchPrototypeDocument(entry.href)
       .then((html) => {

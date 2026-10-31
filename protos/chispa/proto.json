@@ -1,12 +1,12 @@
 {
   "slug": "chispa",
   "title": "Pozo de bolas",
-  "description": "Suelta bolas de colores en el pozo. Si dos del mismo tamaño se tocan, se funden en una más grande.",
+  "description": "Arrastra con un dedo y suelta bolas en el pozo. Si dos del mismo tamaño se tocan, se funden, empujan a las vecinas y pueden encadenar un combo.",
   "author": "daniel-saezv",
   "date": "2026-10-31",
   "tags": ["arcade", "fusion", "movil"],
   "cover": null,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "history": [
     {
       "version": "0.1.0",
@@ -17,6 +17,11 @@
       "version": "0.2.0",
       "date": "2026-10-31",
       "note": "El minijuego pasa a ser un pozo de bolas que se funden al tocarse."
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-10-31",
+      "note": "Controles de un pulgar, caída más rápida, combos, fiebre, bomba y arcoíris."
     }
   ]
 }

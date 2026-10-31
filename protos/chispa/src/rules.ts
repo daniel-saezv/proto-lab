@@ -18,3 +18,15 @@ export function mergePoints(resultTier: number, combo: number, mega: boolean): n
 export function isRareWild(dropIndex: number): boolean {
   return dropIndex > 0 && dropIndex % 9 === 0;
 }
+
+export type DropKind = "normal" | "wild" | "bomb";
+
+export function dropKind(dropIndex: number): DropKind {
+  if (dropIndex > 0 && dropIndex % 11 === 0) return "bomb";
+  if (isRareWild(dropIndex)) return "wild";
+  return "normal";
+}
+
+export function dropCooldown(fever: boolean): number {
+  return fever ? 150 : 230;
+}
