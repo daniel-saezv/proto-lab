@@ -1,0 +1,44 @@
+name: Aviso de aprobado
+
+on:
+  issues:
+    types: [labeled]
+
+permissions: {}
+
+concurrency:
+  group: aprobado-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  avisar:
+    name: Avisar al Grok Bot
+    if: github.event.label.name == 'aprobado' && github.event.sender.login == 'daniel-saezv'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Enviar aviso
+        env:
+          WEBHOOK_URL: ${{ secrets.GROKBOT_WEBHOOK_URL }}
+          WEBHOOK_AUTH: ${{ secrets.GROKBOT_WEBHOOK_AUTH }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK_URL}" ] || [ -z "${WEBHOOK_AUTH}" ]; then
+            echo "::notice::Faltan GROKBOT_WEBHOOK_URL o GROKBOT_WEBHOOK_AUTH. No se envía el aviso."
+            exit 0
+          fi
+          case "${ISSUE_NUMBER}" in
+            ''|*[!0-9]*)
+              echo "::notice::El número de issue no es válido. No se envía el aviso."
+              exit 0
+              ;;
+          esac
+          payload=$(printf '{"repo":"daniel-saezv/proto-lab","issue":%s,"label":"aprobado"}' "${ISSUE_NUMBER}")
+          curl --fail --silent --show-error --max-time 20 \
+            --request POST \
+            --header "Authorization: ${WEBHOOK_AUTH}" \
+            --header "Content-Type: application/json" \
+            --data "${payload}" \
+            --url "${WEBHOOK_URL}"
+          echo "Aviso enviado para la issue ${ISSUE_NUMBER}."
