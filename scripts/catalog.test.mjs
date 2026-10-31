@@ -44,6 +44,7 @@ describe("service worker", () => {
     expect(headers).toMatch(/\/protos\/\*/);
     expect(headers).toMatch(/no-cache/);
     expect(headers).toMatch(/Access-Control-Allow-Origin: \*/);
+    expect(headers).toMatch(/\/protos\/audio\/\*\.m4a[\s\S]*! Cache-Control[\s\S]*max-age=31536000, immutable/);
     const routes = JSON.parse(readFileSync(join(root, "apps/world/public/_routes.json"), "utf8"));
     expect(routes.include).toEqual(["/api/*"]);
   });
