@@ -70,7 +70,7 @@ Comandos comprobados en este repositorio (Node 22.23, pnpm 12.17.0):
 - Arranque de producción local: `pnpm preview` → `http://127.0.0.1:4173`
 - Arranque con recarga: `pnpm dev` → laboratorio en el puerto 5173, sirviendo los prototipos ya construidos
 
-En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=true` y la petición lleve `X-Dev-User-Email`. Esa variable no se define en Pages. Para crear issues de verdad hace falta además `GITHUB_TOKEN` en el entorno del servidor, nunca en el cliente.
+En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=true`, la petición sea a loopback y lleve `X-Dev-User-Email`. Esa variable no se define en Pages. En Pages la identidad es el JWT de Access (`CF_ACCESS_AUD`). Para crear issues de verdad hace falta además `GITHUB_TOKEN` en el entorno del servidor, nunca en el cliente.
 
 ## Pruebas E2E sostenibles
 
@@ -129,7 +129,7 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 - Secreto de Pages: `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en `daniel-saezv/proto-lab`). Sin valor en el repo.
 - Secreto de Pages: `GITHUB_STATUS_TOKEN` (fine-grained **aparte**, solo lectura: Issues, Pull requests y Actions en este repo). Alimenta `GET /api/proposals/status`. No reutilices `GITHUB_TOKEN`.
 - Secreto de Pages: `CF_PAGES_READ_TOKEN` (API token con permiso **Cloudflare Pages Read**). Opcional: sin él el tablón sigue funcionando pero no puede marcar `preview_lista` por despliegue.
-- Variables de Pages (no secretas): `CF_ACCOUNT_ID`, `CF_PAGES_PROJECT` (p. ej. `proto-lab`).
+- Variables de Pages (no secretas): `CF_ACCOUNT_ID`, `CF_PAGES_PROJECT` (p. ej. `proto-lab`), `CF_ACCESS_AUD` (etiqueta AUD de la aplicación Access; no es un secreto, pero sin ella `/api/proposals` responde 401).
 - Binding opcional: KV `PROPOSALS`. Sin él no hay límite diario al crear propuestas ni caché del tablón; la Function de estado sigue respondiendo.
 - No definir `ALLOW_DEV_AUTH` en Pages.
 
@@ -139,15 +139,15 @@ El único workflow que mira issues es el aviso al Grok Bot (arriba): al crear un
 
 ### Tablón de propuestas (`GET /api/proposals/status`)
 
-Detrás de Cloudflare Access igual que `POST /api/proposals`: exige `Cf-Access-Authenticated-User-Email` (401 sin él). En local, `ALLOW_DEV_AUTH=true` y cabecera `X-Dev-User-Email` (nunca en Pages). Solo **GET** (405 en otros métodos).
+Detrás de Cloudflare Access igual que `POST /api/proposals`: valida el JWT `Cf-Access-Jwt-Assertion` (firma RS256 contra `https://ancient-waterfall-b3eb.cloudflareaccess.com/cdn-cgi/access/certs`, emisor de ese equipo y audiencia). No usa `Cf-Access-Authenticated-User-Email`. Hace falta la variable de Pages **`CF_ACCESS_AUD`** (etiqueta AUD; varias separadas por comas si producción y las previews son aplicaciones distintas). Sin ella la Function responde 401. En local, `ALLOW_DEV_AUTH=true` y `X-Dev-User-Email` solo valen en loopback (nunca en Pages). Solo **GET** (405 en otros métodos).
 
-**Datos:** issues abiertas y cerradas con etiqueta `propuesta`, cuerpo con la marca `<!-- proto-lab: peticion-de-usuario -->`, tipo `propuesta` o `iteracion` según etiquetas. `aprobada` solo si el dueño (@daniel-saezv) puso `aprobado` (eventos de la issue). PR enlazado por timeline `cross-referenced` o, en respaldo, PRs que citen `#N` en el cuerpo (el más reciente). CI vía Actions (`ci.yml`) sobre el HEAD del PR, no commit statuses ni check runs. Preview/producción vía API de Pages (`deployments` por rama y commit). `publicada` = PR mergeado y despliegue de producción del merge commit con éxito (o PR mergeado si no hay despliegue). Si GitHub o Cloudflare fallan, responde lo que pueda con `partial: true` y la fase más fiable posible, sin filtrar detalles del error al cliente.
+**Datos:** una consulta GraphQL agrupa issues (abiertas y cerradas con `propuesta`), timelines (etiquetado y cross-reference) y pulls con el check suite de `ci.yml` sobre el HEAD. El contrato no cambia. `aprobada` solo si el dueño (@daniel-saezv) puso `aprobado`. PR enlazado por timeline `cross-referenced` o, en respaldo, PRs que citen `#N` en el cuerpo (el más reciente). CI es el workflow `ci.yml`, no un check suelto de un job. Preview/producción vía API de Pages (`deployments` por rama y commit). `publicada` = PR mergeado y despliegue de producción del merge commit con éxito (o PR mergeado si no hay despliegue). Si GitHub o Cloudflare fallan, responde lo que pueda con `partial: true` y la fase más fiable posible, sin filtrar detalles del error al cliente. Un fallo de GitHub no se escribe en la caché.
 
 **Fases** (prioridad creciente; gana la más avanzada salvo `cerrada_sin_hacer`, que gana si la issue se cerró como `not_planned` o el PR se cerró sin merge): `recibida` → `aprobada` → `en_curso` → `pr_abierto` → `ci_en_curso` → `ci_con_fallos` → `ci_correcta` → `preview_lista` → `publicada` → `cerrada_sin_hacer`.
 
 **Respuesta JSON:** `{ ok: true, partial?: boolean, items: [{ number, title, kind, slug?, phase, updatedAt, previewUrl? }] }`. Título escapado y truncado (80 caracteres). `previewUrl` solo en `preview_lista` (subdominio `*.proto-lab-3k6.pages.dev`) o en `publicada` (producción). **No** se exponen emails, cuerpos, ramas, logs, mensajes de commit ni enlaces a GitHub.
 
-**Caché:** KV `PROPOSALS`, clave `proposal-status:v2:all`, TTL **120 s**. Sin binding, sin caché.
+**Caché:** KV `PROPOSALS`, clave `proposal-status:v3:all`. Una lectura buena se sirve **120 s** y se guarda 24 h para poder repetirla si GitHub falla; un fallo o un `partial` no se escriben. Crear una propuesta borra la clave. Sin binding, sin caché. Las claves públicas de Access se cachean una hora (memoria del isolate y Cache API).
 
 **UI:** en el laboratorio 3D, la **pizarra** pinta el tablón en la escena (estado vía `GET /api/proposals/status`). Sin WebGL, el fallback HTML muestra el mismo tablón en un canvas 2D. Textos con `textContent`; la preview abre en pestaña nueva con `rel=noopener noreferrer`.
 
@@ -164,4 +164,5 @@ Secretos en Cursor, sin valores:
 - Ninguno es obligatorio para instalar, construir o pasar los tests.
 - `GITHUB_TOKEN` solo si se quiere probar la creación real de issues desde la nube. Mismo alcance que en Pages: fine-grained, solo Issues de este repositorio.
 - `GITHUB_STATUS_TOKEN`, `CF_PAGES_READ_TOKEN`, `CF_ACCOUNT_ID` y `CF_PAGES_PROJECT` solo si quieres probar el tablón contra GitHub/Cloudflare reales en la nube.
+- `CF_ACCESS_AUD` solo si quieres probar las Functions con un JWT real de Access. No pongas el valor en el repo.
 - No añadas `ALLOW_DEV_AUTH` como secreto de Cursor ni de Pages. En local se exporta en la shell únicamente para esa prueba.

@@ -1,5 +1,5 @@
 import { aprobadoByOwner, type TimelineEvent } from "./aprobado";
-import { readStatusCache, writeStatusCache, type KvLike, type StatusCachePayload } from "./cache";
+import { cacheFreshness, readStatusCache, writeStatusCache, type KvLike, type StatusCachePayload } from "./cache";
 import { PRODUCTION_HOST, STATUS_TITLE_MAX, type ProposalPhase } from "./constants";
 import {
   extractSlug,
@@ -9,18 +9,18 @@ import {
   stripIssueTitlePrefix,
   truncateTitle,
 } from "./format";
+import { fetchProposalBoard } from "./graphql";
 import {
   ciSnapshotFromRun,
-  fetchAllPullRequests,
-  fetchCiForHeadSha,
-  fetchIssueTimeline,
   fetchPagesDeployments,
-  fetchProposalIssues,
   pickPreviewDeployment,
   pickProductionDeployment,
   publicPreviewUrl,
   type GitHubFetch,
+  type GitHubIssue,
+  type GitHubPull,
   type PagesDeployment,
+  type WorkflowRun,
 } from "./github";
 import { boardClosedSinceIso, isIssueVisibleOnBoard } from "./board-visibility";
 import { pickLinkedPullRequest, type PullCandidate, type PullRequestRef } from "./issue-pr";
@@ -55,7 +55,7 @@ export type StatusOptions = {
   now?: Date;
 };
 
-function toPullCandidates(pulls: Awaited<ReturnType<typeof fetchAllPullRequests>>): PullCandidate[] {
+function toPullCandidates(pulls: readonly GitHubPull[]): PullCandidate[] {
   return pulls.map((pr) => ({
     number: pr.number,
     updated_at: pr.updated_at,
@@ -95,9 +95,11 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
   const now = options.now ?? new Date();
   const nowMs = now.getTime();
   const cached = await readStatusCache(env.PROPOSALS);
-  if (cached) {
+  const freshness = cached ? cacheFreshness(cached, nowMs) : "invalid";
+  if (cached && freshness === "fresh") {
     return { ok: true, partial: cached.partial, items: cached.items as StatusItem[] };
   }
+  const stale = cached && freshness === "stale" ? cached : null;
 
   const token = env.GITHUB_STATUS_TOKEN;
   if (!token) {
@@ -105,28 +107,29 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
   }
 
   let partial = false;
-  let issues: Awaited<ReturnType<typeof fetchProposalIssues>> = [];
+  let githubFailed = false;
+  let issues: GitHubIssue[] = [];
   let pulls: PullCandidate[] = [];
+  let timelines = new Map<number, TimelineEvent[]>();
+  let ciBySha = new Map<string, WorkflowRun>();
   let deployments: PagesDeployment[] | null = null;
 
   try {
-    issues = await fetchProposalIssues(token, fetchImpl, { closedSince: boardClosedSinceIso(now) });
+    const board = await fetchProposalBoard(token, fetchImpl, { closedSince: boardClosedSinceIso(now) });
+    issues = board.issues;
+    pulls = toPullCandidates(board.pulls);
+    timelines = board.timelines as Map<number, TimelineEvent[]>;
+    ciBySha = board.ciBySha;
+    if (board.partial) partial = true;
   } catch {
+    githubFailed = true;
     partial = true;
-    issues = [];
-  }
-
-  try {
-    pulls = toPullCandidates(await fetchAllPullRequests(token, fetchImpl));
-  } catch {
-    partial = true;
-    pulls = [];
   }
 
   const cfToken = env.CF_PAGES_READ_TOKEN;
   const accountId = env.CF_ACCOUNT_ID;
   const project = env.CF_PAGES_PROJECT ?? "proto-lab";
-  if (cfToken && accountId) {
+  if (!githubFailed && cfToken && accountId) {
     try {
       deployments = await fetchPagesDeployments(accountId, project, cfToken, fetchImpl);
     } catch {
@@ -146,25 +149,10 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
 
   for (const issue of filtered) {
     const labelNames = issue.labels.map((l) => l.name);
-    let timeline: TimelineEvent[] = [];
-    try {
-      timeline = (await fetchIssueTimeline(token, issue.number, fetchImpl)) as TimelineEvent[];
-    } catch {
-      partial = true;
-    }
-
+    const timeline = timelines.get(issue.number) ?? [];
     const approvedByOwner = aprobadoByOwner(timeline);
     const pull = pickLinkedPullRequest(issue.number, timeline, pulls);
-
-    let ci: CiSnapshot = { state: "none" };
-    if (pull) {
-      try {
-        const run = await fetchCiForHeadSha(token, pull.headSha, fetchImpl);
-        ci = ciSnapshotFromRun(run);
-      } catch {
-        partial = true;
-      }
-    }
+    const ci: CiSnapshot = pull ? ciSnapshotFromRun(ciBySha.get(pull.headSha) ?? null) : { state: "none" };
 
     const mergeSha = pull?.merged ? (pull.mergeCommitSha ?? pull.headSha) : null;
     const deploy = buildDeploySnapshot(pull, deployments, mergeSha);
@@ -197,12 +185,19 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
 
   items.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : b.number - a.number));
 
-  const payload: StatusCachePayload = {
-    fetchedAt: now.toISOString(),
-    partial,
-    items,
-  };
-  await writeStatusCache(env.PROPOSALS, payload);
+  if (githubFailed) {
+    if (stale) return { ok: true, partial: true, items: stale.items as StatusItem[] };
+    return { ok: true, partial: true, items: [] };
+  }
+
+  if (!partial) {
+    const payload: StatusCachePayload = {
+      fetchedAt: now.toISOString(),
+      partial,
+      items,
+    };
+    await writeStatusCache(env.PROPOSALS, payload);
+  }
 
   return { ok: true, partial, items };
 }

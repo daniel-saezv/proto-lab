@@ -6,6 +6,7 @@ export async function sendProposal(draft: ProposalDraft): Promise<SubmitOutcome>
     if (import.meta.env.DEV) headers["x-dev-user-email"] = "dev@example.com";
     const response = await fetch("/api/proposals", {
       method: "POST",
+      cache: "no-store",
       headers,
       body: JSON.stringify(draft),
     });

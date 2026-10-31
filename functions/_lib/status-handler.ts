@@ -1,16 +1,11 @@
 import { readAccessEmail, type AccessEnv } from "./access";
+import { jsonResponse } from "./http";
 import { buildProposalStatus, type StatusEnv } from "./status/aggregate";
 
 export type ProposalStatusEnv = StatusEnv & AccessEnv;
 
 function json(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
-  });
+  return jsonResponse(status, body);
 }
 
 export type StatusHandlerOptions = {
@@ -27,7 +22,7 @@ export async function handleProposalStatus(
     return json(405, { ok: false, error: "method", message: "Solo se acepta GET." });
   }
 
-  const email = readAccessEmail(request, env);
+  const email = await readAccessEmail(request, env, options.fetchImpl ?? fetch);
   if (!email) {
     return json(401, { ok: false, error: "unauthorized", message: "No hay una sesión de Cloudflare Access." });
   }

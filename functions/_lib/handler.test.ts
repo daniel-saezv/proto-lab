@@ -1,5 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { installAccessKeysForTests, resetAccessCertsForTests } from "./access";
+import { accessClaims, createAccessFixture, type AccessFixture } from "./access-fixture";
 import { handleProposal, type KvLike, type ProposalEnv } from "./handler";
+import { STATUS_CACHE_KEY } from "./status/cache";
 import { LIMITS, buildIssue, quoteUserText, validateProposal } from "./validate";
 import { LIMITS as clientLimits } from "../../apps/world/src/limits";
 
@@ -16,6 +19,9 @@ function memoryKv(): KvLike & { store: Map<string, string> } {
     async put(key, value) {
       store.set(key, value);
     },
+    async delete(key) {
+      store.delete(key);
+    },
   };
 }
 
@@ -27,8 +33,34 @@ function request(body: unknown, headers: Record<string, string> = {}): Request {
   });
 }
 
+let fixture: AccessFixture;
+
+beforeAll(async () => {
+  fixture = await createAccessFixture();
+  installAccessKeysForTests([fixture.publicJwk]);
+  for (const email of [EMAIL, "otra@example.com"]) {
+    signed.set(email, await fixture.sign(accessClaims(email, fixture.aud)));
+  }
+});
+
+afterAll(() => {
+  resetAccessCertsForTests();
+});
+
 function access(email = EMAIL): Record<string, string> {
-  return { "Cf-Access-Authenticated-User-Email": email };
+  return { "Cf-Access-Jwt-Assertion": fixtureToken(email) };
+}
+
+const signed = new Map<string, string>();
+
+function fixtureToken(email: string): string {
+  const cached = signed.get(email);
+  if (cached) return cached;
+  throw new Error("firma el JWT en el test antes de usarlo");
+}
+
+function envOf(extra: ProposalEnv = {}): ProposalEnv {
+  return { GITHUB_TOKEN: TOKEN, CF_ACCESS_AUD: fixture.aud, ...extra };
 }
 
 const proposal = {
@@ -126,19 +158,35 @@ describe("handleProposal", () => {
     expect(missing.status).toBe(401);
   });
 
-  it("prioriza Access y no deja que la cabecera de desarrollo la sustituya si es inválida", async () => {
-    const response = await handleProposal(
-      request(proposal, { "Cf-Access-Authenticated-User-Email": "no-es-email", "X-Dev-User-Email": EMAIL }),
-      { GITHUB_TOKEN: TOKEN, ALLOW_DEV_AUTH: "true" },
+  it("ignora el email de Access y no acepta el modo de desarrollo fuera de loopback", async () => {
+    const spoofed = await handleProposal(
+      request(proposal, { "Cf-Access-Authenticated-User-Email": EMAIL, "X-Dev-User-Email": EMAIL }),
+      { GITHUB_TOKEN: TOKEN, ALLOW_DEV_AUTH: "true", CF_ACCESS_AUD: fixture.aud },
       { knownSlugs: ["chispa"] },
     );
-    expect(response.status).toBe(401);
+    expect(spoofed.status).toBe(401);
+    const local = new Request("http://127.0.0.1/api/proposals", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "Cf-Access-Jwt-Assertion": "no.es.jwt",
+        "X-Dev-User-Email": EMAIL,
+      },
+      body: JSON.stringify(proposal),
+    });
+    const invalidJwt = await handleProposal(local, { GITHUB_TOKEN: TOKEN, ALLOW_DEV_AUTH: "true" }, { knownSlugs: ["chispa"] });
+    expect(invalidJwt.status).toBe(401);
   });
 
-  it("crea la issue con el email de desarrollo solo si ALLOW_DEV_AUTH es true", async () => {
+  it("crea la issue con el email de desarrollo solo en loopback y con ALLOW_DEV_AUTH", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => githubOk(3));
+    const local = new Request("http://127.0.0.1/api/proposals", {
+      method: "POST",
+      headers: { "content-type": "application/json", "X-Dev-User-Email": "Dev@Example.com" },
+      body: JSON.stringify(proposal),
+    });
     const response = await handleProposal(
-      request(proposal, { "X-Dev-User-Email": "Dev@Example.com" }),
+      local,
       { GITHUB_TOKEN: TOKEN, ALLOW_DEV_AUTH: "true" },
       { knownSlugs: ["chispa"], fetchImpl, now: new Date("2026-10-30T00:00:00.000Z") },
     );
@@ -151,7 +199,7 @@ describe("handleProposal", () => {
 
   it("crea una propuesta y no filtra el token", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => githubOk(8));
-    const response = await handleProposal(request(proposal, access()), { GITHUB_TOKEN: TOKEN }, { knownSlugs: ["chispa"], fetchImpl });
+    const response = await handleProposal(request(proposal, access()), envOf(), { knownSlugs: ["chispa"], fetchImpl });
     expect(response.status).toBe(201);
     const payload = await response.json();
     expect(payload).toEqual({
@@ -176,7 +224,7 @@ describe("handleProposal", () => {
       .mockResolvedValueOnce(githubOk(9));
     const response = await handleProposal(
       request({ ...proposal, kind: "iteracion", slug: "chispa" }, access()),
-      { GITHUB_TOKEN: TOKEN },
+      envOf(),
       { knownSlugs: ["chispa"], fetchImpl },
     );
     expect(response.status).toBe(201);
@@ -188,7 +236,7 @@ describe("handleProposal", () => {
 
   it("limita a cinco propuestas por email y día cuando hay KV", async () => {
     const kv = memoryKv();
-    const env: ProposalEnv = { GITHUB_TOKEN: TOKEN, PROPOSALS: kv };
+    const env: ProposalEnv = envOf({ PROPOSALS: kv });
     const fetchImpl = vi.fn(async () => githubOk());
     const now = new Date("2026-10-30T18:00:00.000Z");
     for (let i = 0; i < 5; i += 1) {
@@ -206,7 +254,7 @@ describe("handleProposal", () => {
     const fetchImpl = vi.fn(async () => githubOk());
     const now = new Date("2026-10-30T18:00:00.000Z");
     for (let i = 0; i < 6; i += 1) {
-      const response = await handleProposal(request(proposal, access()), { GITHUB_TOKEN: TOKEN }, { knownSlugs: ["chispa"], fetchImpl, now });
+      const response = await handleProposal(request(proposal, access()), envOf(), { knownSlugs: ["chispa"], fetchImpl, now });
       expect(response.status).toBe(201);
     }
   });
@@ -215,9 +263,16 @@ describe("handleProposal", () => {
     const fetchImpl = vi.fn(async () => githubOk());
     const method = await handleProposal(new Request("https://proto-lab.example/api/proposals"), { GITHUB_TOKEN: TOKEN }, { fetchImpl });
     expect(method.status).toBe(405);
-    const invalid = await handleProposal(request({ kind: "propuesta" }, access()), { GITHUB_TOKEN: TOKEN }, { knownSlugs: ["chispa"], fetchImpl });
+    const invalid = await handleProposal(request({ kind: "propuesta" }, access()), envOf(), { knownSlugs: ["chispa"], fetchImpl });
     expect(invalid.status).toBe(400);
-    const config = await handleProposal(request(proposal, access()), {}, { knownSlugs: ["chispa"], fetchImpl });
+    const plain = new Request("https://proto-lab.example/api/proposals", {
+      method: "POST",
+      headers: { ...access(), "content-type": "text/plain" },
+      body: "{}",
+    });
+    const type = await handleProposal(plain, envOf(), { knownSlugs: ["chispa"], fetchImpl });
+    expect(type.status).toBe(400);
+    const config = await handleProposal(request(proposal, access()), { CF_ACCESS_AUD: fixture.aud }, { knownSlugs: ["chispa"], fetchImpl });
     expect(config.status).toBe(500);
     expect(JSON.stringify(await config.json())).not.toContain("GITHUB_TOKEN");
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -227,8 +282,18 @@ describe("handleProposal", () => {
     const fetchImpl = vi.fn(
       async () => new Response(JSON.stringify({ number: 4, html_url: "https://evil.example/issues/4" }), { status: 201 }),
     );
-    const response = await handleProposal(request(proposal, access()), { GITHUB_TOKEN: TOKEN }, { knownSlugs: ["chispa"], fetchImpl });
+    const response = await handleProposal(request(proposal, access()), envOf(), { knownSlugs: ["chispa"], fetchImpl });
     const payload = await response.json();
     expect(payload).toEqual({ ok: true, issueUrl: undefined, issueNumber: 4 });
+  });
+
+  it("al crear una propuesta invalida la caché del tablón", async () => {
+    const kv = memoryKv();
+    kv.store.set(STATUS_CACHE_KEY, "{}");
+    const fetchImpl = vi.fn(async () => githubOk(4));
+    const response = await handleProposal(request(proposal, access()), envOf({ PROPOSALS: kv }), { knownSlugs: ["chispa"], fetchImpl });
+    expect(response.status).toBe(201);
+    expect(kv.store.has(STATUS_CACHE_KEY)).toBe(false);
+    expect(JSON.stringify(await response.json())).not.toContain(TOKEN);
   });
 });

@@ -808,3 +808,43 @@ test("Sugerir mejora abre una iteración del prototipo abierto", async ({ page, 
     slug: "chispa",
   });
 });
+
+test("CSP, audio y el JS con hash del prototipo no se pisan", async ({ page }) => {
+  const home = await page.request.get("/");
+  expect(home.ok()).toBeTruthy();
+  const csp = home.headers()["content-security-policy"] ?? "";
+  expect(csp).toContain("frame-src blob:");
+  expect(csp).toContain("frame-ancestors 'self'");
+  expect(csp).toContain("media-src 'self'");
+  expect(home.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(home.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(home.headers()["permissions-policy"] ?? "").toContain("camera=()");
+  expect(home.headers()["cache-control"] ?? "").toMatch(/no-cache/);
+
+  const manifest = await page.request.get("/manifest.webmanifest");
+  expect(manifest.ok()).toBeTruthy();
+  expect(manifest.headers()["cache-control"] ?? "").toMatch(/no-cache/);
+
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+
+  const audio = await page.request.get("/protos/audio/luanda.m4a");
+  expect(audio.ok()).toBeTruthy();
+  expect(audio.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
+  const audioCache = audio.headers()["cache-control"] ?? "";
+  expect(audioCache).toMatch(/immutable/);
+  expect(audioCache).not.toMatch(/no-cache/);
+
+  const proto = await page.request.get("/protos/chispa/");
+  expect(proto.ok()).toBeTruthy();
+  expect(proto.headers()["cache-control"] ?? "").toMatch(/no-cache/);
+  const src = (await proto.text()).match(/src="([^"]+\.js)"/)?.[1];
+  expect(src).toBeTruthy();
+  const assetPath = new URL(src!, "http://127.0.0.1:4173/protos/chispa/").pathname;
+  const asset = await page.request.get(assetPath);
+  expect(asset.ok()).toBeTruthy();
+  const assetCache = asset.headers()["cache-control"] ?? "";
+  expect(assetCache).toMatch(/immutable/);
+  expect(assetCache).not.toMatch(/no-cache/);
+});
