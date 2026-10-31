@@ -4,7 +4,11 @@
   "description": "Arrastra con un dedo y suelta bolas en el pozo. Si dos del mismo tamaño se tocan, se funden, empujan a las vecinas y pueden encadenar un combo.",
   "author": "daniel-saezv",
   "date": "2026-10-31",
-  "tags": ["arcade", "fusion", "movil"],
+  "tags": [
+    "arcade",
+    "fusion",
+    "movil"
+  ],
   "cover": null,
   "version": "0.3.0",
   "history": [
@@ -23,5 +27,6 @@
       "date": "2026-10-31",
       "note": "Controles de un pulgar, caída más rápida, combos, fiebre, bomba y arcoíris."
     }
-  ]
+  ],
+  "preview": "preview.webp"
 }

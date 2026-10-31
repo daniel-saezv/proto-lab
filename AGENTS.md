@@ -41,6 +41,7 @@ Comandos comprobados en este repositorio (Node 22.23, pnpm 10.33.4):
 
 - Instalación: `corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit`
 - Build: `pnpm build` → sitio estático en `dist/` (`/` el laboratorio, `/protos/chispa/` el ejemplo)
+- Vistas previas de prototipos: `pnpm previews` (construye el sitio, arranca `pnpm preview` si hace falta, captura con Playwright y escribe `protos/<slug>/preview.webp`; declara `"preview": "preview.webp"` en `proto.json` si no existía). Vuelve a ejecutarlo al crear o iterar un prototipo.
 - Typecheck: `pnpm typecheck`
 - Tests unitarios: `pnpm test:unit`
 - Tests e2e: `pnpm test:e2e` (hace falta el build antes; Playwright arranca `pnpm preview` en el puerto 4173; Chromium y WebKit con perfil de iPhone)
@@ -56,6 +57,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - El diálogo es un guion fijo. No hay LLM ni llamadas de pago.
 - Los límites de título, descripción y propuestas por día están duplicados en `functions/_lib/validate.ts` y `apps/world/src/limits.ts`. Un test falla si divergen.
 - Cada prototipo declara sus dependencias en su `package.json`. Phaser no entra en el bundle del laboratorio.
+- Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB).
 - Los prototipos no usan `localStorage`: el iframe aislado no lo permite.
 - Al implementar una iteración, el manifiesto y su historial forman parte del cambio, no un extra opcional.
 

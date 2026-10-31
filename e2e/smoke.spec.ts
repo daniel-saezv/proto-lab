@@ -14,7 +14,27 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("el laboratorio carga, se propone una idea y se abre el prototipo", async ({ page }) => {
+async function focusArcade(page: import("@playwright/test").Page) {
+  await page.evaluate(() => window.__protoLab?.focus("arcade"));
+  await expect(page.getByTestId("interact")).toHaveText("Usar la máquina");
+}
+
+async function openSelector(page: import("@playwright/test").Page, isMobile: boolean) {
+  await focusArcade(page);
+  const interact = page.getByTestId("interact");
+  if (isMobile) await interact.tap();
+  else await interact.click();
+  await expect(page.getByTestId("game-selector")).toBeVisible();
+}
+
+async function playFromSelector(page: import("@playwright/test").Page, isMobile: boolean) {
+  const play = page.getByTestId("selector-play");
+  if (isMobile) await play.tap();
+  else await play.click();
+  await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+}
+
+test("el laboratorio carga, se propone una idea y se abre el prototipo", async ({ page, isMobile }) => {
   const proposal = page.waitForRequest("**/api/proposals");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
@@ -45,9 +65,9 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
   await page.getByTestId("choice-close").click();
   await expect(page.getByTestId("dialogue")).toBeHidden();
 
-  await page.evaluate(() => window.__protoLab?.focus("chispa"));
-  await expect(page.getByTestId("interact")).toHaveText("Jugar a Pozo de bolas");
-  await page.getByTestId("interact").click();
+  await openSelector(page, isMobile);
+  await expect(page.getByTestId("selector-title")).toContainText("Pozo de bolas");
+  await playFromSelector(page, isMobile);
   const frame = page.frameLocator("iframe");
   await expect(page.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
   await expect(frame.getByTestId("game-title")).toHaveText("Pozo de bolas");
@@ -126,12 +146,11 @@ async function simulateAccess(page: import("@playwright/test").Page) {
   });
 }
 
-async function openChispa(page: import("@playwright/test").Page) {
+async function openChispa(page: import("@playwright/test").Page, isMobile: boolean) {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.evaluate(() => window.__protoLab?.focus("chispa"));
-  await expect(page.getByTestId("interact")).toHaveText("Jugar a Pozo de bolas");
-  await page.getByTestId("interact").tap();
+  await openSelector(page, isMobile);
+  await playFromSelector(page, isMobile);
 }
 
 test("detrás de Access el prototipo arranca y Volver responde al tacto", async ({ browser }) => {
@@ -139,7 +158,7 @@ test("detrás de Access el prototipo arranca y Volver responde al tacto", async 
   await context.addCookies([{ name: "CF_Authorization", value: "sesion-de-prueba", url: "http://127.0.0.1:4173" }]);
   const page = await context.newPage();
   await simulateAccess(page);
-  await openChispa(page);
+  await openChispa(page, true);
   const frame = page.frameLocator("iframe");
   await expect(frame.locator("canvas")).toBeVisible();
   await expect(page.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
@@ -162,8 +181,8 @@ test("Escape dentro del prototipo vuelve al laboratorio", async ({ page }) => {
   await simulateAccess(page);
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.evaluate(() => window.__protoLab?.focus("chispa"));
-  await page.getByTestId("interact").click();
+  await openSelector(page, false);
+  await playFromSelector(page, false);
   const canvas = page.frameLocator("iframe").locator("canvas");
   await expect(canvas).toBeVisible();
   await canvas.click();
@@ -181,7 +200,7 @@ test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browse
       body: "<!doctype html><html><body style=\"background:#fff\"><p>Iniciar sesión en Cloudflare Access</p></body></html>",
     });
   });
-  await openChispa(page);
+  await openChispa(page, true);
   await expect(page.getByTestId("prototype-error")).toBeVisible();
   await expect(page.locator("iframe")).toHaveCount(0);
   await page.getByTestId("close-prototype").tap();
@@ -190,11 +209,8 @@ test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browse
   await context.close();
 });
 
-test("se suelta una bola y dos del mismo tamaño se funden", async ({ page }) => {
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.evaluate(() => window.__protoLab?.focus("chispa"));
-  await page.getByTestId("interact").click();
+test("se suelta una bola y dos del mismo tamaño se funden", async ({ page, isMobile }) => {
+  await openChispa(page, isMobile);
   const canvas = page.frameLocator("iframe").locator("canvas");
   await canvas.waitFor();
   const before = await canvas.evaluate(() => window.__chispa?.ballCount() ?? 0);
@@ -207,12 +223,8 @@ test("se suelta una bola y dos del mismo tamaño se funden", async ({ page }) =>
 async function abrirPozo(page: import("@playwright/test").Page, isMobile: boolean) {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.evaluate(() => window.__protoLab?.focus("chispa"));
-  const interact = page.getByTestId("interact");
-  await expect(interact).toHaveText("Jugar a Pozo de bolas");
-  if (isMobile) await interact.tap();
-  else await interact.click();
-  await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+  await openSelector(page, isMobile);
+  await playFromSelector(page, isMobile);
 }
 
 test("si la pantalla completa nativa falla, el overlay ocupa la pantalla", async ({ page, isMobile }) => {
@@ -329,6 +341,26 @@ test("se puede caminar por el lobby hasta los puntos clave", async ({ page }) =>
     expect(item.moved).toBeGreaterThan(1.5);
     expect(item.remaining).toBeLessThan(1.0);
   }
+});
+
+test("la máquina central abre el selector, cambia de juego y vuelve al laboratorio", async ({ page, isMobile }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await openSelector(page, isMobile);
+  await expect(page.getByTestId("selector-title")).toHaveText("Pozo de bolas");
+  await page.getByTestId("selector-next").click();
+  await expect(page.getByTestId("selector-title")).toHaveText("Pozo de bolas");
+  if (!isMobile) {
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Enter");
+  } else {
+    await playFromSelector(page, true);
+  }
+  const frame = page.frameLocator("iframe");
+  await expect(frame.locator("canvas")).toBeVisible();
+  await page.getByTestId("close-prototype").click();
+  await expect(page.getByTestId("prototype-player")).toBeHidden();
+  await expect(page.getByTestId("world-ready")).toBeVisible();
 });
 
 test("el service worker no cachea prototipos", async ({ page }) => {

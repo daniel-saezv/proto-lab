@@ -38,6 +38,12 @@ export function assertManifest(dirName, manifest, protoDir) {
     }
     if (!existsSync(join(protoDir, manifest.cover))) fail(`${dirName}: no está el archivo de portada`);
   }
+  if (manifest.preview != null) {
+    if (typeof manifest.preview !== "string" || manifest.preview.includes("..") || manifest.preview.includes("/") || manifest.preview.includes("\\")) {
+      fail(`${dirName}: vista previa`);
+    }
+    if (!existsSync(join(protoDir, manifest.preview))) fail(`${dirName}: no está el archivo de vista previa`);
+  }
   if (typeof manifest.version !== "string" || !VERSION.test(manifest.version)) fail(`${dirName}: versión`);
   if (!Array.isArray(manifest.history) || manifest.history.length < 1) fail(`${dirName}: historial`);
   let seen = false;
@@ -70,6 +76,8 @@ export function readCatalog(repoRoot) {
       date: manifest.date,
       tags: manifest.tags,
       cover: manifest.cover,
+      preview: manifest.preview ?? null,
+      previewHref: manifest.preview ? `/protos/${manifest.slug}/${manifest.preview}` : null,
       version: manifest.version,
       history: manifest.history,
       href: `/protos/${manifest.slug}/`,

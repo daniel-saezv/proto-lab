@@ -15,6 +15,7 @@
     "test:unit": "pnpm generate && vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm test:unit && pnpm test:e2e",
+    "previews": "node scripts/capture-previews.mjs",
     "icons": "node scripts/generate-icons.mjs"
   },
   "devDependencies": {
