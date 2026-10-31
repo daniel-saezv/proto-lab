@@ -8,8 +8,14 @@ export type GitHubIssue = {
   body: string | null;
   state: "open" | "closed";
   state_reason?: string | null;
+  closed_at?: string | null;
   labels: { name: string }[];
   updated_at: string;
+};
+
+export type FetchProposalIssuesOptions = {
+  /** ISO 8601; solo en el listado de issues cerradas. */
+  closedSince?: string;
 };
 
 export type GitHubPull = {
@@ -31,12 +37,19 @@ function ghHeaders(token: string): HeadersInit {
   };
 }
 
-export async function fetchProposalIssues(token: string, fetchImpl: GitHubFetch): Promise<GitHubIssue[]> {
+export async function fetchProposalIssues(
+  token: string,
+  fetchImpl: GitHubFetch,
+  options: FetchProposalIssuesOptions = {},
+): Promise<GitHubIssue[]> {
   const items: GitHubIssue[] = [];
   for (const state of ["open", "closed"] as const) {
     let page = 1;
     for (;;) {
-      const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?labels=propuesta&state=${state}&per_page=100&page=${page}&sort=updated&direction=desc`;
+      let url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?labels=propuesta&state=${state}&per_page=100&page=${page}&sort=updated&direction=desc`;
+      if (state === "closed" && options.closedSince) {
+        url += `&since=${encodeURIComponent(options.closedSince)}`;
+      }
       const response = await fetchImpl(url, { headers: ghHeaders(token) });
       if (!response.ok) throw new Error("issues");
       const batch = (await response.json()) as GitHubIssue[];

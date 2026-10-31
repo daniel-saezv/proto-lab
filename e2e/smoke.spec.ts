@@ -76,29 +76,14 @@ async function openInstallHelpFromInventor(page: import("@playwright/test").Page
   await expect(page.getByTestId("install-help")).toBeVisible();
 }
 
-async function openProposalsBoard(page: import("@playwright/test").Page, isMobile: boolean) {
-  await page.evaluate(() => window.__protoLab?.focus("chalkboard"));
-  await expect(page.getByTestId("interact")).toHaveText("Ver el tablón");
-  const interact = page.getByTestId("interact");
-  if (isMobile) await interact.tap();
-  else await interact.click();
-  await expect(page.getByTestId("proposals-board")).toBeVisible();
-}
-
-test("el tablón de propuestas muestra el estado simulado", async ({ page, isMobile }) => {
-  const status = page.waitForRequest("**/api/proposals/status");
+async function waitForLobbyWhiteboard(page: import("@playwright/test").Page) {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await openProposalsBoard(page, isMobile);
-  await status;
-  await expect(page.getByTestId("board-list")).toBeVisible();
-  await expect(page.getByTestId("board-item-7")).toContainText("Cometa lunar");
-  await expect(page.getByTestId("board-item-8")).toContainText("Preview lista");
-  const preview = page.getByTestId("board-preview-8");
-  await expect(preview).toHaveAttribute("href", "https://preview-test.proto-lab-3k6.pages.dev");
-  await expect(preview).toHaveAttribute("rel", "noopener noreferrer");
-  await page.getByTestId("board-close").click();
-  await expect(page.getByTestId("proposals-board-root")).toBeHidden();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-whiteboard-items", "7,8", { timeout: 20_000 });
+}
+
+test("el tablón en la pizarra 3D refleja el estado simulado", async ({ page }) => {
+  await waitForLobbyWhiteboard(page);
 });
 
 test("el laboratorio carga, se propone una idea y se abre el prototipo", async ({ page, isMobile }) => {
@@ -191,9 +176,7 @@ test("sin WebGL queda un respaldo usable", async ({ browser }) => {
   await expect(page.getByTestId("fallback")).toContainText("no puede mostrar el laboratorio en 3D");
   await page.getByTestId("fallback-talk").click();
   await expect(page.getByTestId("dialogue-text")).toContainText("Inventor");
-  await page.getByTestId("fallback-board").click();
-  await expect(page.getByTestId("proposals-board")).toBeVisible();
-  await page.getByTestId("board-close").click();
+  await expect(page.getByTestId("fallback-whiteboard-section")).toBeVisible();
   await page.getByTestId("choice-install").click();
   await expect(page.getByTestId("install-help")).toBeVisible();
   await page.getByTestId("install-close").click();
