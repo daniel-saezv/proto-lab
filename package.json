@@ -17,6 +17,7 @@
     "test": "pnpm test:unit && pnpm test:e2e",
     "previews": "node scripts/capture-previews.mjs",
     "shots": "node scripts/capture-shots.mjs",
+    "screenshots": "node scripts/capture-screenshots.mjs",
     "icons": "node scripts/generate-icons.mjs"
   },
   "devDependencies": {
