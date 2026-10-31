@@ -233,7 +233,7 @@ function addCeilingFan(f: AmbientFactories, fan: Group) {
 }
 
 function upgradeWindows(f: AmbientFactories, mats: MeshBasicMaterial[]) {
-  const positions = [-3.2, 2.6];
+  const positions = [-1.05, 2.6];
   for (const x of positions) {
     const { material, canvas, ctx } = createNightWindow(f.materials);
     mats.push(material);

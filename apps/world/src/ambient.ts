@@ -37,7 +37,8 @@ const PALETTE = {
   radio: 0x6d4b32,
   fridge: 0xd8e4ef,
   wrapper: 0xffb703,
-  cable: 0x2a2933,
+  cable: 0x524c63,
+  cablePlug: 0x8d97a8,
   dust: 0xf6f1e7,
 };
 
@@ -331,9 +332,30 @@ function addPoster(
 }
 
 function addFloorCables(scene: Scene, f: AmbientFactories) {
-  f.box(scene, 0.02, 0.02, 2.4, 2.8, 0.015, -0.2, PALETTE.cable, false);
-  f.box(scene, 1.1, 0.02, 0.02, 3.2, 0.015, 0.95, PALETTE.cable, false);
-  f.box(scene, 0.02, 0.02, 1.2, 5.2, 0.015, 2.1, PALETTE.cable, false);
+  const y = 0.034;
+  const radius = 0.024;
+  const cableGeoZ = f.geo(new CylinderGeometry(radius, radius, 2.4, 8));
+  const cableGeoX = f.geo(new CylinderGeometry(radius, radius, 1.1, 8));
+  const cableGeoZShort = f.geo(new CylinderGeometry(radius, radius, 1.2, 8));
+  const cableMat = f.mat(PALETTE.cable);
+
+  const runZ1 = new Mesh(cableGeoZ, cableMat);
+  runZ1.rotation.x = Math.PI / 2;
+  runZ1.position.set(2.8, y, -0.2);
+  scene.add(runZ1);
+
+  const runX = new Mesh(cableGeoX, cableMat);
+  runX.rotation.z = Math.PI / 2;
+  runX.position.set(3.2, y, 0.95);
+  scene.add(runX);
+
+  const runZ2 = new Mesh(cableGeoZShort, cableMat);
+  runZ2.rotation.x = Math.PI / 2;
+  runZ2.position.set(5.2, y, 2.1);
+  scene.add(runZ2);
+
+  f.box(scene, 0.07, 0.04, 0.07, 2.8, y - 0.008, -1.35, PALETTE.cablePlug, false);
+  f.box(scene, 0.07, 0.04, 0.07, 3.75, y - 0.008, 0.95, PALETTE.cablePlug, false);
 }
 
 function addDust(scene: Scene, f: AmbientFactories): Mesh[] {
