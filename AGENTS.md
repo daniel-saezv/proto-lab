@@ -29,6 +29,8 @@ El service worker cachea la shell y los assets del mundo. No intercepta `/protos
 
 El laboratorio no deja que el iframe pida `/protos/<slug>/` por su cuenta. Con `sandbox="allow-scripts"` el origen es opaco: el módulo saldría con `Origin: null` y sin `CF_Authorization`, y Access lo manda al PIN. En iOS un `srcdoc` aislado además puede quedarse en blanco. La página del laboratorio, que ya pasó Access, descarga el HTML y el JS, incrusta el JS como script clásico y carga ese documento en un iframe cuyo `src` es un `blob:` con solo `allow-scripts`. El prototipo no puede leer el DOM, las cookies ni el almacenamiento del laboratorio. No se añade `allow-same-origin` ni `allow-top-navigation`. Si la descarga no es el prototipo (redirección a Access, HTML de login), no se monta el iframe y se muestra el error con Volver.
 
+Pantalla completa usa `requestFullscreen` sobre el overlay (el cromo de Volver va dentro, así sigue visible). Safari en iOS solo acepta esa API en un vídeo: si no existe o la promesa falla, el mismo botón activa un modo CSS (`is-pseudo-fullscreen`): fijo, `100dvh`/`100vw`, `safe-area`, sin scroll y con el laboratorio oculto. El botón pasa a decir Salir y deshace el modo.
+
 Un prototipo tiene que quedar autocontenido en ese HTML: Vite empaqueta el JS en el archivo que referencia `index.html`. No debe depender de más peticiones al arrancar (`import()` dinámico, imágenes, audio o `fetch` al propio sitio). Esas peticiones salen del origen opaco, sin la cookie de Access, y Access las rechaza. `base` sigue siendo `/protos/<slug>/`.
 
 El catálogo no se edita a mano. `apps/world/src/generated/catalog.json` y `functions/_lib/slugs.json` los regenera `pnpm generate` y no se versionan.
@@ -81,7 +83,7 @@ Siguiente paso, fuera de esta versión: una Function de solo lectura que liste e
 
 ## Cursor Cloud specific instructions
 
-El `install` de `.cursor/environment.json` instala dependencias con pnpm y Chromium de Playwright. Es idempotente.
+El `install` de `.cursor/environment.json` instala dependencias con pnpm y los navegadores Chromium y WebKit de Playwright. Es idempotente. WebKit cubre el perfil de iPhone de `pnpm test:e2e`.
 
 Para probar: `pnpm build` y `pnpm preview` (puerto 4173), o `pnpm dev` (puerto 5173). Tests: `pnpm test:unit` y, tras el build, `pnpm test:e2e`.
 
