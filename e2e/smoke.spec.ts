@@ -363,6 +363,42 @@ test("la máquina central abre el selector, cambia de juego y vuelve al laborato
   await expect(page.getByTestId("world-ready")).toBeVisible();
 });
 
+test("el selector cabe en el iPhone y tapa el joystick y las etiquetas", async ({ browser }) => {
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+  ]) {
+    const context = await browser.newContext({
+      viewport,
+      isMobile: true,
+      hasTouch: true,
+      locale: "es-ES",
+      baseURL: "http://127.0.0.1:4173",
+    });
+    const page = await context.newPage();
+    await page.goto("/?e2e=1");
+    await expect(page.getByTestId("world-ready")).toBeVisible();
+    await page.evaluate(() => window.__protoLab?.focus("arcade"));
+    await expect(page.getByTestId("interact")).toHaveText("Usar la máquina");
+    await page.getByTestId("interact").tap();
+    const selector = page.getByTestId("game-selector");
+    await expect(selector).toBeVisible();
+    await expect(page.getByTestId("joystick")).toBeHidden();
+    await expect(page.locator(".nameplate").first()).toBeHidden();
+    const preview = await page.getByTestId("selector-preview").boundingBox();
+    expect(preview).toBeTruthy();
+    expect(preview!.y).toBeGreaterThanOrEqual(0);
+    expect(preview!.y + preview!.height).toBeLessThanOrEqual(viewport.height + 1);
+    const panel = await page.locator(".selector-panel").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    });
+    expect(panel.top).toBeGreaterThanOrEqual(-1);
+    expect(panel.bottom).toBeLessThanOrEqual(viewport.height + 1);
+    await context.close();
+  }
+});
+
 test("el service worker no cachea prototipos", async ({ page }) => {
   const response = await page.request.get("/sw.js");
   expect(response.ok()).toBeTruthy();

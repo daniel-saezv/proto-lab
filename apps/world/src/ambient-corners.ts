@@ -103,7 +103,7 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
   const neonMat = new MeshBasicMaterial({ color: PAL.neon });
   f.materials.push(neonMat);
   const fan = new Group();
-  fan.position.set(0, 2.55, 0.5);
+  fan.position.set(-6.3, 2.95, -4.3);
   f.scene.add(fan);
   const windowMats: MeshBasicMaterial[] = [];
 
@@ -200,8 +200,8 @@ function addAccentRug(f: AmbientFactories) {
 }
 
 function addWarmLamps(f: AmbientFactories) {
-  addFloorLamp(f, 2.2, 2.8);
-  addFloorLamp(f, -2.8, 3.6, 0.85);
+  addFloorLamp(f, -8.55, 6.4, 0.55);
+  addFloorLamp(f, 8.55, -6.15, 0.55);
 }
 
 function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale = 1) {
@@ -214,7 +214,7 @@ function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale 
   const bulb = new Mesh(f.geo(new SphereGeometry(0.11, 10, 8)), bulbMat);
   bulb.position.set(x, 1.18, z);
   f.scene.add(bulb);
-  const light = new PointLight(PAL.wrapper, 10 * intensityScale, 4.5, 2);
+  const light = new PointLight(PAL.wrapper, 5 * intensityScale, 4.2, 2);
   light.position.set(x, 1.15, z);
   f.scene.add(light);
 }
