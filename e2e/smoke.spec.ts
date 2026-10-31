@@ -34,16 +34,24 @@ async function playFromSelector(page: import("@playwright/test").Page, isMobile:
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
 }
 
-test("el laboratorio carga, se propone una idea y se abre el prototipo", async ({ page, isMobile }) => {
-  const proposal = page.waitForRequest("**/api/proposals");
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  await expect(page.getByTestId("loading")).toBeHidden();
-
+async function openInventorDialogue(page: import("@playwright/test").Page) {
   await page.evaluate(() => window.__protoLab?.focus("inventor"));
   await expect(page.getByTestId("interact")).toHaveText("Hablar con el Inventor");
   await page.getByTestId("interact").click();
   await expect(page.getByTestId("dialogue")).toBeVisible();
+}
+
+async function openInstallHelpFromInventor(page: import("@playwright/test").Page) {
+  await openInventorDialogue(page);
+  await page.getByTestId("choice-install").click();
+  await expect(page.getByTestId("install-help")).toBeVisible();
+}
+
+test("el laboratorio carga, se propone una idea y se abre el prototipo", async ({ page, isMobile }) => {
+  const proposal = page.waitForRequest("**/api/proposals");
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await openInventorDialogue(page);
   await expect(page.getByTestId("dialogue-text")).toContainText("Inventor");
 
   await page.getByTestId("choice-propose").click();
@@ -81,9 +89,7 @@ test("se puede iterar el prototipo que hay delante", async ({ page }) => {
   const proposal = page.waitForRequest("**/api/proposals");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.evaluate(() => window.__protoLab?.focus("inventor"));
-  await expect(page.getByTestId("interact")).toHaveText("Hablar con el Inventor");
-  await page.getByTestId("interact").click();
+  await openInventorDialogue(page);
   await page.getByTestId("choice-iterate").click();
   await page.getByTestId("choice-proto-chispa").click();
   await page.getByTestId("dialogue-input").fill("Chispas más rápidas");
@@ -97,6 +103,22 @@ test("se puede iterar el prototipo que hay delante", async ({ page }) => {
     slug: "chispa",
   });
   await expect(page.getByTestId("dialogue-text")).toContainText("Apuntado");
+});
+
+test("desde el Inventor se abre la guía de instalación PWA", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await openInstallHelpFromInventor(page);
+  await expect(page.getByTestId("install-tab-ios")).toBeVisible();
+  await page.getByTestId("install-tab-ios").click();
+  await expect(page.getByTestId("install-panel-ios")).toBeVisible();
+  await expect(page.getByTestId("install-steps-ios")).toBeVisible();
+  await page.getByTestId("install-tab-android").click();
+  await expect(page.getByTestId("install-panel-android")).toBeVisible();
+  await expect(page.getByTestId("install-steps-android")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("install-help")).toBeHidden();
+  await expect(page.getByTestId("world-ready")).toBeVisible();
 });
 
 test("sin WebGL queda un respaldo usable", async ({ browser }) => {
@@ -114,6 +136,12 @@ test("sin WebGL queda un respaldo usable", async ({ browser }) => {
   await expect(page.getByTestId("fallback")).toContainText("no puede mostrar el laboratorio en 3D");
   await page.getByTestId("fallback-talk").click();
   await expect(page.getByTestId("dialogue-text")).toContainText("Inventor");
+  await page.getByTestId("choice-install").click();
+  await expect(page.getByTestId("install-help")).toBeVisible();
+  await page.getByTestId("install-close").click();
+  await expect(page.getByTestId("install-help")).toBeHidden();
+  await page.getByTestId("fallback-install").click();
+  await expect(page.getByTestId("install-help")).toBeVisible();
   await context.close();
 });
 
