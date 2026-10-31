@@ -1,3 +1,4 @@
+import { createAmbienceMusic } from "./ambience-music";
 import { sendProposal } from "./api";
 import catalogFile from "./generated/catalog.json";
 import { createDialogue } from "./dialogue";
@@ -22,6 +23,8 @@ const viewport = must("#viewport");
 const labels = must("#labels");
 const hint = must("#hint");
 const interact = must<HTMLButtonElement>("#interact");
+const muteMusic = must<HTMLButtonElement>("#mute-music");
+const music = createAmbienceMusic(muteMusic);
 const joystick = must("#joystick");
 const knob = must("#knob");
 const dialogueRoot = must("#dialogue");
@@ -94,7 +97,13 @@ const overlay = createOverlay(stage, () => {
   inputEnabled = true;
   world?.setInputEnabled(true);
   world?.setSelectorOpen(false);
+  music.setPaused(document.visibilityState !== "visible");
 });
+
+function openPrototype(entry: CatalogEntry) {
+  music.setPaused(true);
+  overlay.open(entry);
+}
 
 let world: import("./world").WorldHandle | null = null;
 
@@ -108,7 +117,7 @@ const selector = createGameSelector({
     inputEnabled = false;
     world?.setInputEnabled(false);
     interact.hidden = true;
-    overlay.open(entry);
+    openPrototype(entry);
   },
   onOpen: () => {
     inputEnabled = false;
@@ -147,6 +156,7 @@ window.addEventListener("keydown", (event) => {
 
 document.addEventListener("visibilitychange", () => {
   world?.setInputEnabled(document.visibilityState === "visible" && inputEnabled);
+  music.setPaused(document.visibilityState !== "visible" || overlay.isOpen());
 });
 
 async function bootWorld() {
@@ -158,7 +168,7 @@ async function bootWorld() {
       onTalk: () => dialogue.open(),
       onOpenBoard: () => proposalsBoard.open(),
       onInstallHelp: () => installHelp.open(),
-      onPlay: (entry) => overlay.open(entry),
+      onPlay: (entry) => openPrototype(entry),
     });
     finishBoot();
     return;
@@ -186,7 +196,7 @@ async function bootWorld() {
           inputEnabled = false;
           world?.setInputEnabled(false);
           interact.hidden = true;
-          overlay.open(entry);
+          openPrototype(entry);
         };
       },
       onTalk: () => dialogue.open(),
@@ -212,7 +222,7 @@ async function bootWorld() {
       onTalk: () => dialogue.open(),
       onOpenBoard: () => proposalsBoard.open(),
       onInstallHelp: () => installHelp.open(),
-      onPlay: (entry) => overlay.open(entry),
+      onPlay: (entry) => openPrototype(entry),
     });
     finishBoot();
     void error;

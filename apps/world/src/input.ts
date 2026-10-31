@@ -1,3 +1,5 @@
+import { shapeStick } from "./locomotion";
+
 export type InputHandle = {
   read: () => { forward: number; right: number; lookX: number; lookY: number };
   resetLook: () => void;
@@ -107,8 +109,9 @@ export function attachInput(options: {
       if (keys.has("d") || keys.has("arrowright")) right += 1;
       if (keys.has("a") || keys.has("arrowleft")) right -= 1;
       if (joyActive) {
-        forward = joyForward;
-        right = joyRight;
+        const shaped = shapeStick(joyRight, joyForward);
+        forward = shaped.y;
+        right = shaped.x;
       }
       const length = Math.hypot(forward, right);
       if (length > 1) {

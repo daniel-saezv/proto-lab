@@ -35,7 +35,19 @@ import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer
 import { attachInput } from "./input";
 import { addAmbient } from "./ambient";
 import { drawTitleCard } from "./title-card";
-import { arcadeMachineCollider, lobbyBounds, resolvePosition, walkToward, type ColliderSpot } from "./navigation";
+import { WALK_SPEED, applyLook, approachVelocity, dampAngle, dampBlockedAxis, smoothLookInput } from "./locomotion";
+import {
+  CAMERA_NEAR,
+  CEILING_UNDERSIDE,
+  LAYOUT,
+  arcadeMachineCollider,
+  moveWithSlide,
+  playerLobbyBounds,
+  resolveCameraArm,
+  resolvePosition,
+  walkToward,
+  type ColliderSpot,
+} from "./navigation";
 import { DEBUG_MARKERS, VIEWPOINTS, viewpointById } from "./viewpoints";
 import type { CatalogEntry } from "./types";
 
@@ -105,7 +117,7 @@ export function startWorld(options: {
   scene.background = new Color(0x1a2140);
   scene.fog = new Fog(0x1a2140, 18, 36);
 
-  const camera = new PerspectiveCamera(58, 1, 0.1, 80);
+  const camera = new PerspectiveCamera(58, 1, CAMERA_NEAR, 80);
   const overviewCamera = new OrthographicCamera(-12, 12, 12, -12, 0.1, 90);
   overviewCamera.up.set(0, 0, -1);
   let cameraMode: "follow" | "top" = "follow";
@@ -183,17 +195,19 @@ export function startWorld(options: {
   scene.add(rug);
   addFloorPaths();
 
-  box(scene, 20, 2.8, 0.4, 0, 1.4, -7.6, PALETTE.wall);
-  box(scene, 20, 2.8, 0.4, 0, 1.4, 12.2, PALETTE.wall);
-  box(scene, 0.4, 2.8, 20.2, -9.8, 1.4, 2.2, PALETTE.wall);
-  box(scene, 0.4, 2.8, 20.2, 9.8, 1.4, 2.2, PALETTE.wall);
+  const wallH = CEILING_UNDERSIDE + 0.1;
+  const wallY = wallH / 2;
+  box(scene, 20, wallH, 0.4, 0, wallY, -7.6, PALETTE.wall);
+  box(scene, 20, wallH, 0.4, 0, wallY, 12.2, PALETTE.wall);
+  box(scene, 0.4, wallH, 20.2, -9.8, wallY, 2.2, PALETTE.wall);
+  box(scene, 0.4, wallH, 20.2, 9.8, wallY, 2.2, PALETTE.wall);
   addWallTrim();
+  const hangingLights: PointLight[] = [];
+  addCeiling(hangingLights);
   const nameplates = new Map<string, HTMLElement>();
   const highlightRings = new Map<string, Mesh>();
-  addMoon();
   addChalkboard(options.prototypes);
   addBench();
-  addPlant();
   addLamp();
 
   const ambient = addAmbient({ scene, geo, mat, box, shadows, materials, pulses, reduced });
@@ -207,7 +221,7 @@ export function startWorld(options: {
   let screenLoadToken = 0;
 
   const inventor = buildInventor();
-  inventor.position.set(-1.5, 0, -3.4);
+  inventor.position.set(LAYOUT.inventor.x, 0, LAYOUT.inventor.z);
   scene.add(inventor);
 
   const arcadeScreenMaterial = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
@@ -284,7 +298,7 @@ export function startWorld(options: {
   scene.add(player);
 
   const spots: Spot[] = [
-    { id: "inventor", kind: "npc", x: -1.5, z: -3.4, radius: 2.25, collider: 0.42, label: "Hablar con el Inventor" },
+    { id: "inventor", kind: "npc", x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, radius: 2.25, collider: LAYOUT.inventor.collider, label: "Hablar con el Inventor" },
     {
       id: "arcade",
       kind: "machine",
@@ -294,10 +308,8 @@ export function startWorld(options: {
       collider: arcadeSpot.collider,
       label: "Usar la máquina",
     },
-    { id: "chalkboard", kind: "npc", x: -4.6, z: -6.8, radius: 2.35, collider: 0.55, label: "Ver el tablón" },
-    { id: "bench", kind: "npc", x: 0.15, z: -3.15, radius: 0, collider: 0.48, label: "" },
-    { id: "crates", kind: "npc", x: 5.85, z: 1.45, radius: 0, collider: 0.42, label: "" },
-    { id: "plant", kind: "npc", x: -6, z: 1.3, radius: 0, collider: 0.22, label: "" },
+    { id: "chalkboard", kind: "npc", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 2.35, collider: LAYOUT.chalkboard.collider, label: "Ver el tablón" },
+    { id: "bench", kind: "npc", x: LAYOUT.bench.x, z: LAYOUT.bench.z, radius: 0, collider: LAYOUT.bench.collider, label: "" },
     ...ambient.colliders.map((item) => ({
       id: item.id,
       kind: "npc" as const,
@@ -309,16 +321,22 @@ export function startWorld(options: {
     })),
   ];
 
-  addRangeRing("inventor", -1.5, -3.4, PALETTE.amber);
+  addRangeRing("inventor", LAYOUT.inventor.x, LAYOUT.inventor.z, PALETTE.amber);
   addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
-  addRangeRing("chalkboard", -4.6, -6.8, 0x8fd8ff);
+  addRangeRing("chalkboard", LAYOUT.chalkboard.x, LAYOUT.chalkboard.z, 0x8fd8ff);
 
   let yaw = 0.15;
   let pitch = 0.15;
+  let viewYaw = yaw;
+  let viewPitch = pitch;
+  let lookSmoothX = 0;
+  let lookSmoothY = 0;
+  let velX = 0;
+  let velZ = 0;
+  let arm = 3.8;
   let inputEnabled = true;
   let targetLabel: string | null = null;
   let snapped = true;
-  const desired = new Vector3();
   const raycaster = new Raycaster();
   const pointer = new Vector2();
   let running = true;
@@ -369,24 +387,38 @@ export function startWorld(options: {
     const sample = input.read();
     input.resetLook();
     if (inputEnabled) {
-      yaw -= sample.lookX * 0.005;
-      pitch = clamp(pitch - sample.lookY * 0.003, -0.35, 0.7);
+      lookSmoothX = smoothLookInput(lookSmoothX, sample.lookX, dt);
+      lookSmoothY = smoothLookInput(lookSmoothY, sample.lookY, dt);
+      const lookSens = coarse ? 0.0042 : 0.00315;
+      yaw -= applyLook(lookSmoothX, lookSens, 0.11);
+      pitch = clamp(pitch - applyLook(lookSmoothY, lookSens * 0.72, 0.08), -0.35, 0.7);
       const forwardX = Math.sin(yaw);
       const forwardZ = -Math.cos(yaw);
       const rightX = Math.cos(yaw);
       const rightZ = Math.sin(yaw);
-      const speed = 4.2;
-      const vx = (sample.right * rightX + sample.forward * forwardX) * speed;
-      const vz = (sample.right * rightZ + sample.forward * forwardZ) * speed;
-      player.position.x += vx * dt;
-      player.position.z += vz * dt;
-      resolve(player.position);
-      const moving = Math.hypot(vx, vz) > 0.2;
-      const facing = moving ? Math.atan2(vx, -vz) : yaw;
-      player.rotation.y = dampAngle(player.rotation.y, facing, dt);
+      const wishX = (sample.right * rightX + sample.forward * forwardX) * WALK_SPEED;
+      const wishZ = (sample.right * rightZ + sample.forward * forwardZ) * WALK_SPEED;
+      velX = approachVelocity(velX, wishX, dt);
+      velZ = approachVelocity(velZ, wishZ, dt);
+      const slide = moveWithSlide(player.position, velX * dt, velZ * dt, spots, playerLobbyBounds());
+      velX = dampBlockedAxis(velX, slide.movedX, dt);
+      velZ = dampBlockedAxis(velZ, slide.movedZ, dt);
+      const moving = Math.hypot(velX, velZ) > 0.45;
+      const facing = moving ? Math.atan2(velX, -velZ) : yaw;
+      player.rotation.y = dampAngle(player.rotation.y, facing, dt, moving ? 7.5 : 4.5);
+    } else {
+      velX = 0;
+      velZ = 0;
     }
 
     if (!reduced) {
+      for (const light of hangingLights) {
+        const phase = (light.userData.phase as number) ?? 0;
+        const base = (light.userData.base as number) ?? 3.2;
+        const blink = Math.sin(frame * 8.5 + phase) > 0.985 ? 0.7 : 1;
+        light.intensity = base * (0.92 + Math.sin(frame * 1.7 + phase) * 0.08) * blink;
+      }
+      lampLight.intensity = 6 * (0.94 + Math.sin(frame * 2.2) * 0.06);
       inventor.position.y = Math.sin(frame * 2) * 0.04;
       const arm = inventor.userData.arm as Object3D | undefined;
       if (arm) arm.rotation.x = Math.sin(frame * 1.6) * 0.25;
@@ -416,14 +448,32 @@ export function startWorld(options: {
     if (cameraMode === "top") {
       fitOverview();
     } else {
-      const dist = cameraDistance();
-      desired.set(player.position.x - Math.sin(yaw) * dist, 2.55 + pitch, player.position.z + Math.cos(yaw) * dist);
+      const ideal = cameraDistance();
       if (snapped) {
-        camera.position.copy(desired);
-        snapped = false;
-      } else {
-        camera.position.lerp(desired, 1 - Math.exp(-8 * dt));
+        viewYaw = yaw;
+        viewPitch = pitch;
+        arm = ideal;
       }
+      viewYaw = dampAngle(viewYaw, yaw, dt, 12);
+      viewPitch += (pitch - viewPitch) * (1 - Math.exp(-12 * dt));
+      const safe = resolveCameraArm({
+        playerX: player.position.x,
+        playerZ: player.position.z,
+        yaw: viewYaw,
+        pitch: viewPitch,
+        distance: ideal,
+      });
+      if (arm > safe.distance) arm = safe.distance;
+      else arm += (safe.distance - arm) * (1 - Math.exp(-5 * dt));
+      const pose = resolveCameraArm({
+        playerX: player.position.x,
+        playerZ: player.position.z,
+        yaw: viewYaw,
+        pitch: viewPitch,
+        distance: arm,
+      });
+      camera.position.set(pose.x, pose.y, pose.z);
+      snapped = false;
       camera.lookAt(player.position.x, 1.15, player.position.z);
     }
     updateTarget();
@@ -582,16 +632,17 @@ export function startWorld(options: {
         snapped = true;
       },
       probeWalkable: () => {
-        const bounds = lobbyBounds(true);
+        const bounds = playerLobbyBounds();
         const start = { x: 0, z: 1.7 };
         const checks = [
           { x: -1.5, z: -2.2 },
           { x: 1.2, z: 0.2 },
           { x: -5.5, z: 2.5 },
           { x: 5.5, z: 0.5 },
+          { x: 7.3, z: 5.1 },
         ];
         return checks.map((target) => {
-          const result = walkToward(start, target, colliders(), bounds, { steps: 320 });
+          const result = walkToward(start, target, colliders(), bounds, { steps: 640 });
           return { target, moved: result.moved, remaining: result.remaining };
         });
       },
@@ -629,18 +680,75 @@ export function startWorld(options: {
   };
 
   function resolve(position: Vector3) {
-    resolvePosition(position, spots, lobbyBounds(camera.aspect >= 0.9));
+    resolvePosition(position, spots, playerLobbyBounds());
   }
 
   function cameraDistance(): number {
     return camera.aspect < 0.9 ? 6.4 : 3.8;
   }
 
-  function addMoon() {
-    const moon = new Mesh(geo(new SphereGeometry(0.45, 16, 12)), new MeshBasicMaterial({ color: PALETTE.moon }));
-    materials.push(moon.material);
-    moon.position.set(-4.5, 4.2, -7);
-    scene.add(moon);
+  function addCeiling(lights: PointLight[]) {
+    const y = CEILING_UNDERSIDE;
+    const panels: Array<[number, number, number, number]> = [
+      [19, 7.8, 0, -3.4],
+      [19, 8.6, 0, 7.6],
+      [7.8, 2.8, -5.6, 1.9],
+      [7.8, 2.8, 5.6, 1.9],
+    ];
+    const ceilMat = new MeshBasicMaterial({ color: 0x465278 });
+    const insetMat = new MeshBasicMaterial({ color: 0x323a56 });
+    materials.push(ceilMat, insetMat);
+    for (const [w, d, x, z] of panels) {
+      const panel = new Mesh(geo(new PlaneGeometry(w, d)), ceilMat);
+      panel.rotation.x = Math.PI / 2;
+      panel.position.set(x, y, z);
+      scene.add(panel);
+      const inset = new Mesh(geo(new PlaneGeometry(w * 0.52, d * 0.42)), insetMat);
+      inset.rotation.x = Math.PI / 2;
+      inset.position.set(x, y - 0.03, z);
+      scene.add(inset);
+    }
+    for (const z of [-5.6, -1.1, 4.6, 8.8]) {
+      box(scene, 18.4, 0.28, 0.18, 0, y - 0.2, z, PALETTE.trim, false);
+    }
+    box(scene, 0.18, 0.28, 18, -6.2, y - 0.2, 2.2, PALETTE.trim, false);
+    box(scene, 0.18, 0.28, 18, 6.2, y - 0.2, 2.2, PALETTE.trim, false);
+    const hz = 1.9;
+    box(scene, 3.6, 0.08, 0.1, 0, y - 0.02, hz - 1.46, PALETTE.wallCap, false);
+    box(scene, 3.6, 0.08, 0.1, 0, y - 0.02, hz + 1.46, PALETTE.wallCap, false);
+    box(scene, 0.1, 0.08, 2.8, -1.74, y - 0.02, hz, PALETTE.wallCap, false);
+    box(scene, 0.1, 0.08, 2.8, 1.74, y - 0.02, hz, PALETTE.wallCap, false);
+
+    const skyMat = new MeshBasicMaterial({ map: skyGradient(), toneMapped: false });
+    materials.push(skyMat);
+    const sky = new Mesh(geo(new PlaneGeometry(22, 24)), skyMat);
+    sky.rotation.x = Math.PI / 2;
+    sky.position.set(0, y + 0.38, 2.2);
+    scene.add(sky);
+
+    addHangingLamp(lights, -1.5, -5.05, 0, true);
+    addHangingLamp(lights, 2.15, -0.2, 1.4, true);
+    addHangingLamp(lights, 7.1, 4.15, 2.6, false);
+  }
+
+  function addHangingLamp(lights: PointLight[], x: number, z: number, phase: number, lit: boolean) {
+    const y0 = CEILING_UNDERSIDE;
+    box(scene, 0.035, 0.32, 0.035, x, y0 - 0.15, z, 0x8d97a8, false);
+    const shade = new Mesh(geo(new CylinderGeometry(0.14, 0.26, 0.14, 8)), mat(PALETTE.trim));
+    shade.position.set(x, y0 - 0.36, z);
+    scene.add(shade);
+    const bulbMat = new MeshBasicMaterial({ color: PALETTE.amber, toneMapped: false });
+    materials.push(bulbMat);
+    const bulb = new Mesh(geo(new SphereGeometry(0.06, 8, 6)), bulbMat);
+    bulb.position.set(x, y0 - 0.44, z);
+    scene.add(bulb);
+    if (!lit) return;
+    const light = new PointLight(0xffb070, 2.6, 5.5, 2);
+    light.position.set(x, y0 - 0.48, z);
+    light.userData.phase = phase;
+    light.userData.base = 2.6;
+    scene.add(light);
+    lights.push(light);
   }
 
   function addFloorPaths() {
@@ -674,10 +782,10 @@ export function startWorld(options: {
     box(scene, 20.3, 0.16, 0.5, 0, 0.1, 12.15, PALETTE.trim, false);
     box(scene, 0.5, 0.16, 20.2, -9.75, 0.1, 2.2, PALETTE.trim, false);
     box(scene, 0.5, 0.16, 20.2, 9.75, 0.1, 2.2, PALETTE.trim, false);
-    box(scene, 20.5, 0.12, 0.55, 0, 2.9, -7.6, PALETTE.wallCap, false);
-    box(scene, 20.5, 0.12, 0.55, 0, 2.9, 12.2, PALETTE.wallCap, false);
-    box(scene, 0.55, 0.12, 20.4, -9.8, 2.9, 2.2, PALETTE.wallCap, false);
-    box(scene, 0.55, 0.12, 20.4, 9.8, 2.9, 2.2, PALETTE.wallCap, false);
+    box(scene, 20.5, 0.12, 0.55, 0, wallH - 0.04, -7.6, PALETTE.wallCap, false);
+    box(scene, 20.5, 0.12, 0.55, 0, wallH - 0.04, 12.2, PALETTE.wallCap, false);
+    box(scene, 0.55, 0.12, 20.4, -9.8, wallH - 0.04, 2.2, PALETTE.wallCap, false);
+    box(scene, 0.55, 0.12, 20.4, 9.8, wallH - 0.04, 2.2, PALETTE.wallCap, false);
     // La pizarra ocupa x ≈ [-6.3, -2.9]; la ventana izquierda queda a la derecha de ese hueco.
     for (const x of [-1.05, 2.6]) {
       box(scene, 1.7, 0.08, 0.06, x, 2.2, -7.32, PALETTE.trim, false);
@@ -741,22 +849,17 @@ export function startWorld(options: {
   }
 
   function addBench() {
-    box(scene, 1.4, 0.12, 0.6, 0.15, 0.72, -3.15, PALETTE.bench);
-    box(scene, 0.1, 0.7, 0.1, -0.45, 0.35, -2.95, PALETTE.bench);
-    box(scene, 0.1, 0.7, 0.1, 0.75, 0.35, -2.95, PALETTE.bench);
-    box(scene, 0.1, 0.7, 0.1, -0.45, 0.35, -3.35, PALETTE.bench);
-    box(scene, 0.1, 0.7, 0.1, 0.75, 0.35, -3.35, PALETTE.bench);
-  }
-
-  function addPlant() {
-    const pot = new Mesh(geo(new CylinderGeometry(0.22, 0.16, 0.28, 8)), mat(PALETTE.pot));
-    pot.position.set(-6, 0.14, 1.3);
-    pot.castShadow = shadows;
-    scene.add(pot);
-    const leaf = new Mesh(geo(new SphereGeometry(0.38, 10, 8)), mat(PALETTE.leaf));
-    leaf.position.set(-6, 0.62, 1.3);
-    leaf.castShadow = shadows;
-    scene.add(leaf);
+    const x = LAYOUT.bench.x;
+    const z = LAYOUT.bench.z;
+    box(scene, 1.5, 0.1, 0.62, x, 0.72, z, PALETTE.bench);
+    for (const sx of [-0.62, 0.62]) {
+      for (const sz of [-0.22, 0.22]) {
+        box(scene, 0.08, 0.7, 0.08, x + sx, 0.35, z + sz, PALETTE.bench);
+      }
+    }
+    box(scene, 0.22, 0.05, 0.1, x - 0.4, 0.8, z, 0x8d97a8, false);
+    box(scene, 0.12, 0.08, 0.16, x + 0.32, 0.8, z + 0.06, PALETTE.crate, false);
+    box(scene, 0.08, 0.14, 0.08, x + 0.05, 0.84, z - 0.12, PALETTE.trim, false);
   }
 
   function addLamp() {
@@ -906,6 +1009,30 @@ export function startWorld(options: {
   }
 }
 
+function skyGradient(): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext("2d");
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  if (!context) return texture;
+  const gradient = context.createLinearGradient(0, 0, 0, 64);
+  gradient.addColorStop(0, "#1a2148");
+  gradient.addColorStop(0.42, "#31457e");
+  gradient.addColorStop(0.74, "#6e8cc4");
+  gradient.addColorStop(1, "#e2c08a");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 64, 64);
+  context.fillStyle = "#f4efe4";
+  context.beginPath();
+  context.arc(46, 14, 6, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = "#f6f1e7";
+  for (let i = 0; i < 14; i++) context.fillRect((i * 13) % 60, (i * 7) % 26, 2, 2);
+  return texture;
+}
+
 function marqueeTexture(): CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -987,13 +1114,6 @@ function interactId(object: Object3D): string | null {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function dampAngle(current: number, target: number, dt: number): number {
-  let diff = target - current;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  return current + diff * (1 - Math.exp(-10 * dt));
 }
 
 declare global {

@@ -552,6 +552,22 @@ test("en horizontal las acciones de confirmación del diálogo caben en pantalla
   await context.close();
 });
 
+test("el botón de silenciar alterna y persiste", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  const mute = page.getByTestId("mute-music");
+  await expect(mute).toBeVisible();
+  await expect(mute).toHaveAttribute("aria-pressed", "false");
+  await expect(mute).toHaveText("Silenciar");
+  await mute.click();
+  await expect(mute).toHaveAttribute("aria-pressed", "true");
+  await expect(mute).toHaveAttribute("aria-label", "Activar música");
+  await page.reload();
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await expect(page.getByTestId("mute-music")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("mute-music")).toHaveText("Activar");
+});
+
 test("en horizontal el botón de interacción queda en la mitad inferior", async ({ browser }) => {
   const viewport = { width: 844, height: 390 };
   const context = await browser.newContext({
