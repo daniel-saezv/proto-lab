@@ -6,6 +6,7 @@ import {
   Color,
   CylinderGeometry,
   DirectionalLight,
+  DoubleSide,
   Fog,
   Group,
   HemisphereLight,
@@ -13,10 +14,12 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   Object3D,
+  OrthographicCamera,
   PerspectiveCamera,
   PlaneGeometry,
   PointLight,
   Raycaster,
+  RingGeometry,
   Scene,
   SphereGeometry,
   SRGBColorSpace,
@@ -33,13 +36,17 @@ import { attachInput } from "./input";
 import { addAmbient } from "./ambient";
 import { drawTitleCard } from "./title-card";
 import { arcadeMachineCollider, lobbyBounds, resolvePosition, walkToward, type ColliderSpot } from "./navigation";
+import { DEBUG_MARKERS, VIEWPOINTS, viewpointById } from "./viewpoints";
 import type { CatalogEntry } from "./types";
 
 const PALETTE = {
-  floor: 0x2a3148,
-  rug: 0x3c4a68,
-  wall: 0x465270,
-  trim: 0x2c354c,
+  floor: 0x46547a,
+  path: 0x5d6e9c,
+  rug: 0x55648f,
+  yard: 0x1b2136,
+  wall: 0x2c3450,
+  wallCap: 0x6a789c,
+  trim: 0x6d4b32,
   coat: 0xe07a3d,
   coatDark: 0x9a4e22,
   skin: 0xf0c7a2,
@@ -94,13 +101,16 @@ export function startWorld(options: {
 
   const scene = new Scene();
   scene.background = new Color(0x1a2140);
-  scene.fog = new Fog(0x1a2140, 14, 28);
+  scene.fog = new Fog(0x1a2140, 18, 36);
 
   const camera = new PerspectiveCamera(58, 1, 0.1, 80);
+  const overviewCamera = new OrthographicCamera(-12, 12, 12, -12, 0.1, 90);
+  overviewCamera.up.set(0, 0, -1);
+  let cameraMode: "follow" | "top" = "follow";
   const renderer = new WebGLRenderer({ antialias: !coarse, alpha: false, powerPreference: coarse ? "low-power" : "default" });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  renderer.toneMappingExposure = 1.2;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2));
   renderer.shadowMap.enabled = shadows;
   options.viewport.append(renderer.domElement);
@@ -115,10 +125,10 @@ export function startWorld(options: {
   const materials: Material[] = [];
   const pulses: MeshBasicMaterial[] = [];
 
-  const hemi = new HemisphereLight(0xc5d4ff, 0x3a2e28, 1.35);
+  const hemi = new HemisphereLight(0xd5e4ff, 0x5a4638, 1.55);
   scene.add(hemi);
-  const sun = new DirectionalLight(0xfff1d0, 2.4);
-  sun.position.set(4, 10, 6);
+  const sun = new DirectionalLight(0xfff1d0, 1.85);
+  sun.position.set(-3, 10, 4);
   sun.castShadow = shadows;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 1;
@@ -129,9 +139,11 @@ export function startWorld(options: {
   sun.shadow.camera.bottom = -12;
   scene.add(sun);
 
-  const lampLight = new PointLight(0xffb703, 18, 9, 2);
-  lampLight.position.set(-5.1, 2.3, -1.1);
+  const lampLight = new PointLight(0xffb703, 6, 7.5, 2);
+  lampLight.position.set(-1.5, 2.6, -2.4);
   scene.add(lampLight);
+  const arcadeLight = new PointLight(0xffb45a, 4.5, 5.2, 2);
+  scene.add(arcadeLight);
 
   function mat(color: number): MeshLambertMaterial {
     const material = new MeshLambertMaterial({ color });
@@ -153,6 +165,10 @@ export function startWorld(options: {
     return mesh;
   }
 
+  const yard = new Mesh(geo(new PlaneGeometry(36, 40)), mat(PALETTE.yard));
+  yard.rotation.x = -Math.PI / 2;
+  yard.position.set(0, -0.03, 2);
+  scene.add(yard);
   const floor = new Mesh(geo(new PlaneGeometry(20, 24)), mat(PALETTE.floor));
   floor.position.z = 2;
   floor.rotation.x = -Math.PI / 2;
@@ -160,15 +176,18 @@ export function startWorld(options: {
   scene.add(floor);
   const rug = new Mesh(geo(new CircleGeometry(3.4, 28)), mat(PALETTE.rug));
   rug.rotation.x = -Math.PI / 2;
-  rug.position.y = 0.01;
+  rug.position.y = 0.012;
   rug.receiveShadow = shadows;
   scene.add(rug);
+  addFloorPaths();
 
   box(scene, 20, 2.8, 0.4, 0, 1.4, -7.6, PALETTE.wall);
   box(scene, 20, 2.8, 0.4, 0, 1.4, 12.2, PALETTE.wall);
   box(scene, 0.4, 2.8, 20.2, -9.8, 1.4, 2.2, PALETTE.wall);
   box(scene, 0.4, 2.8, 20.2, 9.8, 1.4, 2.2, PALETTE.wall);
-  box(scene, 18, 0.18, 0.18, 0, 2.8, -7.4, PALETTE.trim, false);
+  addWallTrim();
+  const nameplates = new Map<string, HTMLElement>();
+  const highlightRings = new Map<string, Mesh>();
   addMoon();
   addChalkboard(options.prototypes);
   addBench();
@@ -189,13 +208,14 @@ export function startWorld(options: {
   inventor.position.set(-1.5, 0, -3.4);
   scene.add(inventor);
 
-  const arcadeScreenMaterial = new MeshBasicMaterial({ color: 0xffffff });
+  const arcadeScreenMaterial = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   materials.push(arcadeScreenMaterial);
-  pulses.push(arcadeScreenMaterial);
   const arcadeMachine = buildArcadeCabinet(arcadeScreenMaterial);
   arcadeMachine.position.set(arcadeSpot.x, 0, arcadeSpot.z);
-  arcadeMachine.rotation.y = Math.PI;
+  arcadeMachine.rotation.y = -0.42;
   scene.add(arcadeMachine);
+  arcadeLight.position.set(arcadeSpot.x - 0.15, 1.35, arcadeSpot.z + 1.15);
+  addArcadeGlow(arcadeSpot.x, arcadeSpot.z);
 
   function disposeScreenMap() {
     const map = arcadeScreenMaterial.map;
@@ -286,6 +306,9 @@ export function startWorld(options: {
     })),
   ];
 
+  addRangeRing("inventor", -1.5, -3.4, PALETTE.amber);
+  addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
+
   let yaw = 0.15;
   let pitch = 0.15;
   let inputEnabled = true;
@@ -364,7 +387,16 @@ export function startWorld(options: {
       const arm = inventor.userData.arm as Object3D | undefined;
       if (arm) arm.rotation.x = Math.sin(frame * 1.6) * 0.25;
       const pulse = 0.82 + Math.sin(frame * 3) * 0.18;
-      for (const material of pulses) material.color.setScalar(pulse);
+      for (const material of pulses) {
+        const data = material.userData as { pulseBase?: Color };
+        if (!data.pulseBase) data.pulseBase = material.color.clone();
+        material.color.copy(data.pulseBase).multiplyScalar(pulse);
+      }
+    }
+    for (const ring of highlightRings.values()) {
+      const material = ring.material as MeshBasicMaterial;
+      if (!ring.visible) continue;
+      material.opacity = reduced ? 0.92 : 0.58 + Math.sin(frame * 4) * 0.28;
     }
     ambient.tick(frame, dt, player.position);
 
@@ -376,18 +408,23 @@ export function startWorld(options: {
       }
     }
 
-    const dist = cameraDistance();
-    desired.set(player.position.x - Math.sin(yaw) * dist, 2.55 + pitch, player.position.z + Math.cos(yaw) * dist);
-    if (snapped) {
-      camera.position.copy(desired);
-      snapped = false;
+    const activeCamera = cameraMode === "top" ? overviewCamera : camera;
+    if (cameraMode === "top") {
+      fitOverview();
     } else {
-      camera.position.lerp(desired, 1 - Math.exp(-8 * dt));
+      const dist = cameraDistance();
+      desired.set(player.position.x - Math.sin(yaw) * dist, 2.55 + pitch, player.position.z + Math.cos(yaw) * dist);
+      if (snapped) {
+        camera.position.copy(desired);
+        snapped = false;
+      } else {
+        camera.position.lerp(desired, 1 - Math.exp(-8 * dt));
+      }
+      camera.lookAt(player.position.x, 1.15, player.position.z);
     }
-    camera.lookAt(player.position.x, 1.15, player.position.z);
     updateTarget();
-    renderer.render(scene, camera);
-    labelRenderer.render(scene, camera);
+    renderer.render(scene, activeCamera);
+    labelRenderer.render(scene, activeCamera);
   }
 
   function updateTarget() {
@@ -406,6 +443,8 @@ export function startWorld(options: {
       targetLabel = label;
       options.onTarget(label);
     }
+    for (const [id, ring] of highlightRings) ring.visible = id === best?.id;
+    for (const [id, plate] of nameplates) plate.classList.toggle("is-near", id === best?.id);
   }
 
   function currentSpot(): Spot | null {
@@ -432,12 +471,51 @@ export function startWorld(options: {
   function focus(id: string) {
     const spot = spots.find((item) => item.id === id && item.radius > 0);
     if (!spot) return;
+    cameraMode = "follow";
     player.position.x = spot.x;
     player.position.z = spot.z + 1.7;
     resolve(player.position);
     yaw = 0;
     player.rotation.y = 0;
     snapped = true;
+  }
+
+  function applyViewpoint(id: string): boolean {
+    const pose = viewpointById(id);
+    if (!pose) return false;
+    if (pose.kind === "top") {
+      cameraMode = "top";
+      player.position.set(0, 0, 1.7);
+      player.rotation.y = 0.15;
+      fitOverview();
+      return true;
+    }
+    cameraMode = "follow";
+    player.position.set(pose.x, 0, pose.z);
+    player.rotation.y = pose.yaw;
+    yaw = pose.yaw;
+    pitch = pose.pitch;
+    snapped = true;
+    return true;
+  }
+
+  function fitOverview() {
+    const aspect = Math.max(camera.aspect, 0.2);
+    const needX = 11.2;
+    const needZ = 11.2;
+    let halfW = needX;
+    let halfH = halfW / aspect;
+    if (halfH < needZ) {
+      halfH = needZ;
+      halfW = halfH * aspect;
+    }
+    overviewCamera.left = -halfW;
+    overviewCamera.right = halfW;
+    overviewCamera.top = halfH;
+    overviewCamera.bottom = -halfH;
+    overviewCamera.position.set(0, 24, 2.2);
+    overviewCamera.lookAt(0, 0, 2.2);
+    overviewCamera.updateProjectionMatrix();
   }
 
   function onClick(event: PointerEvent) {
@@ -461,16 +539,37 @@ export function startWorld(options: {
   requestAnimationFrame(loop);
   options.onReady();
   if (options.e2e) {
+    const debugGroup = new Group();
+    debugGroup.name = "shot-debug";
+    debugGroup.visible = false;
+    scene.add(debugGroup);
+    for (const marker of DEBUG_MARKERS) {
+      const ring = new Mesh(
+        geo(new RingGeometry(0.85, 1.15, 28)),
+        new MeshBasicMaterial({ color: marker.color, side: DoubleSide, transparent: true, opacity: 0.95 }),
+      );
+      materials.push(ring.material);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(marker.x, 0.06, marker.z);
+      debugGroup.add(ring);
+    }
     const colliders = (): ColliderSpot[] =>
       spots.map((spot) => ({ id: spot.id, x: spot.x, z: spot.z, collider: spot.collider }));
     window.__protoLab = {
       focus,
+      viewpoints: () => VIEWPOINTS.map((item) => ({ id: item.id, label: item.label })),
+      setViewpoint: applyViewpoint,
+      setDebug: (on: boolean) => {
+        debugGroup.visible = on;
+      },
       visitSlacker: () => {
+        cameraMode = "follow";
         player.position.set(ambient.slacker.x + 0.9, 0, ambient.slacker.z + 1.4);
         resolve(player.position);
         snapped = true;
       },
       visitCorner: (which: "workshop" | "pinball") => {
+        cameraMode = "follow";
         if (which === "workshop") player.position.set(5.2, 0, -3.2);
         else player.position.set(-3.2, 0, 4.0);
         resolve(player.position);
@@ -538,11 +637,99 @@ export function startWorld(options: {
     scene.add(moon);
   }
 
+  function addFloorPaths() {
+    const lane = new Mesh(geo(new PlaneGeometry(0.7, 4.4)), mat(PALETTE.path));
+    lane.rotation.x = -Math.PI / 2;
+    lane.position.set(0.2, 0.016, 0.9);
+    lane.receiveShadow = shadows;
+    scene.add(lane);
+    const branch = new Mesh(geo(new PlaneGeometry(0.55, 2.6)), mat(PALETTE.path));
+    branch.rotation.x = -Math.PI / 2;
+    branch.rotation.z = 0.62;
+    branch.position.set(-0.85, 0.017, -1.7);
+    branch.receiveShadow = shadows;
+    scene.add(branch);
+    const edge = mat(0x2a3148);
+    for (const [w, d, x, z] of [
+      [18.6, 0.16, 0, -6.9],
+      [18.6, 0.16, 0, 11.4],
+      [0.16, 18.2, -9.2, 2.2],
+      [0.16, 18.2, 9.2, 2.2],
+    ] as const) {
+      const mark = new Mesh(geo(new PlaneGeometry(w, d)), edge);
+      mark.rotation.x = -Math.PI / 2;
+      mark.position.set(x, 0.018, z);
+      scene.add(mark);
+    }
+  }
+
+  function addWallTrim() {
+    box(scene, 20.3, 0.16, 0.5, 0, 0.1, -7.55, PALETTE.trim, false);
+    box(scene, 20.3, 0.16, 0.5, 0, 0.1, 12.15, PALETTE.trim, false);
+    box(scene, 0.5, 0.16, 20.2, -9.75, 0.1, 2.2, PALETTE.trim, false);
+    box(scene, 0.5, 0.16, 20.2, 9.75, 0.1, 2.2, PALETTE.trim, false);
+    box(scene, 20.5, 0.12, 0.55, 0, 2.9, -7.6, PALETTE.wallCap, false);
+    box(scene, 20.5, 0.12, 0.55, 0, 2.9, 12.2, PALETTE.wallCap, false);
+    box(scene, 0.55, 0.12, 20.4, -9.8, 2.9, 2.2, PALETTE.wallCap, false);
+    box(scene, 0.55, 0.12, 20.4, 9.8, 2.9, 2.2, PALETTE.wallCap, false);
+    for (const x of [-3.2, 2.6]) {
+      box(scene, 1.7, 0.08, 0.06, x, 2.2, -7.32, PALETTE.trim, false);
+      box(scene, 1.7, 0.08, 0.06, x, 1.0, -7.32, PALETTE.trim, false);
+      box(scene, 0.08, 1.28, 0.06, x - 0.82, 1.6, -7.32, PALETTE.trim, false);
+      box(scene, 0.08, 1.28, 0.06, x + 0.82, 1.6, -7.32, PALETTE.trim, false);
+    }
+  }
+
+  function addArcadeGlow(x: number, z: number) {
+    const glow = new Mesh(
+      geo(new CircleGeometry(1.45, 28)),
+      new MeshBasicMaterial({ color: 0xffb703, transparent: true, opacity: 0.38, depthWrite: false, toneMapped: false }),
+    );
+    materials.push(glow.material);
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.set(x, 0.03, z);
+    scene.add(glow);
+    const halo = new Mesh(
+      geo(new RingGeometry(1.35, 1.7, 28)),
+      new MeshBasicMaterial({ color: 0xff6b9d, transparent: true, opacity: 0.45, side: DoubleSide, depthWrite: false, toneMapped: false }),
+    );
+    materials.push(halo.material);
+    halo.rotation.x = -Math.PI / 2;
+    halo.position.set(x, 0.032, z);
+    scene.add(halo);
+  }
+
+  function addRangeRing(id: string, x: number, z: number, color: number) {
+    const material = new MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.9,
+      side: DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    materials.push(material);
+    const ring = new Mesh(geo(new RingGeometry(0.78, 0.98, 32)), material);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.04, z);
+    ring.visible = false;
+    scene.add(ring);
+    highlightRings.set(id, ring);
+  }
+
   function addChalkboard(entries: CatalogEntry[]) {
+    box(scene, 3.45, 0.12, 0.08, -4.6, 2.48, -7.3, PALETTE.trim, false);
+    box(scene, 3.45, 0.12, 0.08, -4.6, 0.64, -7.3, PALETTE.trim, false);
+    box(scene, 0.12, 1.95, 0.08, -6.28, 1.55, -7.3, PALETTE.trim, false);
+    box(scene, 0.12, 1.95, 0.08, -2.92, 1.55, -7.3, PALETTE.trim, false);
     const board = new Mesh(geo(new PlaneGeometry(3.1, 1.7)), new MeshBasicMaterial({ map: chalkboardTexture(entries) }));
     materials.push(board.material);
-    board.position.set(-4.6, 1.55, -7.35);
+    board.position.set(-4.6, 1.55, -7.33);
     scene.add(board);
+    const label = new Group();
+    label.position.set(-4.6, 0, -7.2);
+    scene.add(label);
+    tag(label, "Pizarra", 2.55, "chalkboard");
   }
 
   function addBench() {
@@ -565,13 +752,14 @@ export function startWorld(options: {
   }
 
   function addLamp() {
-    const pole = new Mesh(geo(new CylinderGeometry(0.05, 0.05, 1.7, 8)), mat(0x8d97a8));
-    pole.position.set(-5.2, 0.85, -1.1);
-    scene.add(pole);
-    const bulb = new Mesh(geo(new SphereGeometry(0.16, 12, 10)), new MeshBasicMaterial({ color: PALETTE.amber }));
+    const x = -0.35;
+    const z = -7.28;
+    box(scene, 0.22, 0.1, 0.14, x, 2.25, z, 0x8d97a8, false);
+    const bulb = new Mesh(geo(new SphereGeometry(0.11, 10, 8)), new MeshBasicMaterial({ color: PALETTE.amber, toneMapped: false }));
     materials.push(bulb.material);
-    bulb.position.set(-5.2, 1.8, -1.1);
+    bulb.position.set(x, 2.08, -7.12);
     scene.add(bulb);
+    lampLight.position.set(x, 2.05, -6.4);
   }
 
   function buildInventor(): Group {
@@ -608,7 +796,7 @@ export function startWorld(options: {
     arm.add(armMesh);
     group.add(arm);
     group.userData.arm = arm;
-    tag(group, "Inventor", 2.15);
+    tag(group, "Inventor", 2.15, "inventor");
     group.traverse((child) => {
       child.userData.interactId = "inventor";
     });
@@ -633,45 +821,130 @@ export function startWorld(options: {
   function buildArcadeCabinet(screenMaterial: MeshBasicMaterial): Group {
     const group = new Group();
     group.userData.interactId = "arcade";
-    box(group, 1.34, 1.72, 0.72, 0, 0.98, 0, PALETTE.cabinet);
-    box(group, 0.18, 1.72, 0.76, -0.78, 0.98, 0, 0x171225);
-    box(group, 0.18, 1.72, 0.76, 0.78, 0.98, 0, 0x171225);
-    const marquee = new Mesh(geo(new BoxGeometry(1.22, 0.26, 0.74)), new MeshBasicMaterial({ color: PALETTE.amber }));
-    materials.push(marquee.material);
-    pulses.push(marquee.material);
-    marquee.position.set(0, 1.92, 0);
+    box(group, 1.18, 1.28, 0.56, 0, 0.82, -0.02, PALETTE.cabinet);
+    box(group, 0.12, 1.58, 0.68, -0.64, 0.9, 0.02, 0x171225);
+    box(group, 0.12, 1.58, 0.68, 0.64, 0.9, 0.02, 0x171225);
+    addGlowStrip(group, -0.71, 0xff5d73);
+    addGlowStrip(group, 0.71, 0x3ec6ff);
+    box(group, 1.28, 0.42, 0.16, 0, 1.7, 0.2, 0x1a1428, false);
+    const marqueeMat = new MeshBasicMaterial({ map: marqueeTexture(), toneMapped: false });
+    materials.push(marqueeMat);
+    const marquee = new Mesh(geo(new PlaneGeometry(1.16, 0.32)), marqueeMat);
+    marquee.position.set(0, 1.7, 0.32);
     group.add(marquee);
-    const sideLightL = new Mesh(geo(new BoxGeometry(0.08, 1.1, 0.08)), new MeshBasicMaterial({ color: PALETTE.teal }));
-    const sideLightR = sideLightL.clone();
-    materials.push(sideLightL.material, sideLightR.material);
-    pulses.push(sideLightL.material as MeshBasicMaterial, sideLightR.material as MeshBasicMaterial);
-    sideLightL.position.set(-0.72, 1.05, 0.38);
-    sideLightR.position.set(0.72, 1.05, 0.38);
-    group.add(sideLightL, sideLightR);
-    screenMaterial.map = null;
-    const screen = new Mesh(geo(new PlaneGeometry(1.02, 0.68)), screenMaterial);
-    screen.position.set(0, 1.28, 0.37);
+    box(group, 1.08, 0.74, 0.05, 0, 1.16, 0.3, 0x100c18, false);
+    const screen = new Mesh(geo(new PlaneGeometry(0.94, 0.6)), screenMaterial);
+    screen.position.set(0, 1.16, 0.35);
     group.add(screen);
-    box(group, 0.82, 0.1, 0.32, 0, 0.68, 0.38, 0x171225);
-    box(group, 0.12, 0.12, 0.12, -0.28, 0.62, 0.4, PALETTE.amber);
-    box(group, 0.12, 0.12, 0.12, 0.28, 0.62, 0.4, PALETTE.amber);
-    tag(group, "Arcade", 2.25);
+    const deck = new Group();
+    deck.position.set(0, 0.58, 0.34);
+    deck.rotation.x = -0.62;
+    box(deck, 1.08, 0.08, 0.48, 0, 0, 0, 0x241c38, false);
+    const stick = new Mesh(geo(new CylinderGeometry(0.03, 0.045, 0.16, 8)), mat(0x2a2933));
+    stick.position.set(-0.28, 0.12, 0.04);
+    deck.add(stick);
+    const ballMat = new MeshBasicMaterial({ color: 0xff5d73, toneMapped: false });
+    materials.push(ballMat);
+    const ball = new Mesh(geo(new SphereGeometry(0.07, 10, 8)), ballMat);
+    ball.position.set(-0.28, 0.22, 0.04);
+    deck.add(ball);
+    for (const [index, color] of [0xffb703, 0x3ec6ff, 0x7dff6b].entries()) {
+      const buttonMat = new MeshBasicMaterial({ color, toneMapped: false });
+      materials.push(buttonMat);
+      const button = new Mesh(geo(new CylinderGeometry(0.055, 0.055, 0.045, 10)), buttonMat);
+      button.position.set(0.02 + index * 0.16, 0.06, 0.05);
+      deck.add(button);
+    }
+    group.add(deck);
+    addCabinetSide(group, -1);
+    addCabinetSide(group, 1);
+    box(group, 0.16, 0.1, 0.18, -0.4, 0.05, 0.12, 0x171225, false);
+    box(group, 0.16, 0.1, 0.18, 0.4, 0.05, 0.12, 0x171225, false);
+    tag(group, "Arcade", 2.15, "arcade");
     group.traverse((child) => {
       child.userData.interactId = "arcade";
     });
     return group;
   }
 
-  function tag(parent: Object3D, text: string, y: number) {
+  function addGlowStrip(parent: Object3D, x: number, color: number) {
+    const material = new MeshBasicMaterial({ color, toneMapped: false });
+    materials.push(material);
+    pulses.push(material);
+    const strip = new Mesh(geo(new BoxGeometry(0.045, 0.95, 0.06)), material);
+    strip.position.set(x, 1.05, 0.32);
+    parent.add(strip);
+  }
+
+  function addCabinetSide(parent: Object3D, side: number) {
+    const material = new MeshBasicMaterial({ map: cabinetSideTexture(side), toneMapped: false });
+    materials.push(material);
+    const art = new Mesh(geo(new PlaneGeometry(0.62, 1.05)), material);
+    art.position.set(side * 0.71, 0.9, 0);
+    art.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+    parent.add(art);
+  }
+
+  function tag(parent: Object3D, text: string, y: number, id?: string) {
     const anchor = document.createElement("div");
     const plate = document.createElement("span");
     plate.className = "nameplate";
     plate.textContent = text;
     anchor.append(plate);
+    if (id) nameplates.set(id, plate);
     const object = new CSS2DObject(anchor);
     object.position.set(0, y, 0);
     parent.add(object);
   }
+}
+
+function marqueeTexture(): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  if (!context) return texture;
+  const gradient = context.createLinearGradient(0, 0, 512, 0);
+  gradient.addColorStop(0, "#ff5d73");
+  gradient.addColorStop(0.32, "#ffb703");
+  gradient.addColorStop(0.66, "#3ec6ff");
+  gradient.addColorStop(1, "#e86bff");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 512, 128);
+  context.fillStyle = "#1a1203";
+  context.font = "800 58px sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText("PROTO ARCADE", 256, 66);
+  return texture;
+}
+
+function cabinetSideTexture(side: number): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 384;
+  const context = canvas.getContext("2d");
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  if (!context) return texture;
+  context.fillStyle = side > 0 ? "#24183a" : "#1a2744";
+  context.fillRect(0, 0, 256, 384);
+  context.fillStyle = side > 0 ? "#ffb703" : "#ff5d73";
+  context.fillRect(0, 0, 256, 28);
+  context.fillRect(0, 356, 256, 28);
+  context.fillStyle = "#f6f1e7";
+  context.font = "800 42px sans-serif";
+  context.textAlign = "center";
+  context.fillText(side > 0 ? "PLAY" : "PROTO", 128, 150);
+  context.fillStyle = side > 0 ? "#3ec6ff" : "#7dff6b";
+  for (let i = 0; i < 5; i++) context.fillRect(36 + i * 38, 210, 22, 22);
+  context.fillStyle = "#ffb703";
+  context.beginPath();
+  context.arc(128, 290, 28, 0, Math.PI * 2);
+  context.fill();
+  return texture;
 }
 
 function chalkboardTexture(entries: CatalogEntry[]): CanvasTexture {
@@ -719,6 +992,9 @@ declare global {
   interface Window {
     __protoLab?: {
       focus: (id: string) => void;
+      viewpoints?: () => { id: string; label: string }[];
+      setViewpoint?: (id: string) => boolean;
+      setDebug?: (on: boolean) => void;
       visitSlacker?: () => void;
       visitCorner?: (which: "workshop" | "pinball") => void;
       probeWalkable?: () => { target: { x: number; z: number }; moved: number; remaining: number }[];

@@ -6,6 +6,7 @@ apps/world/src/generated/*
 !apps/world/src/generated/.gitkeep
 functions/_lib/slugs.json
 test-results
+shots/
 playwright-report
 blob-report
 .DS_Store

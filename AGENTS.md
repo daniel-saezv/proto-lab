@@ -42,6 +42,7 @@ Comandos comprobados en este repositorio (Node 22.23, pnpm 10.33.4):
 - Instalación: `corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit`
 - Build: `pnpm build` → sitio estático en `dist/` (`/` el laboratorio, `/protos/chispa/` el ejemplo)
 - Vistas previas de prototipos: `pnpm previews` (construye el sitio, arranca `pnpm preview` si hace falta, captura con Playwright y escribe `protos/<slug>/preview.webp`; declara `"preview": "preview.webp"` en `proto.json` si no existía). Vuelve a ejecutarlo al crear o iterar un prototipo.
+- Pasada visual del lobby: con `pnpm dev` o `pnpm preview` en marcha, `pnpm shots -- --out shots --prefix antes` (y el mismo comando con `--prefix despues`). Usa los encuadres fijos de `apps/world/src/viewpoints.ts` (aparición, Inventor, arcade, cuatro rincones y cenital) en escritorio 1280×800, iPhone 390×844 y 844×390, abre el selector en la arcade y compone una sola hoja de contacto. `--debug` añade una cenital con anillos en Inventor, arcade y pizarra. `SHOTS_URL` fuerza la base; si no hay servidor, arranca `pnpm dev`. La carpeta `shots/` no se versiona.
 - Typecheck: `pnpm typecheck`
 - Tests unitarios: `pnpm test:unit`
 - Tests e2e: `pnpm test:e2e` (hace falta el build antes; Playwright arranca `pnpm preview` en el puerto 4173; Chromium y WebKit con perfil de iPhone)

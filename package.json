@@ -16,6 +16,7 @@
     "test:e2e": "playwright test",
     "test": "pnpm test:unit && pnpm test:e2e",
     "previews": "node scripts/capture-previews.mjs",
+    "shots": "node scripts/capture-shots.mjs",
     "icons": "node scripts/generate-icons.mjs"
   },
   "devDependencies": {
