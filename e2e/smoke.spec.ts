@@ -699,21 +699,20 @@ async function dispatchTouchDrag(
     ({ x, y, dx, dy }) => {
       const target = document.elementFromPoint(x, y);
       if (!(target instanceof Element)) throw new Error("no hay elemento bajo el toque");
-      // WebKit no deja construir Touch; el listener solo necesita el touchend.
-      const fire = (type: string, clientX: number, clientY: number) => {
+      // WebKit no deja construir Touch. El listener solo necesita el tipo de evento;
+      // TouchEventInit no tiene clientX.
+      const fire = (type: string) => {
         target.dispatchEvent(
           new TouchEvent(type, {
             bubbles: true,
             cancelable: true,
             view: window,
-            clientX,
-            clientY,
           }),
         );
       };
-      fire("touchstart", x, y);
-      if (dx !== 0 || dy !== 0) fire("touchmove", x + dx, y + dy);
-      fire("touchend", x + dx, y + dy);
+      fire("touchstart");
+      if (dx !== 0 || dy !== 0) fire("touchmove");
+      fire("touchend");
     },
     { x, y, dx, dy },
   );
