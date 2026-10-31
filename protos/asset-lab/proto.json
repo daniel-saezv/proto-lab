@@ -1,0 +1,18 @@
+{
+  "slug": "asset-lab",
+  "title": "Laboratorio de assets",
+  "description": "Prototipo mínimo para comprobar el puente de recursos privados (imagen, canvas, WebGL y audio).",
+  "author": "daniel-saezv",
+  "date": "2026-10-31",
+  "tags": ["test", "puente"],
+  "cover": null,
+  "version": "1.0.0",
+  "history": [
+    {
+      "version": "1.0.0",
+      "date": "2026-10-31",
+      "note": "Comprueba blob URLs del puente en canvas, WebGL y Web Audio."
+    }
+  ],
+  "assets": ["media/pixel.png", "media/beep.wav"]
+}

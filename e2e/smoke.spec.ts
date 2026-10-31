@@ -19,6 +19,15 @@ async function focusArcade(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("interact")).toHaveText("Usar la máquina");
 }
 
+async function selectPrototype(page: import("@playwright/test").Page, titlePart: string) {
+  for (let step = 0; step < 6; step += 1) {
+    const title = await page.getByTestId("selector-title").textContent();
+    if (title?.includes(titlePart)) return;
+    await page.getByTestId("selector-next").click();
+  }
+  throw new Error(`No se encontró el prototipo «${titlePart}» en el selector`);
+}
+
 async function openSelector(page: import("@playwright/test").Page, isMobile: boolean) {
   await focusArcade(page);
   const interact = page.getByTestId("interact");
@@ -74,6 +83,7 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
   await expect(page.getByTestId("dialogue")).toBeHidden();
 
   await openSelector(page, isMobile);
+  await selectPrototype(page, "Pozo de bolas");
   await expect(page.getByTestId("selector-title")).toContainText("Pozo de bolas");
   await playFromSelector(page, isMobile);
   const frame = page.frameLocator("iframe");
@@ -178,6 +188,7 @@ async function openChispa(page: import("@playwright/test").Page, isMobile: boole
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await openSelector(page, isMobile);
+  await selectPrototype(page, "Pozo de bolas");
   await playFromSelector(page, isMobile);
 }
 
@@ -210,6 +221,7 @@ test("Escape dentro del prototipo vuelve al laboratorio", async ({ page }) => {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await openSelector(page, false);
+  await selectPrototype(page, "Pozo de bolas");
   await playFromSelector(page, false);
   const canvas = page.frameLocator("iframe").locator("canvas");
   await expect(canvas).toBeVisible();
@@ -252,6 +264,7 @@ async function abrirPozo(page: import("@playwright/test").Page, isMobile: boolea
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await openSelector(page, isMobile);
+  await selectPrototype(page, "Pozo de bolas");
   await playFromSelector(page, isMobile);
 }
 
@@ -375,13 +388,16 @@ test("la máquina central abre el selector, cambia de juego y vuelve al laborato
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await openSelector(page, isMobile);
+  await selectPrototype(page, "Pozo de bolas");
   await expect(page.getByTestId("selector-title")).toHaveText("Pozo de bolas");
   await page.getByTestId("selector-next").click();
-  await expect(page.getByTestId("selector-title")).toHaveText("Pozo de bolas");
+  await expect(page.getByTestId("selector-title")).toHaveText("Laboratorio de assets");
   if (!isMobile) {
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("Enter");
   } else {
+    await page.getByTestId("selector-next").click();
+    await expect(page.getByTestId("selector-title")).toHaveText("Pozo de bolas");
     await playFromSelector(page, true);
   }
   const frame = page.frameLocator("iframe");

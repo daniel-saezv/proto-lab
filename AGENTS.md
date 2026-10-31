@@ -45,7 +45,13 @@ El laboratorio no deja que el iframe pida `/protos/<slug>/` por su cuenta. Con `
 
 Pantalla completa usa `requestFullscreen` sobre el overlay (el cromo de Volver va dentro, así sigue visible). Safari en iOS solo acepta esa API en un vídeo: si no existe o la promesa falla, el mismo botón activa un modo CSS (`is-pseudo-fullscreen`): fijo, `100dvh`/`100vw`, `safe-area`, sin scroll y con el laboratorio oculto. El botón pasa a decir Salir y deshace el modo.
 
-Un prototipo tiene que quedar autocontenido en ese HTML: Vite empaqueta el JS en el archivo que referencia `index.html`. No debe depender de más peticiones al arrancar (`import()` dinámico, imágenes, audio o `fetch` al propio sitio). Esas peticiones salen del origen opaco, sin la cookie de Access, y Access las rechaza. `base` sigue siendo `/protos/<slug>/`.
+Un prototipo tiene que quedar autocontenido en ese HTML: Vite empaqueta el JS en el archivo que referencia `index.html`. No debe depender de más peticiones al arrancar (`import()` dinámico, imágenes, audio o `fetch` al propio sitio), salvo la excepción de recursos privados (abajo). Esas peticiones directas salen del origen opaco, sin la cookie de Access, y Access las rechaza. `base` sigue siendo `/protos/<slug>/`.
+
+### Recursos privados (`assets` en `proto.json`)
+
+Opcional: `"assets": ["media/icon.png", …]` — rutas relativas dentro de la carpeta del prototipo (sin `..`, sin absolutas, sin esquema). El lector del catálogo (`scripts/asset-path.mjs` + `scripts/catalog-lib.mjs`) exige que el archivo exista en el prototipo (raíz, `public/` o `dist/`) y aplica límites: **32** rutas como máximo, **2 MiB** por archivo, **8 MiB** en total. El catálogo expone la lista normalizada al cargador.
+
+El laboratorio descarga solo esos archivos con su cookie de Access, comprueba mismo origen y prefijo `/protos/<slug>/`, y responde al iframe por `postMessage` con `ArrayBuffer` transferibles y tipo MIME. Petición `{ source: "proto-lab", type: "asset-request", id, path }`; respuesta `{ source: "proto-lab", type: "asset-response", id, ok, … }`. El padre ignora mensajes cuyo `event.source` no sea el `contentWindow` del iframe, rutas fuera de la lista, peticiones por encima de **64** por sesión del prototipo, y respuestas de `/api/` u otros slugs. En el documento incrustado hay un puente (`window.__protoLabAssets`: `getBlobUrl`, `getArrayBuffer`, `getMime`, `revokeAll`) y una CSP estricta (`connect-src 'none'`; scripts y estilos inline del cargador; `blob:`/`data:` para medios).
 
 El catálogo no se edita a mano. `apps/world/src/generated/catalog.json` y `functions/_lib/slugs.json` los regenera `pnpm generate` y no se versionan.
 
@@ -73,6 +79,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Los límites de título, descripción y propuestas por día están duplicados en `functions/_lib/validate.ts` y `apps/world/src/limits.ts`. Un test falla si divergen.
 - Cada prototipo declara sus dependencias en su `package.json`. Phaser no entra en el bundle del laboratorio.
 - Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB).
+- Opcional en `proto.json`: `"assets": ["ruta/relativa.png", …]` para imágenes, audio u otros binarios servidos por el puente del laboratorio (ver arriba). No sustituye el JS/CSS embebidos al arrancar.
 - Los prototipos no usan `localStorage`: el iframe aislado no lo permite.
 - Al implementar una iteración, el manifiesto y su historial forman parte del cambio, no un extra opcional.
 

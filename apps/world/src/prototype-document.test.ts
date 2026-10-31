@@ -31,6 +31,8 @@ describe("documento de prototipo", () => {
     expect(result).not.toContain("</body>'");
     expect(result).toContain("<style>body{color:white}</style>");
     expect(result).toContain('type:"alive"');
+    expect(result).toContain("Content-Security-Policy");
+    expect(result).toContain("__protoLabAssets");
     expect(result).toContain("Atrapa la chispa");
     expect(() => rewritePrototypeHtml("<html><body>login de acceso</body></html>", new Map(), pageUrl)).toThrow(/not-prototype/);
   });

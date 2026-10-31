@@ -1,8 +1,11 @@
+import { IFRAME_ASSET_BRIDGE } from "./prototype-assets-host";
+import { cspMetaTag } from "./prototype-csp";
+
 const BRIDGE = `<script>
 window.addEventListener("error",function(event){if(!event.message)return;parent.postMessage({source:"proto-lab",type:"error",message:String(event.message)},"*");});
 window.addEventListener("keydown",function(event){if(event.key==="Escape"){event.preventDefault();parent.postMessage({source:"proto-lab",type:"close"},"*");}});
 parent.postMessage({source:"proto-lab",type:"alive"},"*");
-</script>`;
+</script>${IFRAME_ASSET_BRIDGE}`;
 
 const SCRIPT_TAG = /<script\b([^>]*?)\bsrc\s*=\s*["']([^"']+)["']([^>]*)>\s*<\/script>/gi;
 const MODULE_PRELOAD = /<link\b[^>]*\brel\s*=\s*["']modulepreload["'][^>]*>\s*/gi;
@@ -62,8 +65,10 @@ export function rewritePrototypeHtml(html: string, assets: ReadonlyMap<string, s
   const scripts = blocks.join("");
   if (/<\/body>/i.test(output)) output = output.replace(/<\/body>/i, () => `${scripts}</body>`);
   else output += scripts;
-  if (/<head\b/i.test(output)) return output.replace(/<head\b([^>]*)>/i, `<head$1>${BRIDGE}`);
-  return BRIDGE + output;
+  if (/<head\b/i.test(output)) {
+    return output.replace(/<head\b([^>]*)>/i, `<head$1>${cspMetaTag()}${BRIDGE}`);
+  }
+  return cspMetaTag() + BRIDGE + output;
 }
 
 async function fetchText(url: string, fetchImpl: typeof fetch, pageOrigin: string, expectHtml: boolean): Promise<string> {

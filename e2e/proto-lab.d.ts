@@ -14,4 +14,16 @@ interface Window {
     ballCount: () => number;
     score: () => number;
   };
+  __protoLabAssets?: {
+    getBlobUrl(path: string): Promise<string>;
+    getArrayBuffer(path: string): Promise<ArrayBuffer>;
+    getMime(path: string): Promise<string>;
+    revokeAll(): void;
+  };
+  __assetLab?: {
+    runMediaChecks(): Promise<Record<string, boolean>>;
+    probeExternalFetch(): Promise<string>;
+    probeBadAsset(path: string): Promise<string>;
+    cspPresent(): boolean;
+  };
 }
