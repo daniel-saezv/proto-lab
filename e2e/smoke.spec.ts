@@ -308,6 +308,17 @@ test("en el iPhone se apunta tocando la parte baja y al soltar cae una bola", as
   await expect.poll(() => canvas.evaluate(() => window.__chispa?.ballCount() ?? 0)).toBeGreaterThan(before);
 });
 
+test("el lobby monta decoración ambiental sin errores", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await expect(page.locator("#viewport[data-ambient='1']")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.visitSlacker?.());
+  await expect(page.locator(".speech-bubble")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("el service worker no cachea prototipos", async ({ page }) => {
   const response = await page.request.get("/sw.js");
   expect(response.ok()).toBeTruthy();

@@ -105,6 +105,35 @@ button, input, textarea { font: inherit; color: inherit; }
   pointer-events: none;
 }
 
+.speech-bubble {
+  position: relative;
+  display: inline-block;
+  max-width: 180px;
+  transform: translate(-50%, -165%);
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(246, 241, 231, 0.35);
+  background: rgba(12, 14, 28, 0.9);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+}
+.speech-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  background: rgba(12, 14, 28, 0.9);
+  border-right: 1px solid rgba(246, 241, 231, 0.25);
+  border-bottom: 1px solid rgba(246, 241, 231, 0.25);
+}
+.speech-bubble[hidden] { display: none !important; }
+
 .nameplate {
   display: inline-block;
   transform: translate(-50%, -140%);

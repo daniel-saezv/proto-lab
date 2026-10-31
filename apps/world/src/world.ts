@@ -28,6 +28,7 @@ import {
 } from "three";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 import { attachInput } from "./input";
+import { addAmbient } from "./ambient";
 import type { CatalogEntry } from "./types";
 
 const PALETTE = {
@@ -172,6 +173,8 @@ export function startWorld(options: {
   addPlant();
   addLamp();
 
+  const ambient = addAmbient({ scene, geo, mat, box, shadows, materials, pulses, reduced });
+
   const inventor = buildInventor();
   inventor.position.set(-1.5, 0, -3.4);
   scene.add(inventor);
@@ -207,6 +210,15 @@ export function startWorld(options: {
     { id: "bench", kind: "npc", x: 0.15, z: -3.15, radius: 0, collider: 0.7, label: "" },
     { id: "crates", kind: "npc", x: 5.9, z: 1.5, radius: 0, collider: 0.55, label: "" },
     { id: "plant", kind: "npc", x: -6, z: 1.3, radius: 0, collider: 0.4, label: "" },
+    ...ambient.colliders.map((item) => ({
+      id: item.id,
+      kind: "npc" as const,
+      x: item.x,
+      z: item.z,
+      radius: 0,
+      collider: item.collider,
+      label: "",
+    })),
   ];
 
   let yaw = 0.15;
@@ -289,6 +301,7 @@ export function startWorld(options: {
       const pulse = 0.82 + Math.sin(frame * 3) * 0.18;
       for (const material of pulses) material.color.setScalar(pulse);
     }
+    ambient.tick(frame, dt, player.position);
 
     const dist = cameraDistance();
     desired.set(player.position.x - Math.sin(yaw) * dist, 2.55 + pitch, player.position.z + Math.cos(yaw) * dist);
@@ -378,7 +391,15 @@ export function startWorld(options: {
   requestAnimationFrame(loop);
   options.onReady();
   if (options.e2e) {
-    window.__protoLab = { focus };
+    window.__protoLab = {
+      focus,
+      visitSlacker: () => {
+        player.position.set(ambient.slacker.x + 0.9, 0, ambient.slacker.z + 1.4);
+        resolve(player.position);
+        snapped = true;
+      },
+    };
+    options.viewport.dataset.ambient = "1";
   }
 
   return {
@@ -546,6 +567,7 @@ export function startWorld(options: {
     box(group, 1.16, 1.5, 0.62, 0, 0.86, 0, PALETTE.cabinet);
     const marquee = new Mesh(geo(new BoxGeometry(1.05, 0.22, 0.66)), new MeshBasicMaterial({ color: PALETTE.amber }));
     materials.push(marquee.material);
+    pulses.push(marquee.material);
     marquee.position.set(0, 1.68, 0);
     group.add(marquee);
     const screenMaterial = new MeshBasicMaterial({ map: screenTexture(entry), color: 0xffffff });
@@ -659,6 +681,9 @@ function dampAngle(current: number, target: number, dt: number): number {
 
 declare global {
   interface Window {
-    __protoLab?: { focus: (id: string) => void };
+    __protoLab?: {
+      focus: (id: string) => void;
+      visitSlacker?: () => void;
+    };
   }
 }
