@@ -89,12 +89,20 @@ const overlay = createOverlay(stage, () => {
 
 const statusPoller = createProposalStatusPoller({
   fetch: fetchProposalStatus,
-  onData: ({ items, partial }) => applyProposalStatus(items, partial),
+  onData: ({ items, partial }) => {
+    lobbyWhiteboard?.setFetchError(false);
+    fallbackWhiteboard?.setFetchError(false);
+    applyProposalStatus(items, partial);
+  },
+  onError: () => {
+    lobbyWhiteboard?.setFetchError(true);
+    fallbackWhiteboard?.setFetchError(true);
+  },
   shouldPoll: () =>
     lobbyPollActive({
       visible: document.visibilityState === "visible",
       prototypeOpen: overlay.isOpen(),
-      lobbyMounted: boot.hidden,
+      lobbyMounted: boot.hasAttribute("hidden"),
     }),
 });
 

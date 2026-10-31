@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { boardDataSignature, selectBoardRows, WHITEBOARD_MAX_ROWS } from "./proposals-board-paint";
+import { boardDataSignature, selectBoardRows } from "./proposals-board-paint";
+import { WHITEBOARD_MAX_ROWS } from "./proposals-board-metrics";
 import type { ProposalStatusItem } from "./proposals-status-api";
 
 const item = (n: number): ProposalStatusItem => ({
