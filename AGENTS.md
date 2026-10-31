@@ -75,6 +75,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB).
 - Los prototipos no usan `localStorage`: el iframe aislado no lo permite.
 - Al implementar una iteración, el manifiesto y su historial forman parte del cambio, no un extra opcional.
+- Ojo con el uso de visión: revisar imágenes y capturas cuesta, así que hazlo solo cuando aporte y de forma eficiente.
 
 ## CI/CD
 
