@@ -7,6 +7,9 @@ compatibility_date = "2026-10-30"
 
 # Bindings (KV, etc.) van en este archivo; los secretos siguen en el panel de Pages.
 # Sin PROPOSALS la función acepta propuestas y no aplica el límite diario ni caché del tablón.
+# Variable de Pages (no secreta, en el panel): CF_ACCESS_AUD = etiqueta AUD de la aplicación Access.
+# Si producción y las previews son dos aplicaciones, pon las dos separadas por comas.
+# El equipo ya está en el código: ancient-waterfall-b3eb.cloudflareaccess.com.
 [[kv_namespaces]]
 binding = "PROPOSALS"
 id = "80ac94ce81e8459fb3882e9fe2a68330"

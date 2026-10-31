@@ -66,7 +66,7 @@ Hostnames:
 - Producción: `proto-lab-3k6.pages.dev`
 - Previews: `*.proto-lab-3k6.pages.dev`
 
-Access con PIN de un solo uso cubre los dos. La Function lee el email de `Cf-Access-Authenticated-User-Email`. Esa cabecera solo es de fiar porque Access está delante de producción y de las previews; sin eso, cualquiera podría falsificarla. No definas `ALLOW_DEV_AUTH` en Pages: es solo para probar la Function en local.
+Access con PIN de un solo uso cubre los dos. La Function valida el JWT `Cf-Access-Jwt-Assertion` con las claves de `ancient-waterfall-b3eb.cloudflareaccess.com` y la variable `CF_ACCESS_AUD` (etiqueta AUD de la aplicación). No basta la cabecera de email. No definas `ALLOW_DEV_AUTH` en Pages: es solo para probar la Function en local, y solo en loopback.
 
 La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/protos/*` no basta para saltarse Access: sin la cookie, el PIN sigue delante. Por eso el laboratorio incrusta el prototipo en vez de dejar que el iframe lo pida solo.
 

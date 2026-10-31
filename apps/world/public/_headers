@@ -1,3 +1,17 @@
+# Cabeceras de seguridad de la app. El documento blob de un prototipo hereda
+# esta CSP y solo puede restringirla: script-src y style-src llevan
+# 'unsafe-inline' para que el cargador pueda incrustar el JS y el CSS.
+# La CSP del prototipo (meta) sigue en el HTML incrustado; no se toca aquí.
+# frame-ancestors es 'self', no 'none': Safari aplica la política heredada al
+# blob y con 'none' se niega a montar el iframe. X-Frame-Options: DENY sigue
+# en la respuesta HTTP del laboratorio.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=()
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; child-src 'self' blob:; frame-src blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; manifest-src 'self'
+
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
@@ -19,9 +33,16 @@
 /index.html
   Cache-Control: no-cache
 
+# HTML y el resto de /protos/ se revalidan. El JS/CSS con hash va aparte.
 /protos/*
   Cache-Control: no-cache
   Access-Control-Allow-Origin: *
+
+# Un solo splat por regla (límite de Pages). :slug es un segmento.
+# Hay que soltar el no-cache heredado para que no se concatene.
+/protos/:slug/assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
 
 # Las reglas se heredan: hay que soltar el no-cache de /protos/* para que
 # el max-age largo no se concatene. El nombre con hash lo pone el build.
