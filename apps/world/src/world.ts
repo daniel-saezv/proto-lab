@@ -672,7 +672,8 @@ export function startWorld(options: {
     box(scene, 20.5, 0.12, 0.55, 0, 2.9, 12.2, PALETTE.wallCap, false);
     box(scene, 0.55, 0.12, 20.4, -9.8, 2.9, 2.2, PALETTE.wallCap, false);
     box(scene, 0.55, 0.12, 20.4, 9.8, 2.9, 2.2, PALETTE.wallCap, false);
-    for (const x of [-3.2, 2.6]) {
+    // La pizarra ocupa x ≈ [-6.3, -2.9]; la ventana izquierda queda a la derecha de ese hueco.
+    for (const x of [-1.05, 2.6]) {
       box(scene, 1.7, 0.08, 0.06, x, 2.2, -7.32, PALETTE.trim, false);
       box(scene, 1.7, 0.08, 0.06, x, 1.0, -7.32, PALETTE.trim, false);
       box(scene, 0.08, 1.28, 0.06, x - 0.82, 1.6, -7.32, PALETTE.trim, false);
