@@ -20,53 +20,88 @@ fi
 
 auth_header="Authorization: Bearer ${CF_API_TOKEN}"
 
-api_get() {
+cf_api_error_detail() {
+  local body_file="$1"
+  jq -r '
+    if type == "object" then
+      ([.errors[]? | "\(.code // "?"): \(.message // "sin mensaje")"] + [.messages[]?.message // empty])
+      | map(select(. != null and . != ""))
+      | unique
+      | join("; ")
+    else
+      empty
+    end
+  ' "${body_file}" 2>/dev/null || true
+}
+
+cf_fail_api() {
+  local http_code="$1"
+  local body_file="$2"
+  local context="$3"
+  local detail
+  detail=$(cf_api_error_detail "${body_file}")
+  if [ -z "${detail}" ]; then
+    if jq -e . "${body_file}" >/dev/null 2>&1; then
+      detail="sin mensaje de error en el cuerpo JSON"
+    else
+      detail="cuerpo no JSON (¿HTML o respuesta truncada?)"
+    fi
+  fi
+  echo "::error::Cloudflare API (${context}): HTTP ${http_code} — ${detail}"
+  exit 1
+}
+
+api_get_to_file() {
   local url="$1"
-  local http_code body
-  body=$(mktemp)
-  http_code=$(curl --silent --show-error --location --max-time 60 \
+  local out_file="$2"
+  local context="$3"
+  local http_code
+  http_code=$(curl --silent --show-error --location --max-time 120 \
     --write-out '%{http_code}' \
     --header "${auth_header}" \
-    --header 'Content-Type: application/json' \
-    --output "${body}" \
+    --header 'Accept: application/json' \
+    --output "${out_file}" \
     "${url}") || {
-    rm -f "${body}"
-    echo "::error::Petición GET fallida (red) a la API de Cloudflare Pages."
+    echo "::error::Petición GET fallida (red) — ${context}."
     exit 1
   }
   if [ "${http_code}" -lt 200 ] || [ "${http_code}" -ge 300 ]; then
-    echo "::error::API Cloudflare respondió HTTP ${http_code} (listado o consulta)."
-    rm -f "${body}"
-    exit 1
+    cf_fail_api "${http_code}" "${out_file}" "${context}"
   fi
-  cat "${body}"
-  rm -f "${body}"
 }
 
 api_delete_deployment() {
   local deployment_id="$1"
-  local url="${CF_API_BASE}/accounts/${CF_ACCOUNT_ID}/pages/projects/${PROJECT}/deployments/${deployment_id}?force=true"
+  local encoded_project url out_file http_code detail
+  encoded_project=$(jq -rn --arg p "${PROJECT}" '$p|@uri')
+  url="${CF_API_BASE}/accounts/${CF_ACCOUNT_ID}/pages/projects/${encoded_project}/deployments/${deployment_id}?force=true"
   if [ "${DRY_RUN}" = "true" ]; then
     return 0
   fi
-  local http_code body
-  body=$(mktemp)
+  out_file=$(mktemp)
   http_code=$(curl --silent --show-error --location --max-time 60 \
     --request DELETE \
     --write-out '%{http_code}' \
     --header "${auth_header}" \
-    --header 'Content-Type: application/json' \
-    --output "${body}" \
+    --header 'Accept: application/json' \
+    --output "${out_file}" \
     "${url}") || {
-    rm -f "${body}"
+    rm -f "${out_file}"
     echo "::warning::DELETE fallido (red) para despliegue ${deployment_id}."
     return 1
   }
-  rm -f "${body}"
   if [ "${http_code}" -lt 200 ] || [ "${http_code}" -ge 300 ]; then
-    echo "::warning::DELETE despliegue ${deployment_id} → HTTP ${http_code}."
+    detail=$(cf_api_error_detail "${out_file}")
+    if [ -z "${detail}" ]; then
+      detail="HTTP ${http_code}"
+    else
+      detail="HTTP ${http_code} — ${detail}"
+    fi
+    echo "::warning::DELETE despliegue ${deployment_id}: ${detail}."
+    rm -f "${out_file}"
     return 1
   fi
+  rm -f "${out_file}"
   return 0
 }
 
@@ -78,41 +113,56 @@ deployment_environment() {
   jq -r '.environment // empty'
 }
 
+merge_preview_page_into() {
+  local acc_file="$1"
+  local page_file="$2"
+  local merged
+  merged=$(mktemp)
+  jq -s '.[0] + (.[1].result // [])' "${acc_file}" "${page_file}" >"${merged}"
+  mv "${merged}" "${acc_file}"
+}
+
 list_preview_deployments_json() {
-  local page=1 total_pages=1
-  local combined='[]'
+  local acc_file page_file encoded_project url page total_pages context
+  acc_file=$(mktemp)
+  echo '[]' >"${acc_file}"
+  page=1
+  total_pages=1
+  encoded_project=$(jq -rn --arg p "${PROJECT}" '$p|@uri')
+  page_file=$(mktemp)
   while [ "${page}" -le "${total_pages}" ]; do
-    local url encoded_project
-    encoded_project=$(jq -rn --arg p "${PROJECT}" '$p|@uri')
+    context="listar previews página ${page}"
     url="${CF_API_BASE}/accounts/${CF_ACCOUNT_ID}/pages/projects/${encoded_project}/deployments?env=preview&per_page=50&page=${page}"
-    local response
-    response=$(api_get "${url}")
-    if [ "$(echo "${response}" | jq -r '.success')" != "true" ]; then
-      echo "::error::La API no devolvió success al listar previews (página ${page})."
-      exit 1
+    api_get_to_file "${url}" "${page_file}" "${context}"
+    if [ "$(jq -r '.success // false' "${page_file}")" != "true" ]; then
+      cf_fail_api "200" "${page_file}" "${context} (success=false)"
     fi
-    combined=$(jq -s --argjson a "${combined}" --argjson b "$(echo "${response}" | jq '.result // []')" '$a + $b')
-    total_pages=$(echo "${response}" | jq -r '.result_info.total_pages // 1')
+    merge_preview_page_into "${acc_file}" "${page_file}"
+    total_pages=$(jq -r '.result_info.total_pages // 1' "${page_file}")
     page=$((page + 1))
   done
-  echo "${combined}"
+  rm -f "${page_file}"
+  cat "${acc_file}"
+  rm -f "${acc_file}"
 }
 
 current_production_deployment_id() {
-  local encoded_project url response id
+  local encoded_project url response_file id
   encoded_project=$(jq -rn --arg p "${PROJECT}" '$p|@uri')
   url="${CF_API_BASE}/accounts/${CF_ACCOUNT_ID}/pages/projects/${encoded_project}/deployments?env=production&per_page=10&page=1"
-  response=$(api_get "${url}")
+  response_file=$(mktemp)
+  api_get_to_file "${url}" "${response_file}" "listar producción"
   id=$(
-    echo "${response}" | jq -r --arg branch "${PRODUCTION_BRANCH}" '
+    jq -r --arg branch "${PRODUCTION_BRANCH}" '
       (.result // [])
       | map(select(.environment == "production"))
       | map(select((.deployment_trigger.metadata.branch // .deployment_trigger_metadata.branch // "") == $branch))
       | map(select(.latest_stage.status == "success"))
       | sort_by(.created_on) | reverse
       | .[0].id // empty
-    '
+    ' "${response_file}"
   )
+  rm -f "${response_file}"
   echo "${id}"
 }
 
@@ -232,8 +282,7 @@ log_action() {
   local action="$1"
   local dep_json="$2"
   local reason="$3"
-  local id short branch created aliases
-  id=$(echo "${dep_json}" | jq -r '.id')
+  local short branch created aliases
   short=$(echo "${dep_json}" | jq -r '.short_id // .id')
   branch=$(echo "${dep_json}" | deployment_branch)
   created=$(echo "${dep_json}" | jq -r '.created_on // "?"')
