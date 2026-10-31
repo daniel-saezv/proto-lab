@@ -1,13 +1,13 @@
 import { createAmbienceMusic } from "./ambience-music";
 import { sendProposal } from "./api";
+import { renderPreviewActions } from "./board-preview";
 import catalogFile from "./generated/catalog.json";
 import { createDialogue } from "./dialogue";
-import { showFallback } from "./fallback";
 import { createGameSelector } from "./game-selector";
 import { createInstallHelp, type DeferredInstallPrompt } from "./install-help";
 import { createOverlay } from "./overlay";
 import { createProposalStatusPoller, lobbyPollActive } from "./proposals-status-poller";
-import { fetchProposalStatus } from "./proposals-status-api";
+import { fetchProposalStatus, type ProposalStatusItem } from "./proposals-status-api";
 import type { WhiteboardStatusController } from "./whiteboard-status";
 import type { CatalogEntry } from "./types";
 import "./style.css";
@@ -16,7 +16,10 @@ const catalogPrototypes = catalogFile.prototypes as CatalogEntry[];
 const visiblePrototypes = catalogPrototypes.filter((entry) => !entry.hidden);
 const params = new URLSearchParams(location.search);
 const e2e = params.get("e2e") === "1";
+const perf = params.get("perf") === "1";
+const batch = params.get("batch") !== "0";
 const instant = e2e || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+performance.mark("proto:boot");
 
 const boot = must("#boot");
 const shell = must("#shell");
@@ -34,6 +37,7 @@ const selectorRoot = must("#game-selector");
 const installHelpRoot = must("#install-help");
 const stage = must("#stage");
 const fallback = must("#fallback");
+const boardPreviews = must("#board-previews");
 
 const touch = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 hint.textContent = touch
@@ -50,8 +54,9 @@ let deferredInstallPrompt: DeferredInstallPrompt | null = null;
 let lobbyWhiteboard: WhiteboardStatusController | null = null;
 let fallbackWhiteboard: WhiteboardStatusController | null = null;
 let fallbackAnimFrame = 0;
-let latestProposalStatus: { items: import("./proposals-status-api").ProposalStatusItem[]; partial: boolean } | null =
-  null;
+let latestProposalStatus: { items: ProposalStatusItem[]; partial: boolean } | null = null;
+let fallbackPreviews: HTMLElement | null = null;
+let fallbackLoopOn = false;
 
 function blockWorldInput() {
   inputEnabled = false;
@@ -89,13 +94,18 @@ const overlay = createOverlay(stage, () => {
   inputEnabled = true;
   world?.setInputEnabled(true);
   world?.setSelectorOpen(false);
+  world?.setSuspended(false);
+  resumeFallbackWhiteboardLoop();
   music.setPaused(document.visibilityState !== "visible");
+  syncPreviewActions();
   statusPoller.refresh();
 });
 
 function openPrototype(entry: CatalogEntry) {
-  music.setPaused(true);
+  world?.setSuspended(true);
+  stopFallbackWhiteboardLoop();
   overlay.open(entry);
+  syncPreviewActions();
 }
 
 const statusPoller = createProposalStatusPoller({
@@ -122,10 +132,21 @@ window.addEventListener("beforeinstallprompt", (event) => {
   deferredInstallPrompt = event as DeferredInstallPrompt;
 });
 
-function applyProposalStatus(items: import("./proposals-status-api").ProposalStatusItem[], partial: boolean) {
+function applyProposalStatus(items: ProposalStatusItem[], partial: boolean) {
   latestProposalStatus = { items, partial };
   lobbyWhiteboard?.setItems(items, partial);
   fallbackWhiteboard?.setItems(items, partial);
+  syncPreviewActions();
+}
+
+function syncPreviewActions() {
+  const items = latestProposalStatus?.items ?? [];
+  if (fallbackPreviews) {
+    const count = renderPreviewActions(fallbackPreviews, items);
+    fallbackPreviews.hidden = count === 0;
+  }
+  const count = renderPreviewActions(boardPreviews, items);
+  boardPreviews.hidden = !(viewingBoard && count > 0 && !overlay.isOpen());
 }
 
 function flushProposalStatusToBoards() {
@@ -187,39 +208,68 @@ window.addEventListener("keydown", (event) => {
 
 document.addEventListener("visibilitychange", () => {
   world?.setInputEnabled(document.visibilityState === "visible" && inputEnabled);
-  music.setPaused(document.visibilityState !== "visible" || overlay.isOpen());
+  music.setPaused(document.visibilityState !== "visible");
   if (document.visibilityState === "visible") statusPoller.refresh();
 });
 
+function stopFallbackWhiteboardLoop() {
+  fallbackLoopOn = false;
+  if (fallbackAnimFrame) cancelAnimationFrame(fallbackAnimFrame);
+  fallbackAnimFrame = 0;
+}
+
 function startFallbackWhiteboardLoop() {
+  if (fallbackLoopOn || overlay.isOpen()) return;
+  fallbackLoopOn = true;
   const tick = (now: number) => {
+    if (!fallbackLoopOn || overlay.isOpen()) {
+      fallbackLoopOn = false;
+      fallbackAnimFrame = 0;
+      return;
+    }
     fallbackWhiteboard?.tick(now);
     fallbackAnimFrame = requestAnimationFrame(tick);
   };
   fallbackAnimFrame = requestAnimationFrame(tick);
 }
 
+function resumeFallbackWhiteboardLoop() {
+  if (fallbackWhiteboard) startFallbackWhiteboardLoop();
+}
+
+async function mountFallback() {
+  const { showFallback } = await import("./fallback");
+  showFallback({
+    root: fallback,
+    prototypes: visiblePrototypes,
+    onTalk: () => dialogue.open(),
+    onInstallHelp: () => installHelp.open(),
+    onPlay: (entry) => openPrototype(entry),
+    onPreviews: (container) => {
+      fallbackPreviews = container;
+      syncPreviewActions();
+    },
+    onWhiteboardReady: (controller) => {
+      fallbackWhiteboard = controller;
+      startFallbackWhiteboardLoop();
+      flushProposalStatusToBoards();
+    },
+  });
+}
+
 async function bootWorld() {
   shell.hidden = false;
   statusPoller.start();
   if (!hasWebGL()) {
-    showFallback({
-      root: fallback,
-      prototypes: visiblePrototypes,
-      onTalk: () => dialogue.open(),
-      onInstallHelp: () => installHelp.open(),
-      onPlay: (entry) => openPrototype(entry),
-      onWhiteboardReady: (controller) => {
-        fallbackWhiteboard = controller;
-        startFallbackWhiteboardLoop();
-        flushProposalStatusToBoards();
-      },
-    });
+    await mountFallback();
     finishBoot();
     return;
   }
   try {
+    performance.mark("proto:world-import");
     const module = await import("./world");
+    performance.mark("proto:world-imported");
+    performance.measure("proto:import-world", "proto:world-import", "proto:world-imported");
     world = module.startWorld({
       viewport,
       labels,
@@ -227,7 +277,11 @@ async function bootWorld() {
       joystick,
       knob,
       e2e,
+      perf,
+      batch,
       onReady: () => {
+        performance.mark("proto:ready");
+        performance.measure("proto:to-ready", "proto:boot", "proto:ready");
         viewport.dataset.testid = "world-ready";
         finishBoot();
         statusPoller.refresh();
@@ -263,6 +317,7 @@ async function bootWorld() {
         document.body.classList.toggle("reading-board", open);
         boardBack.hidden = !open;
         if (open) interact.hidden = true;
+        syncPreviewActions();
       },
       onWhiteboardReady: (controller) => {
         lobbyWhiteboard = controller;
@@ -272,18 +327,7 @@ async function bootWorld() {
     });
   } catch (error) {
     console.error("No se ha podido encender el laboratorio en 3D");
-    showFallback({
-      root: fallback,
-      prototypes: visiblePrototypes,
-      onTalk: () => dialogue.open(),
-      onInstallHelp: () => installHelp.open(),
-      onPlay: (entry) => openPrototype(entry),
-      onWhiteboardReady: (controller) => {
-        fallbackWhiteboard = controller;
-        startFallbackWhiteboardLoop();
-        flushProposalStatusToBoards();
-      },
-    });
+    await mountFallback();
     finishBoot();
     void error;
   }

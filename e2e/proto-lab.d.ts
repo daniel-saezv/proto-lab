@@ -9,6 +9,16 @@ interface Window {
     setViewpoint?: (id: string) => boolean;
     setDebug?: (on: boolean) => void;
     openPrototype?: (slug: string) => void;
+    renderFrame?: () => number;
+    renderSuspended?: () => boolean;
+    rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
+    batchStats?: () => {
+      meshesBefore: number;
+      meshesAfter: number;
+      instancedSets: number;
+      mergedSets: number;
+      shadowCasters: number;
+    } | null;
   };
   __chispa?: {
     drop: (x?: number) => void;

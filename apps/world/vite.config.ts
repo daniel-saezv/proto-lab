@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type HtmlTagDescriptor } from "vite";
 
 const worldDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(worldDir, "../..");
@@ -149,6 +149,41 @@ function devApi(): Plugin {
   };
 }
 
+/** El mundo es un import dinámico. Sin esto el HTML no lo pide hasta que el entry termina. */
+function preloadWorldChunk(): Plugin {
+  return {
+    name: "proto-lab-preload-world",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(_html, ctx) {
+        const bundle = ctx.bundle;
+        if (!bundle) return;
+        const entries = new Set(
+          Object.values(bundle)
+            .filter((item) => item.type === "chunk" && item.isEntry)
+            .map((item) => item.fileName),
+        );
+        const tags: HtmlTagDescriptor[] = [];
+        const seen = new Set<string>();
+        for (const item of Object.values(bundle)) {
+          if (item.type !== "chunk" || !item.isDynamicEntry || item.name !== "world") continue;
+          for (const fileName of [item.fileName, ...item.imports]) {
+            if (seen.has(fileName) || entries.has(fileName)) continue;
+            seen.add(fileName);
+            tags.push({
+              tag: "link",
+              attrs: { rel: "modulepreload", crossorigin: true, href: `/${fileName}` },
+              injectTo: "head",
+            });
+          }
+        }
+        return tags;
+      },
+    },
+  };
+}
+
 export default defineConfig({
   root: worldDir,
   base: "/",
@@ -160,5 +195,5 @@ export default defineConfig({
   server: {
     fs: { allow: [repoRoot] },
   },
-  plugins: [devApi(), serveProtos(), allowPrototypeCors()],
+  plugins: [devApi(), serveProtos(), allowPrototypeCors(), preloadWorldChunk()],
 });

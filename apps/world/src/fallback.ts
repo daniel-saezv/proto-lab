@@ -7,6 +7,7 @@ export function showFallback(options: {
   onTalk: () => void;
   onInstallHelp?: () => void;
   onPlay: (entry: CatalogEntry) => void;
+  onPreviews?: (container: HTMLElement) => void;
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
 }) {
   options.root.hidden = false;
@@ -23,6 +24,12 @@ export function showFallback(options: {
   boardSection.append(boardHeading);
   const whiteboard = createWhiteboardStatus({ attachTo: boardSection });
   options.onWhiteboardReady?.(whiteboard);
+  const previews = document.createElement("div");
+  previews.className = "fallback-previews";
+  previews.dataset.testid = "fallback-previews";
+  previews.hidden = true;
+  boardSection.append(previews);
+  options.onPreviews?.(previews);
 
   const actions = document.createElement("div");
   actions.className = "fallback-actions";

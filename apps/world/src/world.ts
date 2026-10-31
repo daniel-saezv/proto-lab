@@ -59,6 +59,7 @@ import {
 import type { CatalogEntry } from "./types";
 import { createWhiteboardStatus, type WhiteboardStatusController } from "./whiteboard-status";
 import { bindWhiteboardMesh } from "./world-whiteboard";
+import { batchStaticMeshes, type BatchStats } from "./static-batch";
 import type { ProposalStatusItem } from "./proposals-status-api";
 
 const PALETTE = {
@@ -95,6 +96,8 @@ export type WorldHandle = {
   setProposalBoardItems: (items: ProposalStatusItem[], partial: boolean) => void;
   isViewingWhiteboard: () => boolean;
   exitWhiteboard: () => void;
+  /** Pausa el bucle, el análisis de audio y el resto del trabajo por frame. */
+  setSuspended: (suspended: boolean) => void;
   dispose: () => void;
 };
 
@@ -123,6 +126,9 @@ export function startWorld(options: {
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
   onBoardView?: (open: boolean) => void;
   onGesture?: () => void;
+  /** `false` deja cada malla suelta para medir renderer.info. */
+  batch?: boolean;
+  perf?: boolean;
 }): WorldHandle {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -179,9 +185,13 @@ export function startWorld(options: {
   const arcadeLight = new PointLight(0xffb45a, 4.5, 5.2, 2);
   scene.add(arcadeLight);
 
+  const lambertByColor = new Map<number, MeshLambertMaterial>();
   function mat(color: number): MeshLambertMaterial {
+    const cached = lambertByColor.get(color);
+    if (cached) return cached;
     const material = new MeshLambertMaterial({ color });
     materials.push(material);
+    lambertByColor.set(color, material);
     return material;
   }
 
@@ -367,6 +377,8 @@ export function startWorld(options: {
   const raycaster = new Raycaster();
   const pointer = new Vector2();
   let running = true;
+  let suspended = false;
+  let loopQueued = false;
   let frame = 0;
   let lastFrame = performance.now();
   let pointerDownX = 0;
@@ -423,7 +435,9 @@ export function startWorld(options: {
   renderer.domElement.addEventListener("webglcontextlost", (event) => event.preventDefault());
 
   function loop() {
-    if (!running) return;
+    loopQueued = false;
+    if (!running || suspended) return;
+    loopQueued = true;
     requestAnimationFrame(loop);
     const now = performance.now();
     const dt = Math.min((now - lastFrame) / 1000, 0.05);
@@ -716,7 +730,44 @@ export function startWorld(options: {
     }
   }
 
-  requestAnimationFrame(loop);
+  for (const material of pulses) material.userData.live = true;
+  player.userData.noBatch = true;
+  inventor.userData.noBatch = true;
+  for (const ring of highlightRings.values()) ring.userData.noBatch = true;
+  const batchStats: BatchStats | null = options.batch === false ? null : batchStaticMeshes(scene, geometries);
+  options.viewport.dataset.renderSuspended = "0";
+  if (batchStats && (options.e2e || options.perf)) {
+    options.viewport.dataset.batchMeshes = `${batchStats.meshesBefore}>${batchStats.meshesAfter}`;
+  }
+
+  function rendererStats() {
+    const render = renderer.info.render;
+    return {
+      calls: render.calls,
+      triangles: render.triangles,
+      geometries: renderer.info.memory.geometries,
+      textures: renderer.info.memory.textures,
+    };
+  }
+
+  function kickLoop() {
+    if (!running || suspended || loopQueued) return;
+    lastFrame = performance.now();
+    loopQueued = true;
+    requestAnimationFrame(loop);
+  }
+
+  function setSuspended(next: boolean) {
+    if (suspended === next) return;
+    suspended = next;
+    options.viewport.dataset.renderSuspended = next ? "1" : "0";
+    velX = 0;
+    velZ = 0;
+    input.resetLook();
+    if (!next) kickLoop();
+  }
+
+  kickLoop();
   options.onReady();
   options.onWhiteboardReady?.(lobbyWhiteboard);
   if (options.e2e) {
@@ -764,6 +815,10 @@ export function startWorld(options: {
         z: camera.position.z,
         playerVisible: player.visible,
       }),
+      renderFrame: () => frame,
+      renderSuspended: () => suspended,
+      rendererStats,
+      batchStats: () => batchStats,
       probeWalkable: () => {
         const bounds = playerLobbyBounds();
         const start = { x: 0, z: 1.7 };
@@ -782,6 +837,14 @@ export function startWorld(options: {
     };
     options.onE2eReady?.();
     options.viewport.dataset.ambient = "1";
+  } else if (options.perf) {
+    window.__protoLab = {
+      focus,
+      renderFrame: () => frame,
+      renderSuspended: () => suspended,
+      rendererStats,
+      batchStats: () => batchStats,
+    };
   }
 
   return {
@@ -808,6 +871,7 @@ export function startWorld(options: {
     exitWhiteboard() {
       beginLeaveBoard();
     },
+    setSuspended,
     dispose() {
       running = false;
       input.dispose();
@@ -992,6 +1056,7 @@ export function startWorld(options: {
     const board = new Mesh(geo(new PlaneGeometry(WHITEBOARD_FRAME.width, WHITEBOARD_FRAME.height)), material);
     board.position.set(WHITEBOARD_FRAME.x, WHITEBOARD_FRAME.y, WHITEBOARD_FRAME.z);
     board.userData.interactId = "chalkboard";
+    board.userData.noBatch = true;
     scene.add(board);
     bindWhiteboardMesh(board, whiteboard, (item) => materials.push(item));
     const label = new Group();
@@ -1098,6 +1163,7 @@ export function startWorld(options: {
     box(group, 1.08, 0.74, 0.05, 0, 1.16, 0.3, 0x100c18, false);
     const screen = new Mesh(geo(new PlaneGeometry(0.94, 0.6)), screenMaterial);
     screen.position.set(0, 1.16, 0.35);
+    screen.userData.noBatch = true;
     group.add(screen);
     const deck = new Group();
     deck.position.set(0, 0.58, 0.34);
@@ -1260,6 +1326,10 @@ declare global {
       probeWalkable?: () => { target: { x: number; z: number }; moved: number; remaining: number }[];
       whiteboardView?: () => { phase: string; x: number; y: number; z: number; playerVisible: boolean };
       openPrototype?: (slug: string) => void;
+      renderFrame?: () => number;
+      renderSuspended?: () => boolean;
+      rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
+      batchStats?: () => BatchStats | null;
     };
   }
 }

@@ -1,8 +1,10 @@
 export const MUSIC_MUTE_KEY = "proto-lab:music-muted";
 
 /**
- * Bajo /protos/ el service worker ya no precachea ni intercepta
- * (scripts/sw.mjs). Así cada pista se pide solo cuando va a sonar.
+ * Bajo /protos/ el service worker no precachea ni intercepta
+ * (scripts/sw.mjs). La primera pista empieza a bajar al arrancar,
+ * con prioridad baja, y play() espera al primer gesto. Las demás
+ * se piden cuando les toca sonar.
  */
 export const AMBIENCE_TRACKS = [
   "/protos/audio/life-in-fragments.m4a",
@@ -141,6 +143,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   let order: string[] = [];
   let reducedQuery: MediaQueryList | null = null;
   let playGeneration = 0;
+  let primedFor: string | null = null;
+  let primedSrc: string | null = null;
 
   function paint() {
     const sounding = !muted;
@@ -204,7 +208,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   function beginTrack() {
     if (!audio || !audible()) return;
     if (order.length === 0) order = shufflePlaylist(AMBIENCE_TRACKS);
-    const url = order[trackIndex] ?? AMBIENCE_TRACKS[0];
+    const network = order[trackIndex] ?? AMBIENCE_TRACKS[0];
+    const url = primedSrc && network === primedFor ? primedSrc : network;
     if (audio.getAttribute("src") !== url) audio.src = url;
     if (!source && !sourceFailed) audio.volume = MASTER_LEVEL;
     // play() tiene que llamarse en el mismo turno del gesto, sin await delante.
@@ -240,26 +245,9 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     if (decision.skipTrack) skipTrack();
   }
 
-  function ensureGraph(): void {
-    if (ctx) return;
-    const Ctx =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    try {
-      ctx = new Ctx();
-    } catch {
-      ctx = null;
-      return;
-    }
-    master = ctx.createGain();
-    master.gain.value = 0;
-    analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.72;
-    bins = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
-    analyser.connect(master);
-    master.connect(ctx.destination);
+  function ensureAudioElement(): HTMLAudioElement | null {
+    if (audio) return audio;
+    if (typeof document === "undefined") return null;
     audio = new Audio();
     audio.preload = "none";
     audio.loop = false;
@@ -279,14 +267,68 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     });
     audio.addEventListener("playing", () => {
       skips = 0;
+      performance.mark?.("proto:audio-playing");
       notePlayback();
+    });
+    audio.addEventListener("canplay", () => {
+      performance.mark?.("proto:audio-canplay");
     });
     audio.addEventListener("pause", () => {
       sounded = false;
       paintPlayback();
     });
+    return audio;
+  }
+
+  function ensureGraph(): void {
+    ensureAudioElement();
+    if (ctx) return;
+    const Ctx =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      ctx = new Ctx();
+    } catch {
+      ctx = null;
+      return;
+    }
+    master = ctx.createGain();
+    master.gain.value = 0;
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.72;
+    bins = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
+    analyser.connect(master);
+    master.connect(ctx.destination);
     ctx.addEventListener("statechange", onContextState);
-    order = shufflePlaylist(AMBIENCE_TRACKS);
+    if (order.length === 0) order = shufflePlaylist(AMBIENCE_TRACKS);
+  }
+
+  /**
+   * Baja la primera pista en segundo plano. play() no espera a este fetch:
+   * si el blob ya está, suena desde memoria; si no, usa la URL de red en el
+   * mismo turno del gesto.
+   */
+  function primeFirstTrack(): void {
+    if (muted) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get("audio") === "lazy") return;
+    if (order.length === 0) order = shufflePlaylist(AMBIENCE_TRACKS);
+    const url = order[trackIndex] ?? order[0];
+    if (!url || primedFor === url) return;
+    primedFor = url;
+    performance.mark?.("proto:audio-prime");
+    void fetch(url, { credentials: "same-origin", priority: "low" })
+      .then(async (response) => {
+        if (!response.ok || primedFor !== url) return;
+        const blob = await response.blob();
+        if (primedFor !== url) return;
+        if (primedSrc) URL.revokeObjectURL(primedSrc);
+        primedSrc = URL.createObjectURL(blob);
+        performance.mark?.("proto:audio-primed");
+      })
+      .catch(() => {});
   }
 
   /** Enruta el elemento solo con el contexto en marcha, para no dejar iOS mudo. */
@@ -417,6 +459,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   window.addEventListener("keydown", onUserGesture, unlockCapture);
   document.addEventListener("visibilitychange", onVisibility);
   paint();
+  primeFirstTrack();
 
   return {
     setPaused(next: boolean) {
@@ -440,6 +483,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       audio?.pause();
       audio?.remove();
       audio = null;
+      if (primedSrc) URL.revokeObjectURL(primedSrc);
+      primedSrc = null;
       if (ctx) ctx.removeEventListener("statechange", onContextState);
       void ctx?.close();
       ctx = null;
