@@ -1,3 +1,4 @@
+import type { BoardNavAction, BoardUiSnapshot } from "./proposals-board-actions";
 import type { CatalogEntry } from "./types";
 import type { WhiteboardStatusController } from "./whiteboard-status-types";
 
@@ -7,7 +8,9 @@ export function showFallback(options: {
   onTalk: () => void;
   onInstallHelp?: () => void;
   onPlay: (entry: CatalogEntry) => void;
-  onPreviews?: (container: HTMLElement) => void;
+  knownSlugs?: readonly string[];
+  onBoardUi?: (ui: BoardUiSnapshot) => void;
+  onBoardAction?: (action: BoardNavAction) => void;
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
 }) {
   options.root.hidden = false;
@@ -22,18 +25,16 @@ export function showFallback(options: {
   const boardHeading = document.createElement("h2");
   boardHeading.textContent = "Tablón de propuestas";
   boardSection.append(boardHeading);
-  const previews = document.createElement("div");
-  previews.className = "fallback-previews";
-  previews.dataset.testid = "fallback-previews";
-  previews.hidden = true;
-  boardSection.append(previews);
-  options.onPreviews?.(previews);
 
   void import("./whiteboard-status").then(({ createWhiteboardStatus }) => {
     if (!boardSection.isConnected) return;
-    const whiteboard = createWhiteboardStatus({ attachTo: boardSection });
-    const canvas = boardSection.querySelector(".fallback-whiteboard-canvas");
-    if (canvas) boardSection.insertBefore(canvas, previews);
+    const whiteboard = createWhiteboardStatus({
+      attachTo: boardSection,
+      interactive: true,
+      knownSlugs: options.knownSlugs,
+      onUi: options.onBoardUi,
+      onAction: options.onBoardAction,
+    });
     options.onWhiteboardReady?.(whiteboard);
   });
 
