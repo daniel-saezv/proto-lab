@@ -18,6 +18,7 @@ import {
   type Material,
 } from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { addFridgeCorner, addStoryCorners, tickCornerReactions } from "./ambient-corners";
 
 const PALETTE = {
   couch: 0x5c4038,
@@ -98,12 +99,10 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
   const { arm, ember, smokes, tvLight, tvMaterial, tvCanvas, tvCtx } = addSlackerAndTv(lounge, slackerX, slackerZ, f);
   addSnackClutter(lounge, slackerX + 0.55, slackerZ + 0.35, f);
   addPosters(f.scene, f);
-  addRadio(f.scene, f);
-  const fridgeHum = addFridge(f.scene, f);
-  addCatOnCrates(f.scene, f);
-  addSleepingDog(f.scene, f);
   addFloorCables(f.scene, f);
   const dust = addDust(f.scene, f);
+  const corners = addStoryCorners(f);
+  const fridgeHum = addFridgeCorner(f);
 
   const bubbleAnchor = document.createElement("div");
   bubbleAnchor.className = "speech-bubble";
@@ -117,11 +116,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
   let lineShown = -1;
 
   return {
-    colliders: [
-      { id: "couch", x: slackerX, z: slackerZ, collider: 0.85 },
-      { id: "fridge", x: 7.35, z: 5.2, collider: 0.42 },
-      { id: "dog", x: 2.05, z: 3.45, collider: 0.38 },
-    ],
+    colliders: [{ id: "couch", x: slackerX, z: slackerZ, collider: 0.48 }, ...corners.colliders],
     slacker: { x: slackerX, z: slackerZ, radius: 2.35 },
     tick(time, dt, player) {
       const near =
@@ -170,6 +165,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
       }
 
       fridgeHum.scale.set(1, 1 + Math.sin(time * 16) * 0.4, 1);
+      tickCornerReactions(corners.interact, player, time, f.reduced);
     },
   };
 }
@@ -332,57 +328,6 @@ function addPoster(
   const poster = new Mesh(f.geo(new PlaneGeometry(0.55, 0.78)), material);
   poster.position.set(x, y, z);
   scene.add(poster);
-}
-
-function addRadio(scene: Scene, f: AmbientFactories) {
-  const x = -4.35;
-  const z = -0.85;
-  f.box(scene, 0.38, 0.22, 0.24, x, 0.92, z, PALETTE.radio);
-  f.box(scene, 0.04, 0.18, 0.04, x + 0.12, 1.08, z, 0x8d97a8, false);
-  const dialMat = new MeshBasicMaterial({ color: PALETTE.wrapper });
-  f.materials.push(dialMat);
-  f.pulses.push(dialMat);
-  const dial = new Mesh(f.geo(new CylinderGeometry(0.045, 0.045, 0.02, 10)), dialMat);
-  dial.rotation.x = Math.PI / 2;
-  dial.position.set(x - 0.08, 0.94, z + 0.13);
-  scene.add(dial);
-}
-
-function addFridge(scene: Scene, f: AmbientFactories): Mesh {
-  const x = 7.35;
-  const z = 5.2;
-  f.box(scene, 0.72, 1.35, 0.58, x, 0.68, z, PALETTE.fridge);
-  f.box(scene, 0.68, 0.04, 0.54, x, 1.36, z, 0xb8c5d0, false);
-  f.box(scene, 0.04, 0.35, 0.06, x - 0.32, 0.85, z + 0.32, 0x8d97a8, false);
-  const hum = new Mesh(f.geo(new BoxGeometry(0.02, 0.02, 0.02)), new MeshBasicMaterial({ color: 0xffffff }));
-  f.materials.push(hum.material);
-  hum.position.set(x + 0.28, 0.15, z + 0.32);
-  scene.add(hum);
-  return hum;
-}
-
-function addCatOnCrates(scene: Scene, f: AmbientFactories) {
-  const x = 5.75;
-  const z = 1.45;
-  const y = 0.62;
-  f.box(scene, 0.28, 0.18, 0.38, x, y, z, PALETTE.cat);
-  const head = new Mesh(f.geo(new SphereGeometry(0.14, 10, 8)), f.mat(PALETTE.cat));
-  head.position.set(x + 0.18, y + 0.08, z);
-  head.castShadow = f.shadows;
-  scene.add(head);
-  f.box(scene, 0.04, 0.04, 0.04, x + 0.28, y + 0.12, z - 0.02, PALETTE.cat, false);
-  f.box(scene, 0.04, 0.04, 0.04, x + 0.28, y + 0.12, z + 0.02, PALETTE.cat, false);
-}
-
-function addSleepingDog(scene: Scene, f: AmbientFactories) {
-  const x = 2.05;
-  const z = 3.45;
-  f.box(scene, 0.62, 0.16, 0.28, x, 0.1, z, PALETTE.dog);
-  const head = new Mesh(f.geo(new SphereGeometry(0.14, 10, 8)), f.mat(PALETTE.dog));
-  head.position.set(x - 0.38, 0.12, z + 0.05);
-  head.castShadow = f.shadows;
-  scene.add(head);
-  f.box(scene, 0.18, 0.1, 0.12, x + 0.32, 0.08, z - 0.08, PALETTE.dog, false);
 }
 
 function addFloorCables(scene: Scene, f: AmbientFactories) {

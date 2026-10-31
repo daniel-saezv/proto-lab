@@ -29,6 +29,7 @@ import {
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 import { attachInput } from "./input";
 import { addAmbient } from "./ambient";
+import { lobbyBounds, resolvePosition, walkToward, type ColliderSpot } from "./navigation";
 import type { CatalogEntry } from "./types";
 
 const PALETTE = {
@@ -164,12 +165,9 @@ export function startWorld(options: {
   box(scene, 0.4, 2.8, 20.2, -9.8, 1.4, 2.2, PALETTE.wall);
   box(scene, 0.4, 2.8, 20.2, 9.8, 1.4, 2.2, PALETTE.wall);
   box(scene, 18, 0.18, 0.18, 0, 2.8, -7.4, PALETTE.trim, false);
-  addWindow(-3.2);
-  addWindow(2.6);
   addMoon();
   addChalkboard(options.prototypes);
   addBench();
-  addCrates();
   addPlant();
   addLamp();
 
@@ -193,7 +191,7 @@ export function startWorld(options: {
   scene.add(player);
 
   const spots: Spot[] = [
-    { id: "inventor", kind: "npc", x: -1.5, z: -3.4, radius: 2.25, collider: 0.48, label: "Hablar con el Inventor" },
+    { id: "inventor", kind: "npc", x: -1.5, z: -3.4, radius: 2.25, collider: 0.42, label: "Hablar con el Inventor" },
     ...options.prototypes.map((entry, index) => {
       const column = index % 2 === 0 ? 1 : -1;
       return {
@@ -203,13 +201,13 @@ export function startWorld(options: {
         x: 3.4 + index * 1.6 * column,
         z: -1.5 - Math.floor(index / 2) * 1.8,
         radius: 2.45,
-        collider: 0.72,
+        collider: 0.65,
         label: `Jugar a ${entry.title}`,
       };
     }),
-    { id: "bench", kind: "npc", x: 0.15, z: -3.15, radius: 0, collider: 0.7, label: "" },
-    { id: "crates", kind: "npc", x: 5.9, z: 1.5, radius: 0, collider: 0.55, label: "" },
-    { id: "plant", kind: "npc", x: -6, z: 1.3, radius: 0, collider: 0.4, label: "" },
+    { id: "bench", kind: "npc", x: 0.15, z: -3.15, radius: 0, collider: 0.48, label: "" },
+    { id: "crates", kind: "npc", x: 5.85, z: 1.45, radius: 0, collider: 0.42, label: "" },
+    { id: "plant", kind: "npc", x: -6, z: 1.3, radius: 0, collider: 0.22, label: "" },
     ...ambient.colliders.map((item) => ({
       id: item.id,
       kind: "npc" as const,
@@ -391,12 +389,35 @@ export function startWorld(options: {
   requestAnimationFrame(loop);
   options.onReady();
   if (options.e2e) {
+    const colliders = (): ColliderSpot[] =>
+      spots.map((spot) => ({ id: spot.id, x: spot.x, z: spot.z, collider: spot.collider }));
     window.__protoLab = {
       focus,
       visitSlacker: () => {
         player.position.set(ambient.slacker.x + 0.9, 0, ambient.slacker.z + 1.4);
         resolve(player.position);
         snapped = true;
+      },
+      visitCorner: (which: "workshop" | "pinball") => {
+        if (which === "workshop") player.position.set(5.2, 0, -3.2);
+        else player.position.set(-3.2, 0, 4.0);
+        resolve(player.position);
+        yaw = which === "workshop" ? -0.6 : 2.4;
+        snapped = true;
+      },
+      probeWalkable: () => {
+        const bounds = lobbyBounds(true);
+        const start = { x: 0, z: 1.7 };
+        const checks = [
+          { x: -1.5, z: -2.2 },
+          { x: 3.4, z: -0.2 },
+          { x: -5.5, z: 2.5 },
+          { x: 5.5, z: 0.5 },
+        ];
+        return checks.map((target) => {
+          const result = walkToward(start, target, colliders(), bounds, { steps: 320 });
+          return { target, moved: result.moved, remaining: result.remaining };
+        });
       },
     };
     options.viewport.dataset.ambient = "1";
@@ -431,30 +452,11 @@ export function startWorld(options: {
   };
 
   function resolve(position: Vector3) {
-    for (const spot of spots) {
-      const dx = position.x - spot.x;
-      const dz = position.z - spot.z;
-      const min = spot.collider + 0.38;
-      const distanceSq = dx * dx + dz * dz;
-      if (distanceSq >= min * min) continue;
-      const distance = Math.sqrt(distanceSq) || 0.0001;
-      const push = (min - distance) / distance;
-      position.x += dx * push;
-      position.z += dz * push;
-    }
-    position.x = clamp(position.x, -7.4, 7.4);
-    position.z = clamp(position.z, -6.3, 7.4 - cameraDistance());
+    resolvePosition(position, spots, lobbyBounds(camera.aspect >= 0.9));
   }
 
   function cameraDistance(): number {
     return camera.aspect < 0.9 ? 6.4 : 3.8;
-  }
-
-  function addWindow(x: number) {
-    const pane = new Mesh(geo(new PlaneGeometry(1.5, 1.1)), new MeshBasicMaterial({ color: PALETTE.window }));
-    materials.push(pane.material);
-    pane.position.set(x, 1.6, -7.38);
-    scene.add(pane);
   }
 
   function addMoon() {
@@ -477,11 +479,6 @@ export function startWorld(options: {
     box(scene, 0.1, 0.7, 0.1, 0.75, 0.35, -2.95, PALETTE.bench);
     box(scene, 0.1, 0.7, 0.1, -0.45, 0.35, -3.35, PALETTE.bench);
     box(scene, 0.1, 0.7, 0.1, 0.75, 0.35, -3.35, PALETTE.bench);
-  }
-
-  function addCrates() {
-    box(scene, 0.55, 0.55, 0.55, 5.7, 0.28, 1.35, PALETTE.crate);
-    box(scene, 0.4, 0.4, 0.4, 6.15, 0.7, 1.6, PALETTE.crate);
   }
 
   function addPlant() {
@@ -684,6 +681,8 @@ declare global {
     __protoLab?: {
       focus: (id: string) => void;
       visitSlacker?: () => void;
+      visitCorner?: (which: "workshop" | "pinball") => void;
+      probeWalkable?: () => { target: { x: number; z: number }; moved: number; remaining: number }[];
     };
   }
 }
