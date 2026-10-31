@@ -101,7 +101,6 @@ const PALETTE = {
 export type WorldHandle = {
   focus: (id: string) => void;
   interact: () => void;
-  getNearbySlug: () => string | null;
   setInputEnabled: (enabled: boolean) => void;
   setArcadeHighlight: (index: number) => void;
   setSelectorOpen: (open: boolean) => void;
@@ -988,9 +987,6 @@ export function startWorld(options: {
   return {
     focus,
     interact,
-    getNearbySlug() {
-      return null;
-    },
     setArcadeHighlight,
     setSelectorOpen(open: boolean) {
       selectorOpen = open;
