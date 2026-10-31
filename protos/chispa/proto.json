@@ -10,7 +10,7 @@
     "movil"
   ],
   "cover": null,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "history": [
     {
       "version": "0.1.0",
@@ -21,6 +21,11 @@
       "version": "0.2.0",
       "date": "2026-10-31",
       "note": "El minijuego pasa a ser un pozo de bolas que se funden al tocarse."
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-10-31",
+      "note": "Motor Phaser 4; misma jugabilidad, render WebGL actualizado."
     },
     {
       "version": "0.3.0",
