@@ -350,7 +350,8 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await openInventorDialogue(page);
-  await expect(page.getByTestId("dialogue-text")).toContainText("Inventor");
+  await expect(page.getByTestId("dialogue-text")).toContainText("la máquina de este laboratorio");
+  await expect(page.getByTestId("dialogue-text")).not.toContainText("máquinas");
 
   await page.getByTestId("choice-propose").click();
   await page.getByTestId("dialogue-input").fill("Cometa lunar");
@@ -384,12 +385,15 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
   await expect(page.getByTestId("world-ready")).toBeVisible();
 });
 
-test("se puede iterar el prototipo que hay delante", async ({ page }) => {
+test("se puede iterar un prototipo desde la lista del Inventor", async ({ page }) => {
   const proposal = page.waitForRequest("**/api/proposals");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await openInventorDialogue(page);
   await page.getByTestId("choice-iterate").click();
+  await expect(page.getByTestId("dialogue-text")).toContainText("mundos, apps o juegos");
+  await expect(page.getByTestId("dialogue-text")).toContainText("Elígelo de la lista");
+  await expect(page.getByTestId("choice-nearest")).toHaveCount(0);
   await page.getByTestId("choice-proto-chispa").click();
   await page.getByTestId("dialogue-input").fill("Chispas más rápidas");
   await page.getByTestId("dialogue-send").click();
@@ -435,7 +439,7 @@ test("sin WebGL queda un respaldo usable", async ({ browser }, testInfo) => {
   await expect(page.getByTestId("fallback")).toBeVisible();
   await expect(page.getByTestId("fallback")).toContainText("no puede mostrar el laboratorio en 3D");
   await page.getByTestId("fallback-talk").click();
-  await expect(page.getByTestId("dialogue-text")).toContainText("Inventor");
+  await expect(page.getByTestId("dialogue-text")).toContainText("la máquina de este laboratorio");
   await expect(page.getByTestId("fallback-whiteboard-section")).toBeVisible();
   await page.getByTestId("choice-install").click();
   await expect(page.getByTestId("install-help")).toBeVisible();

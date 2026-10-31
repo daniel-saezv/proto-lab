@@ -88,7 +88,6 @@ const dialogue = createDialogue({
   prototypes: visiblePrototypes,
   instant,
   submit: sendProposal,
-  getNearbySlug: () => world?.getNearbySlug() ?? null,
   onShowInstallHelp: () => installHelp.open(),
   onOpen: blockWorldInput,
   onClose: restoreWorldInput,

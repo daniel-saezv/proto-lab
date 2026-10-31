@@ -1,21 +1,15 @@
+import { INVENTOR_RESULT_OK, inventorSpeech, type DialoguePhase } from "./dialogue-speech";
 import { LIMITS } from "./limits";
 import type { CatalogEntry, ProposalDraft, SubmitOutcome } from "./types";
 
 type Mode = "propuesta" | "iteracion";
 
-type Phase =
-  | { name: "greet" }
-  | { name: "title"; mode: Mode }
-  | { name: "body"; mode: Mode }
-  | { name: "pick" }
-  | { name: "confirm" }
-  | { name: "sending" }
-  | { name: "done"; text: string; outcome: string };
+type Phase = DialoguePhase | { name: "done"; text: string; outcome: string };
 
 type Choice = { id: string; label: string; run: () => void };
 
 const RESULT: Record<string, string> = {
-  ok: "Apuntado. Ya está en el tablón del taller. El dueño lo leerá y, si le convence, lo marcará como aprobado. Hasta entonces la máquina sigue como está.",
+  ok: INVENTOR_RESULT_OK,
   limit: "Hoy el cuaderno ya no da más de sí: has dejado varias ideas y conviene dejarlas reposar. Vuelve mañana.",
   unauthorized: "No consigo reconocerte. Esta puerta solo se abre con el pase del laboratorio. Entra desde el enlace del grupo y vuelve a hablarme.",
   config: "El cuaderno está, pero falta la llave del taller. El dueño tiene que terminar de configurarlo.",
@@ -29,7 +23,6 @@ export function createDialogue(options: {
   prototypes: CatalogEntry[];
   instant: boolean;
   submit: (draft: ProposalDraft) => Promise<SubmitOutcome>;
-  getNearbySlug: () => string | null;
   onShowInstallHelp?: () => void;
   onOpen: () => void;
   onClose: () => void;
@@ -40,40 +33,13 @@ export function createDialogue(options: {
   let token = 0;
   let open = false;
 
-  function prototypeBySlug(slug: string | undefined): CatalogEntry | undefined {
-    return options.prototypes.find((entry) => entry.slug === slug);
-  }
-
   function resetDraft(kind: Mode, slug?: string) {
     draft = { kind, title: "", description: "", slug };
   }
 
   function speech(): string {
-    const proto = prototypeBySlug(draft.slug);
-    switch (phase.name) {
-      case "greet":
-        return "Eh, has entrado. Soy el Inventor: cuido las máquinas de este laboratorio. Cada una es un prototipo de alguien del grupo. ¿Qué se te ofrece?";
-      case "title":
-        return phase.mode === "propuesta"
-          ? "Eso me gusta. ¿Cómo llamamos a la idea? Algo corto, para el cuaderno."
-          : `Vale, «${proto?.title ?? "esa máquina"}». Ponle un título corto a este cambio.`;
-      case "body":
-        return phase.mode === "propuesta"
-          ? `«${draft.title}». Cuéntame de qué va: qué se hace, cómo se juega o qué problema resuelve.`
-          : `¿Qué le cambiarías a «${proto?.title ?? "esa máquina"}»? Sé concreto: qué sobra, qué falta, cómo debería sentirse.`;
-      case "pick":
-        return options.prototypes.length === 0
-          ? "Todavía no hay máquinas que retocar. Cuando alguien deje una encendida, volvemos a hablar."
-          : "¿Cuál de estas máquinas quieres retocar? Puedes elegirla de la lista o acercarte a ella y decirme que es esa.";
-      case "confirm":
-        return draft.kind === "iteracion"
-          ? `Anotaría una mejora de «${proto?.title ?? draft.slug}», que va por la versión ${proto?.version ?? "?"}.\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`
-          : `A ver si lo he entendido. Dejaría esto en el tablón, como petición tuya, para que el dueño lo lea:\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`;
-      case "sending":
-        return "Un momento, que mojo la pluma…";
-      case "done":
-        return phase.text;
-    }
+    if (phase.name === "done") return phase.text;
+    return inventorSpeech(phase, draft, options.prototypes);
   }
 
   function choices(): Choice[] {
@@ -93,23 +59,7 @@ export function createDialogue(options: {
       ];
     }
     if (phase.name === "pick") {
-      const nearby = options.getNearbySlug();
       const list: Choice[] = [];
-      if (nearby) {
-        const entry = prototypeBySlug(nearby);
-        if (entry) {
-          list.push({
-            id: "choice-nearest",
-            label: `La que tengo delante: ${entry.title}`,
-            run: () => {
-              draft.slug = entry.slug;
-              draft.kind = "iteracion";
-              phase = { name: "title", mode: "iteracion" };
-              render();
-            },
-          });
-        }
-      }
       for (const entry of options.prototypes) {
         list.push({
           id: `choice-proto-${entry.slug}`,
@@ -302,7 +252,7 @@ export function createDialogue(options: {
   }
 
   function openIteration(slug: string) {
-    const entry = prototypeBySlug(slug);
+    const entry = options.prototypes.find((item) => item.slug === slug);
     if (!entry) return;
     open = true;
     resetDraft("iteracion", slug);
