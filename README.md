@@ -89,3 +89,5 @@ La app cachea la carcasa del laboratorio y los assets del mundo. Los prototipos 
 ## Siguiente paso
 
 Un tablón, u otro personaje, que muestre el estado de las propuestas leyendo las issues con una Function de solo lectura y el mismo token. No está en esta versión.
+
+<!-- ci: medición de caché de Playwright -->
