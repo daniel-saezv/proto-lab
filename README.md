@@ -58,7 +58,7 @@ El proyecto ya está conectado al repositorio. No hace falta cambiar el build:
 | Directorio de salida | `dist` |
 | `NODE_VERSION` | `22` |
 
-`pnpm build` genera el catálogo, construye el laboratorio y los prototipos, y deja el sitio estático en `dist`. Pages instala las dependencias antes, a partir de `pnpm-lock.yaml`. La Function no va dentro de `dist`: Pages la toma de `functions/` en la raíz del repositorio (`/api/proposals`).
+`pnpm build` genera el catálogo, construye el laboratorio y los prototipos, y deja el sitio estático en `dist`. Pages instala las dependencias antes, a partir de `pnpm-lock.yaml`. Las Functions no van dentro de `dist`: Pages las toma de `functions/` en la raíz del repositorio (`/api/proposals` y `/api/proposals/status`).
 
 Hostnames:
 
@@ -69,7 +69,11 @@ Access con PIN de un solo uso cubre los dos. La Function lee el email de `Cf-Acc
 
 La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/protos/*` no basta para saltarse Access: sin la cookie, el PIN sigue delante. Por eso el laboratorio incrusta el prototipo en vez de dejar que el iframe lo pida solo.
 
-En Pages, el secreto `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en este repositorio) y el binding KV `PROPOSALS` (límite de 5 propuestas por email y día UTC) ya están configurados en producción y en preview.
+En Pages, el secreto `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en este repositorio) y el binding KV `PROPOSALS` (límite de 5 propuestas por email y día UTC, y caché del tablón 120 s) ya están configurados en producción y en preview.
+
+Para el tablón (`GET /api/proposals/status`) hace falta además el secreto **`GITHUB_STATUS_TOKEN`** (fine-grained aparte, solo lectura: Issues, Pull requests y Actions en este repo), opcionalmente **`CF_PAGES_READ_TOKEN`** (API token con permiso Cloudflare Pages Read) y las variables **`CF_ACCOUNT_ID`** y **`CF_PAGES_PROJECT`** (`proto-lab`). Sin el token de Cloudflare el endpoint sigue respondiendo, pero no puede marcar preview por despliegue.
+
+En el laboratorio, acércate a la **pizarra** («Ver el tablón») para leer el estado de las propuestas. Los pull requests de propuestas deben citar su issue en el cuerpo (`Closes #N`).
 
 Las etiquetas del flujo de propuestas (`propuesta`, `iteracion`, `aprobado`, `en-curso` y una por slug de prototipo) están creadas en GitHub; su significado y quién las pone está en [`.github/LABELS.md`](.github/LABELS.md). Solo el dueño (@daniel-saezv) añade `aprobado`.
 
@@ -85,7 +89,3 @@ Hay que abrir [https://proto-lab-3k6.pages.dev](https://proto-lab-3k6.pages.dev)
 - **Android:** Chrome, menú, «Instalar aplicación» o «Añadir a pantalla de inicio».
 
 La app cachea la carcasa del laboratorio y los assets del mundo. Los prototipos se piden siempre a la red.
-
-## Siguiente paso
-
-Un tablón, u otro personaje, que muestre el estado de las propuestas leyendo las issues con una Function de solo lectura y el mismo token. No está en esta versión.

@@ -35,6 +35,7 @@ TypeScript, Vite 8 y pnpm 12 (workspaces). El laboratorio usa Three.js 0.187 (ge
 - `apps/world`: laboratorio 3D, diálogo del Inventor, PWA y service worker de la carcasa.
 - `protos/<slug>`: un prototipo. Manifiesto en `protos/<slug>/proto.json`. Build con `base` `/protos/<slug>/`.
 - `functions/api/proposals.ts`: Pages Function. La validación vive en `functions/_lib` para poder probarla sin desplegar.
+- `functions/api/proposals/status.ts`: Function **GET** de solo lectura que agrega el estado real de las propuestas (issues, PR, CI, preview). Lógica en `functions/_lib/status/` y `functions/_lib/status-handler.ts`.
 - `scripts/generate-catalog.mjs`: lee los manifiestos y escribe el catálogo que consume el mundo, y la lista de slugs que valida la Function.
 - `scripts/assemble.mjs`: junta el laboratorio y los prototipos en `dist/` y genera `sw.js`.
 - `e2e`: smoke de Playwright.
@@ -93,12 +94,29 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 - Preset None, comando `pnpm build`, directorio `dist`, `NODE_VERSION=22`
 - Access con PIN de un solo uso en producción y en las previews
 - Secreto de Pages: `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en `daniel-saezv/proto-lab`). Sin valor en el repo.
-- Binding opcional: KV `PROPOSALS`. Sin él no hay límite diario; la Function lo documenta así y sigue creando la issue.
+- Secreto de Pages: `GITHUB_STATUS_TOKEN` (fine-grained **aparte**, solo lectura: Issues, Pull requests y Actions en este repo). Alimenta `GET /api/proposals/status`. No reutilices `GITHUB_TOKEN`.
+- Secreto de Pages: `CF_PAGES_READ_TOKEN` (API token con permiso **Cloudflare Pages Read**). Opcional: sin él el tablón sigue funcionando pero no puede marcar `preview_lista` por despliegue.
+- Variables de Pages (no secretas): `CF_ACCOUNT_ID`, `CF_PAGES_PROJECT` (p. ej. `proto-lab`).
+- Binding opcional: KV `PROPOSALS`. Sin él no hay límite diario al crear propuestas ni caché del tablón; la Function de estado sigue respondiendo.
 - No definir `ALLOW_DEV_AUTH` en Pages.
 
 El único workflow que mira issues es el aviso al Grok Bot (arriba): al crear una issue y al etiquetar `aprobado` por el dueño. No implementa la propuesta ni lee el título o el cuerpo. Hacen falta dos secretos del repositorio, sin valores en el código: `GROKBOT_WEBHOOK_URL` y `GROKBOT_WEBHOOK_AUTH` (el valor entero de `Authorization`, sin que el workflow le anteponga `Bearer`). Si faltan, el job termina en aviso y no falla.
 
-Siguiente paso, fuera de esta versión: una Function de solo lectura que liste el estado de las propuestas para un tablón dentro del laboratorio.
+### Tablón de propuestas (`GET /api/proposals/status`)
+
+Detrás de Cloudflare Access igual que `POST /api/proposals`: exige `Cf-Access-Authenticated-User-Email` (401 sin él). En local, `ALLOW_DEV_AUTH=true` y cabecera `X-Dev-User-Email` (nunca en Pages). Solo **GET** (405 en otros métodos).
+
+**Datos:** issues abiertas y cerradas con etiqueta `propuesta`, cuerpo con la marca `<!-- proto-lab: peticion-de-usuario -->`, tipo `propuesta` o `iteracion` según etiquetas. `aprobada` solo si el dueño (@daniel-saezv) puso `aprobado` (eventos de la issue). PR enlazado por timeline `cross-referenced` o, en respaldo, PRs que citen `#N` en el cuerpo (el más reciente). CI vía Actions (`ci.yml`) sobre el HEAD del PR, no commit statuses ni check runs. Preview/producción vía API de Pages (`deployments` por rama y commit). `publicada` = PR mergeado y despliegue de producción del merge commit con éxito (o PR mergeado si no hay despliegue). Si GitHub o Cloudflare fallan, responde lo que pueda con `partial: true` y la fase más fiable posible, sin filtrar detalles del error al cliente.
+
+**Fases** (prioridad creciente; gana la más avanzada salvo `cerrada_sin_hacer`, que gana si la issue se cerró como `not_planned` o el PR se cerró sin merge): `recibida` → `aprobada` → `en_curso` → `pr_abierto` → `ci_en_curso` → `ci_con_fallos` → `ci_correcta` → `preview_lista` → `publicada` → `cerrada_sin_hacer`.
+
+**Respuesta JSON:** `{ ok: true, partial?: boolean, items: [{ number, title, kind, slug?, phase, updatedAt, previewUrl? }] }`. Título escapado y truncado (80 caracteres). `previewUrl` solo en `preview_lista` (subdominio `*.proto-lab-3k6.pages.dev`) o en `publicada` (producción). **No** se exponen emails, cuerpos, ramas, logs, mensajes de commit ni enlaces a GitHub.
+
+**Caché:** KV `PROPOSALS`, clave `proposal-status:v1:all`, TTL **120 s**. Sin binding, sin caché.
+
+**UI:** en el laboratorio 3D, acércate a la **pizarra** («Ver el tablón»). Sin WebGL, botón equivalente en el fallback. Textos con `textContent`; la preview abre en pestaña nueva con `rel=noopener noreferrer`.
+
+**Pull requests de propuestas:** el cuerpo del PR debe citar siempre el número de su issue (p. ej. `Closes #N` en propuestas aprobadas implementadas) para que el tablón enlace issue y PR.
 
 ## Cursor Cloud specific instructions
 
@@ -110,4 +128,5 @@ Secretos en Cursor, sin valores:
 
 - Ninguno es obligatorio para instalar, construir o pasar los tests.
 - `GITHUB_TOKEN` solo si se quiere probar la creación real de issues desde la nube. Mismo alcance que en Pages: fine-grained, solo Issues de este repositorio.
+- `GITHUB_STATUS_TOKEN`, `CF_PAGES_READ_TOKEN`, `CF_ACCOUNT_ID` y `CF_PAGES_PROJECT` solo si quieres probar el tablón contra GitHub/Cloudflare reales en la nube.
 - No añadas `ALLOW_DEV_AUTH` como secreto de Cursor ni de Pages. En local se exporta en la shell únicamente para esa prueba.

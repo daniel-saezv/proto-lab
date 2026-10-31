@@ -5,6 +5,8 @@ import { showFallback } from "./fallback";
 import { createGameSelector } from "./game-selector";
 import { createInstallHelp, type DeferredInstallPrompt } from "./install-help";
 import { createOverlay } from "./overlay";
+import { createProposalsBoard } from "./proposals-board";
+import { fetchProposalStatus } from "./proposals-status-api";
 import type { CatalogEntry } from "./types";
 import "./style.css";
 
@@ -24,6 +26,7 @@ const knob = must("#knob");
 const dialogueRoot = must("#dialogue");
 const selectorRoot = must("#game-selector");
 const installHelpRoot = must("#install-help");
+const proposalsBoardRoot = must("#proposals-board");
 const stage = must("#stage");
 const fallback = must("#fallback");
 
@@ -60,6 +63,16 @@ const installHelp = createInstallHelp({
   getDeferredPrompt: () => deferredInstallPrompt,
   clearDeferredPrompt: () => {
     deferredInstallPrompt = null;
+  },
+  onOpen: blockWorldInput,
+  onClose: restoreWorldInput,
+});
+
+const proposalsBoard = createProposalsBoard({
+  root: proposalsBoardRoot,
+  load: async () => {
+    const data = await fetchProposalStatus();
+    return { partial: data.partial, items: data.items };
   },
   onOpen: blockWorldInput,
   onClose: restoreWorldInput,
@@ -113,15 +126,17 @@ interact.addEventListener("click", () => world?.interact());
 
 window.addEventListener("keydown", (event) => {
   if (selector.handleKey(event)) return;
+  if (proposalsBoard.handleKey(event)) return;
   if (installHelp.handleKey(event)) return;
   if (event.key === "Escape") {
     if (overlay.isOpen()) overlay.close();
     else if (installHelp.isOpen()) installHelp.close();
+    else if (proposalsBoard.isOpen()) proposalsBoard.close();
     else if (selector.isOpen()) selector.close();
     else if (dialogue.isOpen()) dialogue.close();
     return;
   }
-  if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen()) return;
+  if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen() || proposalsBoard.isOpen()) return;
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
   if (event.key.toLowerCase() === "e" && !event.repeat) {
     event.preventDefault();
@@ -140,6 +155,7 @@ async function bootWorld() {
       root: fallback,
       prototypes,
       onTalk: () => dialogue.open(),
+      onOpenBoard: () => proposalsBoard.open(),
       onInstallHelp: () => installHelp.open(),
       onPlay: (entry) => overlay.open(entry),
     });
@@ -160,12 +176,13 @@ async function bootWorld() {
         finishBoot();
       },
       onTalk: () => dialogue.open(),
+      onOpenBoard: () => proposalsBoard.open(),
       onOpenSelector: () => {
         const index = 0;
         selector.open(index);
       },
       onTarget: (label) => {
-        if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen()) {
+        if (!inputEnabled || overlay.isOpen() || selector.isOpen() || dialogue.isOpen() || installHelp.isOpen() || proposalsBoard.isOpen()) {
           interact.hidden = true;
           return;
         }
@@ -179,6 +196,7 @@ async function bootWorld() {
       root: fallback,
       prototypes,
       onTalk: () => dialogue.open(),
+      onOpenBoard: () => proposalsBoard.open(),
       onInstallHelp: () => installHelp.open(),
       onPlay: (entry) => overlay.open(entry),
     });

@@ -93,6 +93,7 @@ export function startWorld(options: {
   onReady: () => void;
   onTalk: () => void;
   onOpenSelector: () => void;
+  onOpenBoard: () => void;
   onTarget: (label: string | null) => void;
 }): WorldHandle {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -292,6 +293,7 @@ export function startWorld(options: {
       collider: arcadeSpot.collider,
       label: "Usar la máquina",
     },
+    { id: "chalkboard", kind: "npc", x: -4.6, z: -6.8, radius: 2.35, collider: 0.55, label: "Ver el tablón" },
     { id: "bench", kind: "npc", x: 0.15, z: -3.15, radius: 0, collider: 0.48, label: "" },
     { id: "crates", kind: "npc", x: 5.85, z: 1.45, radius: 0, collider: 0.42, label: "" },
     { id: "plant", kind: "npc", x: -6, z: 1.3, radius: 0, collider: 0.22, label: "" },
@@ -308,6 +310,7 @@ export function startWorld(options: {
 
   addRangeRing("inventor", -1.5, -3.4, PALETTE.amber);
   addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
+  addRangeRing("chalkboard", -4.6, -6.8, 0x8fd8ff);
 
   let yaw = 0.15;
   let pitch = 0.15;
@@ -465,6 +468,7 @@ export function startWorld(options: {
     const spot = currentSpot();
     if (!spot || !inputEnabled) return;
     if (spot.kind === "npc" && spot.id === "inventor") options.onTalk();
+    if (spot.kind === "npc" && spot.id === "chalkboard") options.onOpenBoard();
     if (spot.kind === "machine" && spot.id === "arcade") options.onOpenSelector();
   }
 
@@ -726,6 +730,7 @@ export function startWorld(options: {
     const board = new Mesh(geo(new PlaneGeometry(3.1, 1.7)), new MeshBasicMaterial({ map: chalkboardTexture(entries) }));
     materials.push(board.material);
     board.position.set(-4.6, 1.55, -7.33);
+    board.userData.interactId = "chalkboard";
     scene.add(board);
     const label = new Group();
     label.position.set(-4.6, 0, -7.2);

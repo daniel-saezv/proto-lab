@@ -78,7 +78,12 @@ function devApi(): Plugin {
     name: "proto-lab-dev-api",
     apply: "serve",
     configureServer(server) {
-      server.middlewares.use("/api/proposals", async (req, res) => {
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url?.split("?")[0] ?? "";
+        if (url !== "/api/proposals" && url !== "/api/proposals/status") {
+          next();
+          return;
+        }
         const chunks: Buffer[] = [];
         for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         const body = Buffer.concat(chunks).toString("utf8");
@@ -86,19 +91,39 @@ function devApi(): Plugin {
         for (const [key, value] of Object.entries(req.headers)) {
           if (typeof value === "string") headers.set(key, value);
         }
-        const handlerUrl = pathToFileURL(`${repoRoot}/functions/_lib/handler.ts`).href;
-        const { handleProposal } = (await import(handlerUrl)) as typeof import("../../functions/_lib/handler.ts");
-        const slugs = JSON.parse(readFileSync(`${repoRoot}/functions/_lib/slugs.json`, "utf8")) as string[];
-        const request = new Request("http://127.0.0.1/api/proposals", {
-          method: req.method,
-          headers,
-          body: req.method === "GET" || req.method === "HEAD" ? undefined : body,
-        });
-        const response = await handleProposal(
-          request,
-          { GITHUB_TOKEN: process.env.GITHUB_TOKEN, ALLOW_DEV_AUTH: process.env.ALLOW_DEV_AUTH },
-          { knownSlugs: slugs },
-        );
+        const env = {
+          GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+          GITHUB_STATUS_TOKEN: process.env.GITHUB_STATUS_TOKEN,
+          CF_PAGES_READ_TOKEN: process.env.CF_PAGES_READ_TOKEN,
+          CF_ACCOUNT_ID: process.env.CF_ACCOUNT_ID,
+          CF_PAGES_PROJECT: process.env.CF_PAGES_PROJECT,
+          ALLOW_DEV_AUTH: process.env.ALLOW_DEV_AUTH,
+        };
+        let response: Response;
+        if (url === "/api/proposals/status") {
+          const handlerUrl = pathToFileURL(`${repoRoot}/functions/_lib/status-handler.ts`).href;
+          const { handleProposalStatus } = (await import(handlerUrl)) as typeof import("../../functions/_lib/status-handler.ts");
+          response = await handleProposalStatus(
+            new Request("http://127.0.0.1/api/proposals/status", {
+              method: req.method,
+              headers,
+            }),
+            env,
+          );
+        } else {
+          const handlerUrl = pathToFileURL(`${repoRoot}/functions/_lib/handler.ts`).href;
+          const { handleProposal } = (await import(handlerUrl)) as typeof import("../../functions/_lib/handler.ts");
+          const slugs = JSON.parse(readFileSync(`${repoRoot}/functions/_lib/slugs.json`, "utf8")) as string[];
+          response = await handleProposal(
+            new Request("http://127.0.0.1/api/proposals", {
+              method: req.method,
+              headers,
+              body: req.method === "GET" || req.method === "HEAD" ? undefined : body,
+            }),
+            env,
+            { knownSlugs: slugs },
+          );
+        }
         res.statusCode = response.status;
         response.headers.forEach((value, key) => res.setHeader(key, value));
         res.end(Buffer.from(await response.arrayBuffer()));
