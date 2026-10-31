@@ -258,6 +258,32 @@ body.reading-board #interact {
   background: var(--amber);
   color: #1a1203;
 }
+.nameplate--proto-update {
+  box-shadow: 0 0 0 2px rgba(255, 183, 3, 0.55), 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.nameplate--proto-update::after {
+  content: " · nuevo";
+  font-weight: 700;
+  font-size: 12px;
+  opacity: 0.9;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nameplate--proto-update {
+    box-shadow: 0 0 0 2px rgba(255, 183, 3, 0.75), 0 6px 16px rgba(0, 0, 0, 0.45);
+  }
+}
+
+.selector-update-badge {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.selector-update-badge[hidden] {
+  display: none !important;
+}
 
 #dialogue {
   position: absolute;

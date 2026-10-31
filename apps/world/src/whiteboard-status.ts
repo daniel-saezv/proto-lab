@@ -24,23 +24,12 @@ import {
   type BoardRowLayout,
 } from "./proposals-board-paint";
 import type { ProposalStatusItem } from "./proposals-status-api";
+import type { WhiteboardPhase, WhiteboardStatusController } from "./whiteboard-status-types";
+
+export type { WhiteboardPhase, WhiteboardStatusController } from "./whiteboard-status-types";
 
 const PULSE_INTERVAL_MS = 100;
 const HIGHLIGHT_MS = 1400;
-
-export type WhiteboardPhase = "loading" | "reveal" | "live" | "empty";
-
-export type WhiteboardStatusController = {
-  texture: CanvasTexture;
-  canvas: HTMLCanvasElement;
-  setItems: (items: ProposalStatusItem[], partial: boolean) => void;
-  setFetchError: (failed: boolean) => void;
-  tick: (nowMs: number) => void;
-  needsAnimation: () => boolean;
-  getPhase: () => WhiteboardPhase;
-  getItemSummary: () => string;
-  dispose: () => void;
-};
 
 export function createWhiteboardStatus(options: {
   reducedMotion?: boolean;

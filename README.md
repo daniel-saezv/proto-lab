@@ -25,7 +25,7 @@ pnpm preview
 
 `pnpm preview` sirve el sitio en `http://127.0.0.1:4173`. `pnpm dev` regenera el catálogo, construye los prototipos y arranca el laboratorio con recarga.
 
-`pnpm test:unit` cubre la validación de propuestas. `pnpm test:e2e` abre el mundo, completa una propuesta con la Function simulada y lanza el prototipo de ejemplo. `pnpm typecheck` comprueba los tipos.
+`pnpm test:unit` ejecuta Vitest sobre el laboratorio (tablón, catálogo, navegación, validación alineada con la Function, etc.) y tests de `functions/_lib`. `pnpm test:e2e` abre el mundo, completa una propuesta con la Function simulada y lanza el prototipo de ejemplo. `pnpm typecheck` comprueba los tipos.
 
 ### Commits en pull requests
 
@@ -74,7 +74,7 @@ En Pages, el secreto `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escr
 
 Para el tablón (`GET /api/proposals/status`) hace falta además el secreto **`GITHUB_STATUS_TOKEN`** (fine-grained aparte, solo lectura: Issues, Pull requests y Actions en este repo), opcionalmente **`CF_PAGES_READ_TOKEN`** (API token con permiso Cloudflare Pages Read) y las variables **`CF_ACCOUNT_ID`** y **`CF_PAGES_PROJECT`** (`proto-lab`). Sin el token de Cloudflare el endpoint sigue respondiendo, pero no puede marcar preview por despliegue.
 
-En el laboratorio, acércate a la **pizarra** («Ver el tablón») para leer el estado de las propuestas. Los pull requests de propuestas deben citar su issue en el cuerpo (`Closes #N`).
+En el laboratorio 3D, la **pizarra** muestra en vivo el estado de las propuestas (mismo origen que `GET /api/proposals/status`). Sin WebGL, el fallback HTML incluye una versión plana del tablón. Los pull requests de propuestas deben citar su issue en el cuerpo (`Closes #N`).
 
 Las etiquetas del flujo de propuestas (`propuesta`, `iteracion`, `aprobado`, `en-curso` y una por slug de prototipo) están creadas en GitHub; su significado y quién las pone está en [`.github/LABELS.md`](.github/LABELS.md). Solo el dueño (@daniel-saezv) añade `aprobado`.
 

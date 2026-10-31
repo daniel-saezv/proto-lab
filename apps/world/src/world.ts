@@ -129,6 +129,7 @@ export function startWorld(options: {
   /** `false` deja cada malla suelta para medir renderer.info. */
   batch?: boolean;
   perf?: boolean;
+  isPrototypeUnseen?: (slug: string) => boolean;
 }): WorldHandle {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -295,12 +296,21 @@ export function startWorld(options: {
     arcadeScreenMaterial.needsUpdate = true;
   }
 
+  function syncArcadeUpdateBadge(entry: CatalogEntry) {
+    const plate = nameplates.get("arcade");
+    if (plate) {
+      const unseen = options.isPrototypeUnseen?.(entry.slug) ?? false;
+      plate.classList.toggle("nameplate--proto-update", unseen);
+    }
+  }
+
   function setArcadeHighlight(index: number) {
     if (options.prototypes.length === 0) return;
     arcadeIndex.current = ((index % options.prototypes.length) + options.prototypes.length) % options.prototypes.length;
     idleElapsed = 0;
     const entry = options.prototypes[arcadeIndex.current];
     if (!entry) return;
+    syncArcadeUpdateBadge(entry);
     if (entry.previewHref) {
       const token = ++screenLoadToken;
       textureLoader.load(
