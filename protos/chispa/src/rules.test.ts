@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRareWild, dropKind, dropCooldown, mergeOutcome, mergePoints } from "./rules";
+import { isRareWild, dropKind, dropCooldown, goldMergeMultiplier, mergeOutcome, mergePoints } from "./rules";
 
 describe("reglas del pozo", () => {
   it("funde dos iguales en el tamaño siguiente", () => {
@@ -21,6 +21,10 @@ describe("reglas del pozo", () => {
     expect(dropKind(8)).toBe("normal");
     expect(dropKind(22)).toBe("bomb");
     expect(dropKind(18)).toBe("wild");
+    expect(dropKind(13)).toBe("gold");
+    expect(dropKind(15)).toBe("ice");
+    expect(dropKind(26)).toBe("gold");
+    expect(goldMergeMultiplier()).toBeGreaterThan(2);
     expect(dropCooldown(true)).toBeLessThan(dropCooldown(false));
     expect(dropCooldown(true)).toBeLessThan(200);
     expect(dropCooldown(false)).toBeLessThan(280);
