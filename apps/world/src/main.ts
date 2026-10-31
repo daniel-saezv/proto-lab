@@ -12,6 +12,7 @@ import { readPrototypeSlugFromHash, writePrototypeHash } from "./proto-deep-link
 import { isPrototypeUnseen, markPrototypeSeen } from "./proto-version-seen";
 import type { CatalogEntry } from "./types";
 import type { WhiteboardStatusController } from "./whiteboard-status-types";
+import "./style.css";
 
 const catalogPrototypes = catalogFile.prototypes as CatalogEntry[];
 const visiblePrototypes = catalogPrototypes.filter((entry) => !entry.hidden);

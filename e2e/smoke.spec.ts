@@ -715,7 +715,8 @@ test("en horizontal el botón de interacción queda en la mitad inferior", async
   await context.close();
 });
 
-test("el hash #p= abre un prototipo y un slug desconocido se ignora", async ({ page, isMobile }) => {
+test("el hash #p= abre un prototipo y un slug desconocido se ignora", async ({ page, isMobile }, testInfo) => {
+  skipUnlessChromium(testInfo, "deep link al prototipo");
   await page.goto("/?e2e=1#p=chispa");
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
   await expect(page.locator("iframe")).toHaveCount(1);
@@ -731,7 +732,8 @@ test("el hash #p= abre un prototipo y un slug desconocido se ignora", async ({ p
   expect(page.url()).not.toContain("#p=");
 });
 
-test("Sugerir mejora abre una iteración del prototipo abierto", async ({ page, isMobile }) => {
+test("Sugerir mejora abre una iteración del prototipo abierto", async ({ page, isMobile }, testInfo) => {
+  skipUnlessChromium(testInfo, "propuesta de iteración desde el overlay");
   await page.goto("/?e2e=1#p=chispa");
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
   const suggest = page.getByTestId("suggest-improvement");
