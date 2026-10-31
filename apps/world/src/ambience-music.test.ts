@@ -4,15 +4,17 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isShellPath } from "../../../scripts/sw.mjs";
 import {
-  AMBIENCE_TRACKS,
+  AMBIENCE_TRACK,
+  LOOP_CROSSFADE_S,
+  MUSIC_FADE_IN_S,
+  MUSIC_FADE_OUT_S,
   MUSIC_MUTE_KEY,
-  advanceTrack,
   isMusicMuted,
+  loopOverlapSeconds,
   playbackAfterGesture,
   playbackOutputLive,
   playbackRejection,
   shouldRouteMediaElement,
-  shufflePlaylist,
   toggleMusicMuted,
   writeBandEnergies,
 } from "./ambience-music";
@@ -45,21 +47,23 @@ describe("música ambiental", () => {
     expect(toggleMusicMuted(storage)).toBe(false);
   });
 
-  it("baraja la lista y la recorre en bucle sin precachearla", () => {
-    const rolls = [0.99, 0, 0];
-    let n = 0;
-    const order = shufflePlaylist(AMBIENCE_TRACKS, () => rolls[n++] ?? 0);
-    expect(new Set(order)).toEqual(new Set(AMBIENCE_TRACKS));
-    expect(order[0]).not.toBe(AMBIENCE_TRACKS[0]);
-    expect(advanceTrack(order.length - 1, order.length)).toBe(0);
-    expect(advanceTrack(0, order.length)).toBe(1);
+  it("deja solo Luanda, fuera de la shell, con un solape de bucle", () => {
+    expect(AMBIENCE_TRACK).toBe("/protos/audio/luanda.m4a");
+    expect(isShellPath(AMBIENCE_TRACK)).toBe(false);
+    expect(MUSIC_FADE_IN_S).toBeGreaterThanOrEqual(1);
+    expect(MUSIC_FADE_IN_S).toBeLessThanOrEqual(2);
+    expect(MUSIC_FADE_OUT_S).toBeGreaterThan(0.4);
+    expect(MUSIC_FADE_OUT_S).toBeLessThan(MUSIC_FADE_IN_S);
+    expect(loopOverlapSeconds(131)).toBe(LOOP_CROSSFADE_S);
+    expect(loopOverlapSeconds(0.2)).toBeCloseTo(0.1);
+    expect(loopOverlapSeconds(0)).toBe(0);
     const audioDir = join(dirname(fileURLToPath(import.meta.url)), "../public/protos/audio");
-    for (const path of AMBIENCE_TRACKS) {
-      expect(isShellPath(path)).toBe(false);
-      expect(path.startsWith("/protos/audio/")).toBe(true);
-      expect(existsSync(join(audioDir, path.slice("/protos/audio/".length)))).toBe(true);
-    }
-    expect(existsSync(join(audioDir, "CREDITS.md"))).toBe(true);
+    expect(existsSync(join(audioDir, "luanda.m4a"))).toBe(true);
+    const credits = readFileSync(join(audioDir, "CREDITS.md"), "utf8");
+    expect(credits).toContain("luanda.m4a");
+    expect(credits).toContain("Infraction");
+    expect(credits).toContain("MORAI");
+    expect(credits.match(/\.m4a/g)).toEqual([".m4a"]);
     const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../index.html"), "utf8");
     expect(html.toLowerCase()).not.toContain("credit");
     expect(html.toLowerCase()).not.toContain("crédito");

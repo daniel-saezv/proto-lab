@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   TOUCH_LOOK_RATE,
+  TOUCH_LOOK_RATE_Y,
   lookRatesFromStickVector,
   movementFromStickVector,
   shouldIgnoreTouchAt,
@@ -32,6 +33,17 @@ describe("controles táctiles dinámicos", () => {
     const gentle = lookRatesFromStickVector(0.5, 0);
     expect(Math.abs(gentle.lookX)).toBeLessThan(TOUCH_LOOK_RATE * 0.5);
     expect(Math.abs(gentle.lookX)).toBeGreaterThan(0);
+  });
+
+  it("inclina más despacio que gira, y el gesto corto sigue suavizado", () => {
+    expect(TOUCH_LOOK_RATE_Y).toBeLessThanOrEqual(TOUCH_LOOK_RATE * 0.5);
+    const full = lookRatesFromStickVector(1, 1);
+    expect(full.lookX).toBeCloseTo(TOUCH_LOOK_RATE, 5);
+    expect(full.lookY).toBeCloseTo(TOUCH_LOOK_RATE_Y, 5);
+    expect(Math.abs(full.lookY)).toBeLessThan(Math.abs(full.lookX) * 0.5);
+    const gentle = lookRatesFromStickVector(0, 0.5);
+    expect(Math.abs(gentle.lookY)).toBeGreaterThan(0);
+    expect(Math.abs(gentle.lookY)).toBeLessThan(TOUCH_LOOK_RATE_Y * 0.5);
   });
 
   it("detecta UI interactiva bajo el toque", () => {

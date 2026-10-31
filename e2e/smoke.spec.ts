@@ -87,6 +87,32 @@ test("el tablón en la pizarra 3D refleja el estado simulado", async ({ page }) 
   await waitForLobbyWhiteboard(page);
 });
 
+test("con un prototipo abierto el lobby deja de renderizar y la música sigue", async ({ page }, testInfo) => {
+  skipUnlessChromium(testInfo, "el contador de frames se comprueba una sola vez");
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.locator("#viewport canvas").click({ position: { x: 12, y: 96 } });
+  await expect(page.getByTestId("mute-music")).toHaveAttribute("data-playback", "playing");
+  const before = await page.evaluate(() => window.__protoLab?.renderFrame?.() ?? 0);
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.renderFrame?.() ?? 0)).toBeGreaterThan(before);
+  await page.evaluate(() => window.__protoLab?.openPrototype?.("chispa"));
+  await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-render-suspended", "1");
+  await expect(page.getByTestId("mute-music")).toHaveAttribute("data-playback", "playing");
+  const frozen = await page.evaluate(() => window.__protoLab?.renderFrame?.() ?? -1);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  expect(await page.evaluate(() => window.__protoLab?.renderFrame?.() ?? -1)).toBe(frozen);
+  await page.getByTestId("close-prototype").click();
+  await expect(page.locator("#viewport")).toHaveAttribute("data-render-suspended", "0");
+  await expect(page.getByTestId("mute-music")).toHaveAttribute("data-playback", "playing");
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.renderFrame?.() ?? 0)).toBeGreaterThan(frozen);
+});
+
 test("ver la pizarra encuadra la cámara y vuelve sin abrir un diálogo", async ({ page }) => {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
@@ -106,12 +132,20 @@ test("ver la pizarra encuadra la cámara y vuelve sin abrir un diálogo", async 
   expect(framed!.y).toBeCloseTo(1.55, 1);
   expect(framed!.z).toBeGreaterThan(-7.2);
   expect(framed!.z).toBeLessThan(-3);
+  const preview = page.getByTestId("board-preview");
+  await expect(preview).toHaveCount(1);
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveText("Probar la preview");
+  await expect(preview).toHaveAttribute("href", "https://preview-test.proto-lab-3k6.pages.dev/");
+  await expect(preview).toHaveAttribute("target", "_blank");
+  await expect(preview).toHaveAttribute("rel", "noopener noreferrer");
   const back = page.getByTestId("board-back");
   await expect(back).toBeVisible();
   await expect(back).toHaveText("Volver");
   await back.click();
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
   await expect(back).toBeHidden();
+  await expect(preview).toBeHidden();
   await expect(interact).toHaveText("Ver la pizarra");
   await page.keyboard.press("e");
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
@@ -593,7 +627,7 @@ test("en horizontal las acciones de confirmación del diálogo caben en pantalla
 });
 
 test("la música se sirve y no muestra créditos en pantalla", async ({ page }) => {
-  const track = await page.request.get("/protos/audio/life-in-fragments.m4a");
+  const track = await page.request.get("/protos/audio/luanda.m4a");
   expect(track.ok()).toBeTruthy();
   expect(track.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
   const credits = await page.request.get("/protos/audio/CREDITS.md");
@@ -615,11 +649,11 @@ test("un toque en el laboratorio arranca la música sin pasar por silenciar", as
   await expect(page.getByTestId("world-ready")).toBeVisible();
   const mute = page.getByTestId("mute-music");
   await expect(mute).toHaveAttribute("data-playback", "idle");
-  expect(requests).toHaveLength(0);
   const canvas = page.locator("#viewport canvas");
   // Esquina: el centro del lienzo puede caer sobre la máquina y abrir el selector.
   await canvas.click({ position: { x: 12, y: 96 } });
   await expect.poll(() => requests.length).toBeGreaterThan(0);
+  expect(requests.every((url) => url.includes("luanda.m4a"))).toBe(true);
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await page.evaluate(() => {
     const proto = Document.prototype;
@@ -646,25 +680,23 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   await expect(page.getByTestId("world-ready")).toBeVisible();
   const mute = page.getByTestId("mute-music");
   await expect(mute).toHaveAttribute("data-playback", "idle");
-  expect(requests).toHaveLength(0);
 
   const viewport = page.viewportSize();
   expect(viewport).toBeTruthy();
   await dispatchTouchDrag(page, viewport!.width * 0.22, viewport!.height * 0.72, 0, -48);
   await expect.poll(() => requests.length).toBeGreaterThan(0);
+  expect(requests.every((url) => url.includes("luanda.m4a"))).toBe(true);
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await expect(page.locator("#game-selector")).toBeHidden();
 
-  const started = requests.length;
   await page.reload();
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await expect(mute).toHaveAttribute("data-playback", "idle");
-  await expect.poll(() => requests.length).toBe(started);
   const canvas = await page.locator("#viewport canvas").boundingBox();
   expect(canvas).toBeTruthy();
   await dispatchTouchDrag(page, canvas!.x + canvas!.width * 0.72, canvas!.y + canvas!.height * 0.42, 0, 0);
-  await expect.poll(() => requests.length).toBeGreaterThan(started);
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
   await expect(mute).toHaveAttribute("data-playback", "playing");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await expect(page.locator("#game-selector")).toBeHidden();

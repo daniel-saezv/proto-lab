@@ -109,6 +109,7 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
   const neonMat = new MeshBasicMaterial({ color: PAL.neon });
   f.materials.push(neonMat);
   const fan = new Group();
+  fan.userData.noBatch = true;
   f.scene.add(fan);
   const windowMats: MeshBasicMaterial[] = [];
   const sway: SwayPlant[] = [];
@@ -194,6 +195,7 @@ function addPottedPlant(f: AmbientFactories, x: number, z: number, scale: number
   pot.castShadow = f.shadows;
   f.scene.add(pot);
   const crown = new Group();
+  crown.userData.noBatch = true;
   crown.position.set(x, 0.36 * scale, z);
   const leafGeo = f.geo(new SphereGeometry(0.16 * scale, 7, 5));
   const leafMat = f.mat(PAL.leaf);
@@ -311,6 +313,7 @@ function createNightWindow(materials: Material[]): {
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   const material = new MeshBasicMaterial({ map: texture });
+  material.userData.live = true;
   materials.push(material);
   return { material, canvas, ctx };
 }
@@ -324,6 +327,7 @@ function createBlinkingScreen(materials: Material[], accent: string, mode: "code
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   const material = new MeshBasicMaterial({ map: texture, color: 0xffffff });
+  material.userData.live = true;
   materials.push(material);
   material.userData.screenPaint = { canvas, ctx, accent, mode };
   return material;
@@ -368,6 +372,7 @@ function addCatOnCrates(f: AmbientFactories): Mesh {
   f.box(f.scene, 0.28, 0.18, 0.38, x, y, z, PAL.cat);
   const head = new Mesh(f.geo(new SphereGeometry(0.14, 10, 8)), f.mat(PAL.cat));
   head.position.set(x + 0.18, y + 0.08, z);
+  head.userData.noBatch = true;
   head.castShadow = f.shadows;
   f.scene.add(head);
   f.box(f.scene, 0.04, 0.04, 0.04, x + 0.28, y + 0.12, z - 0.02, PAL.cat, false);
@@ -467,6 +472,7 @@ function addFridgeHum(f: AmbientFactories): Mesh {
   f.box(f.scene, 0.68, 0.04, 0.54, x, 1.36, z, 0xb8c5d0, false);
   f.box(f.scene, 0.04, 0.35, 0.06, x - 0.32, 0.85, z + 0.32, 0x8d97a8, false);
   const hum = new Mesh(f.geo(new SphereGeometry(0.02, 6, 4)), new MeshBasicMaterial({ color: 0xffffff }));
+  hum.userData.noBatch = true;
   f.materials.push(hum.material);
   hum.position.set(x + 0.28, 0.15, z + 0.32);
   f.scene.add(hum);

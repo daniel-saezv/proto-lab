@@ -217,6 +217,7 @@ function addSlackerAndTv(
   leg.rotation.x = -0.55;
 
   const arm = new Group();
+  arm.userData.noBatch = true;
   arm.position.set(0.22, 0.32, 0.05);
   const upper = f.box(arm, 0.1, 0.28, 0.1, 0, -0.08, 0, PALETTE.skin, false);
   upper.rotation.x = -0.4;
@@ -238,6 +239,7 @@ function addSlackerAndTv(
     const smokeMat = new MeshBasicMaterial({ color: PALETTE.smoke, transparent: true, opacity: 0.4 });
     f.materials.push(smokeMat);
     const puff = new Mesh(smokeGeo, smokeMat);
+    puff.userData.noBatch = true;
     puff.position.set(x + 0.38, 0.92 + i * 0.15, z + 0.1);
     parent.add(puff);
     smokes.push(puff);
@@ -271,6 +273,7 @@ function createTvTexture(materials: Material[]): {
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   const material = new MeshBasicMaterial({ map: texture, color: 0xffffff });
+  material.userData.live = true;
   materials.push(material);
   flickerTv(ctx, canvas, material);
   return { canvas, ctx, material };
@@ -376,6 +379,7 @@ function addDust(scene: Scene, f: AmbientFactories): Mesh[] {
   for (let i = 0; i < spots.length; i++) {
     const [x, y, z] = spots[i]!;
     const m = new Mesh(geo, dustMat);
+    m.userData.noBatch = true;
     m.position.set(x, y, z);
     m.userData.base = { x, y, z, phase: i * 0.7 };
     scene.add(m);

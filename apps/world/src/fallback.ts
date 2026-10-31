@@ -7,6 +7,7 @@ export function showFallback(options: {
   onTalk: () => void;
   onInstallHelp?: () => void;
   onPlay: (entry: CatalogEntry) => void;
+  onPreviews?: (container: HTMLElement) => void;
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
 }) {
   options.root.hidden = false;
@@ -21,10 +22,18 @@ export function showFallback(options: {
   const boardHeading = document.createElement("h2");
   boardHeading.textContent = "Tablón de propuestas";
   boardSection.append(boardHeading);
+  const previews = document.createElement("div");
+  previews.className = "fallback-previews";
+  previews.dataset.testid = "fallback-previews";
+  previews.hidden = true;
+  boardSection.append(previews);
+  options.onPreviews?.(previews);
 
   void import("./whiteboard-status").then(({ createWhiteboardStatus }) => {
     if (!boardSection.isConnected) return;
     const whiteboard = createWhiteboardStatus({ attachTo: boardSection });
+    const canvas = boardSection.querySelector(".fallback-whiteboard-canvas");
+    if (canvas) boardSection.insertBefore(canvas, previews);
     options.onWhiteboardReady?.(whiteboard);
   });
 
