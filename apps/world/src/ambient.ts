@@ -18,6 +18,7 @@ import {
 } from "three";
 import { addFridgeCorner, addStoryCorners, tickCornerReactions } from "./ambient-corners";
 import { addLoungeGroup, type LoungeNpcSpot } from "./ambient-lounge";
+import type { DialogueCue } from "./dialogue-cues";
 import { LAYOUT } from "./navigation";
 
 const PALETTE = {
@@ -75,6 +76,8 @@ export type AmbientHandle = {
   npcs: LoungeNpcSpot[];
   nameplates: { id: string; element: HTMLElement; anchor: CSS2DObject }[];
   tick: (time: number, dt: number, player: Vector3, beatBass?: number, beatMid?: number) => void;
+  setDialogueCue: (cue: DialogueCue | null) => void;
+  pulseDialogue: () => void;
 };
 
 export function addAmbient(f: AmbientFactories): AmbientHandle {
@@ -97,6 +100,12 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
     slacker: group.slacker,
     npcs: group.npcs,
     nameplates: group.nameplates,
+    setDialogueCue(cue) {
+      group.setDialogueCue(cue);
+    },
+    pulseDialogue() {
+      group.pulseDialogue();
+    },
     tick(time, dt, player, beatBass = 0, beatMid = 0) {
       const near = Math.hypot(player.x - group.slacker.x, player.z - group.slacker.z) <= group.slacker.radius;
       if (near && lineShown < 0) {
