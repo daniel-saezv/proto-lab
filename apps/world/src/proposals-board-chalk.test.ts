@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   loadingSkeletonProgress,
+  quadSeg,
   revealComplete,
   revealRowProgress,
+  seg,
   skeletonGrandTotalLength,
 } from "./proposals-board-chalk";
 
@@ -17,6 +19,16 @@ describe("proposals-board-chalk", () => {
     expect(a).toBeGreaterThan(0);
     expect(b).toBeGreaterThan(a);
     expect(loadingSkeletonProgress(0, true)).toBe(1);
+  });
+
+  it("una cuadrática se separa de su cuerda", () => {
+    const curve = quadSeg(0, 0, 0, 24, 40, 0);
+    const chord = seg(0, 0, 40, 0);
+    expect(curve.len).toBeGreaterThan(chord.len + 8);
+    const midY = 0.25 * curve.y1 + 0.5 * (curve.qy ?? 0) + 0.25 * curve.y2;
+    expect(midY).toBeGreaterThan(8);
+    expect(curve.qx).toBe(0);
+    expect(curve.qy).toBe(24);
   });
 
   it("revela filas escalonadas en ~780 ms", () => {

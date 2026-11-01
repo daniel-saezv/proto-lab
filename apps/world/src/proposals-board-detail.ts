@@ -1,3 +1,4 @@
+import { drawChalkMark, type ChalkMarkId } from "./chalk-marks";
 import { CHALK_STROKE, drawChalkSegments, paintWhiteboardFrame, seg, type ChalkSegment } from "./proposals-board-chalk";
 import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH, type BoardRowLayout } from "./proposals-board-metrics";
 import {
@@ -64,11 +65,30 @@ export type DetailPaintModel = {
   actionLabel: string | null;
 };
 
-/** Progreso 0–1 del trazo de énfasis. `null` en un control es el reposo, sin subrayado caliente. */
+/** Progreso 0–1 del trazo de énfasis. `null` en un control es el reposo, sin trazo caliente. */
 export type DetailEmphasis = {
   back: number | null;
+  backKind: ChalkMarkId;
   action: number | null;
+  actionKind: ChalkMarkId;
+  /** Trazo del botón de acción al abrir el detalle. Sigue en 1 cuando ya se dibujó. */
+  actionDraw: number | null;
 };
+
+/**
+ * Cómo se pinta el círculo de la acción.
+ * Sin reloj ni foco no hay trazo: no aparece ya empezado.
+ * Si el foco llega a medias, el color pasa a ámbar y el progreso no vuelve a cero.
+ */
+export function combineActionMark(
+  draw: number | null,
+  hot: number | null,
+): { progress: number; hot: boolean } | null {
+  if (draw == null && hot == null) return null;
+  const progress = Math.max(draw ?? 0, hot ?? 0);
+  if (progress <= 0.02) return null;
+  return { progress, hot: hot != null };
+}
 
 export function detailFits(rect: BoardRect): boolean {
   return rect.x >= 0 && rect.y >= 0 && rect.x + rect.w <= WHITEBOARD_WIDTH && rect.y + rect.h <= WHITEBOARD_HEIGHT;
@@ -88,19 +108,100 @@ const AMBER = "#ffb703";
 
 export type ChalkAppearance = { stroke: number; text: number };
 
-/** Cuánto tarda en trazarse el subrayado al enfocar o al pasar por encima. */
+/** Cuánto tarda en trazarse el círculo de tiza al enfocar o al pasar por encima. */
 export const MARK_DRAW_MS = 340;
+
+/** Porción del círculo que queda en reposo, tenue. */
+const REST_MARK = 0.62;
+
+/**
+ * Velocidad de la mano a lo largo de los 340 ms: apoya despacio, acelera,
+ * frena un momento al girar la muñeca y suelta. Siempre positiva.
+ */
+const HAND_SPEEDS = [0.62, 0.84, 1.12, 1.28, 0.9, 1.02, 1.18, 0.86, 0.58];
+
+const HAND_CUMULATIVE = (() => {
+  const cum = [0];
+  const steps = HAND_SPEEDS.length - 1;
+  for (let i = 0; i < steps; i += 1) {
+    const dt = 1 / steps;
+    cum.push(cum[i]! + ((HAND_SPEEDS[i]! + HAND_SPEEDS[i + 1]!) / 2) * dt);
+  }
+  return cum;
+})();
+
+/** 0 al apoyar, 1 al cerrar. No es lineal: la mano no lleva velocidad constante. */
+export function handStroke(t: number): number {
+  const steps = HAND_SPEEDS.length - 1;
+  const u = Math.min(1, Math.max(0, t)) * steps;
+  const i = Math.min(steps - 1, Math.floor(u));
+  const span = HAND_CUMULATIVE[i + 1]! - HAND_CUMULATIVE[i]!;
+  const along = HAND_CUMULATIVE[i]! + span * (u - i);
+  return along / HAND_CUMULATIVE[steps]!;
+}
 
 export function chalkMarkProgress(elapsedMs: number, reduced: boolean): number {
   if (reduced) return 1;
   const t = Math.min(1, Math.max(0, elapsedMs / MARK_DRAW_MS));
-  return t * t * (3 - 2 * t);
+  return handStroke(t);
 }
 
-/** Subrayado a mano: dos trazos con una panza, no una regla ni un recuadro. */
-export function chalkUnderlineSegments(x: number, y: number, width: number): ChalkSegment[] {
-  const mid = x + width * 0.47;
-  return [seg(x, y, mid, y + 2.4), seg(mid, y + 2.4, x + width, y - 0.8)];
+/** Caja de tinta medida: origen del `fillText` menos el bearing, alto real del glifo. */
+export type GlyphBox = { x: number; y: number; width: number; height: number };
+
+export type GlyphBaseline = "alphabetic" | "middle";
+
+function fontPxOf(font: string): number {
+  const match = /(\d+(?:\.\d+)?)px/.exec(font);
+  const px = match ? Number(match[1]) : 26;
+  return Number.isFinite(px) && px > 0 ? px : 26;
+}
+
+function finiteMetric(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Caja de tinta de un texto ya medido.
+ * `actualBoundingBox*` es relativo a la baseline activa (`alphabetic` o `middle`).
+ * Si el navegador no da esas medidas, se estima con el tamaño de la fuente.
+ */
+export function measureGlyphBox(
+  context: CanvasRenderingContext2D,
+  text: string,
+  originX: number,
+  baselineY: number,
+  baseline: GlyphBaseline,
+): GlyphBox {
+  const metrics = context.measureText(text);
+  const left = metrics.actualBoundingBoxLeft;
+  const right = metrics.actualBoundingBoxRight;
+  const ascent = metrics.actualBoundingBoxAscent;
+  const descent = metrics.actualBoundingBoxDescent;
+  if (
+    finiteMetric(left) &&
+    finiteMetric(right) &&
+    finiteMetric(ascent) &&
+    finiteMetric(descent) &&
+    left + right > 0.5 &&
+    ascent + descent > 0.5
+  ) {
+    return {
+      x: originX - left,
+      y: baselineY - ascent,
+      width: left + right,
+      height: ascent + descent,
+    };
+  }
+  const width = Math.max(metrics.width, 1);
+  const fontPx = fontPxOf(context.font);
+  if (baseline === "middle") {
+    const half = fontPx * 0.5;
+    return { x: originX, y: baselineY - half, width, height: fontPx };
+  }
+  const ascentFb = fontPx * 0.78;
+  const descentFb = fontPx * 0.22;
+  return { x: originX, y: baselineY - ascentFb, width, height: ascentFb + descentFb };
 }
 
 /** Marca › abierta. No cierra un rombo ni una caja. */
@@ -117,32 +218,43 @@ export function strokeIsOpen(segments: readonly ChalkSegment[]): boolean {
   return Math.hypot(last.x2 - first.x1, last.y2 - first.y1) > 6;
 }
 
-export function rowChalkCue(layout: BoardRowLayout, titleWidth: number): { chevron: ChalkSegment[]; underline: ChalkSegment[] } {
-  const width = Math.max(84, Math.min(titleWidth, 300));
+export function rowChalkCue(
+  layout: BoardRowLayout,
+  ink: GlyphBox,
+  kind: ChalkMarkId = "oval",
+): { chevron: ChalkSegment[]; ring: ChalkSegment[] } {
   return {
     chevron: chalkChevronSegments(WHITEBOARD_WIDTH - 58, layout.y + 22, 7),
-    underline: chalkUnderlineSegments(28, layout.y + 40, width),
+    ring: drawChalkMark(kind, ink),
   };
 }
 
-export function detailBackCue(labelWidth: number): ChalkSegment[] {
-  const back = detailBackRect();
-  const width = Math.max(96, Math.min(labelWidth, 240));
-  return chalkUnderlineSegments(back.x + 36, back.y + back.h / 2 + 24, width);
+export function detailBackCue(ink: GlyphBox, kind: ChalkMarkId = "oval"): ChalkSegment[] {
+  return drawChalkMark(kind, ink);
 }
 
-export function detailActionCue(labelWidth: number): { underline: ChalkSegment[]; chevron: ChalkSegment[]; textX: number } {
+/** Origen del rótulo de la acción, centrado en su zona junto al chevron. */
+export function actionLabelOrigin(labelWidth: number): { textX: number; midY: number; chevronX: number } {
   const action = detailActionRect();
   const midY = action.y + action.h / 2;
-  const textW = Math.max(120, Math.min(labelWidth, action.w - 140));
+  const textW = Math.max(1, Math.min(labelWidth, action.w - 80));
   const chevronSize = 8;
   const gap = 16;
   const group = chevronSize + gap + textW;
   const left = action.x + (action.w - group) / 2;
+  return { textX: left + chevronSize + gap, midY, chevronX: left };
+}
+
+export function detailActionCue(
+  ink: GlyphBox,
+  labelWidth = ink.width,
+  kind: ChalkMarkId = "oval",
+): { ring: ChalkSegment[]; chevron: ChalkSegment[]; textX: number } {
+  const origin = actionLabelOrigin(labelWidth);
   return {
-    chevron: chalkChevronSegments(left, midY, chevronSize),
-    underline: chalkUnderlineSegments(left + chevronSize + gap, midY + 24, textW),
-    textX: left + chevronSize + gap,
+    chevron: chalkChevronSegments(origin.chevronX, origin.midY, 8),
+    ring: drawChalkMark(kind, ink),
+    textX: origin.textX,
   };
 }
 
@@ -169,21 +281,22 @@ export function paintListAffordances(
   context: CanvasRenderingContext2D,
   layouts: readonly BoardRowLayout[],
   rows: readonly { number: number; title: string }[],
-  markOf: (number: number) => number | null,
+  markOf: (number: number) => { progress: number; kind: ChalkMarkId } | null,
 ) {
   context.save();
   context.font = "700 26px sans-serif";
   context.textAlign = "left";
+  context.textBaseline = "alphabetic";
   const maxTitle = WHITEBOARD_WIDTH - 56 - 80;
   for (const layout of layouts) {
     if (layout.number <= 0) continue;
     const row = rows.find((item) => item.number === layout.number);
-    const title = row ? `#${row.number} · ${row.title}` : `#${layout.number}`;
-    const titleWidth = Math.min(context.measureText(title).width, maxTitle);
-    const cue = rowChalkCue(layout, titleWidth);
+    const title = truncate(context, row ? `#${row.number} · ${row.title}` : `#${layout.number}`, maxTitle);
+    const ink = measureGlyphBox(context, title, 28, layout.y + 34, "alphabetic");
     const hot = markOf(layout.number);
+    const cue = rowChalkCue(layout, ink, hot?.kind ?? "oval");
     paintOpenCue(context, cue.chevron, 1, hot == null ? CUE : AMBER, 2.6);
-    if (hot != null && hot > 0.02) paintOpenCue(context, cue.underline, hot, AMBER, 3.2);
+    if (hot != null && hot.progress > 0.02) paintOpenCue(context, cue.ring, hot.progress, AMBER, 3.2);
   }
   context.restore();
 }
@@ -240,15 +353,10 @@ function layoutsFor(model: BoardPaintModel): BoardRowLayout[] {
   return layouts;
 }
 
-function paintEmphasisUnderline(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  hot: number | null,
-) {
-  const drawn = hot == null ? width * 0.62 : width;
-  paintOpenCue(context, chalkUnderlineSegments(x, y, drawn), hot == null ? 1 : hot, hot == null ? CUE : AMBER, hot == null ? 2.2 : 3.2);
+function paintEmphasisRing(context: CanvasRenderingContext2D, segments: readonly ChalkSegment[], hot: number | null) {
+  const progress = hot == null ? REST_MARK : hot;
+  if (progress <= 0.02) return;
+  paintOpenCue(context, segments, progress, hot == null ? CUE : AMBER, hot == null ? 2.2 : 3.2);
 }
 
 export function paintDetailBoard(
@@ -271,10 +379,12 @@ export function paintDetailBoard(
   context.textAlign = "left";
   context.textBaseline = "middle";
   const backLabel = "← Tablón";
-  const backWidth = context.measureText(backLabel).width;
+  const backX = back.x + 36;
+  const backY = back.y + back.h / 2;
+  const backInk = measureGlyphBox(context, backLabel, backX, backY, "middle");
   context.fillStyle = emphasis.back == null ? CUE : INK_WARM;
-  context.fillText(backLabel, back.x + 36, back.y + back.h / 2);
-  paintEmphasisUnderline(context, back.x + 36, back.y + back.h / 2 + 24, Math.min(backWidth, 240), emphasis.back);
+  context.fillText(backLabel, backX, backY);
+  paintEmphasisRing(context, detailBackCue(backInk, emphasis.backKind), emphasis.back);
   context.textBaseline = "alphabetic";
   context.fillStyle = INK;
   context.font = "700 40px sans-serif";
@@ -291,14 +401,21 @@ export function paintDetailBoard(
     context.textAlign = "left";
     context.textBaseline = "middle";
     const labelWidth = context.measureText(model.actionLabel).width;
-    const cue = detailActionCue(labelWidth);
-    const midY = action.y + action.h / 2;
+    const origin = actionLabelOrigin(labelWidth);
+    const ink = measureGlyphBox(context, model.actionLabel, origin.textX, origin.midY, "middle");
+    const cue = detailActionCue(ink, labelWidth, emphasis.actionKind);
     paintOpenCue(context, cue.chevron, 1, emphasis.action == null ? CUE : AMBER, 2.8);
     context.fillStyle = emphasis.action == null ? CUE : INK_WARM;
-    context.fillText(model.actionLabel, cue.textX, midY);
-    const underline = cue.underline[0];
-    if (underline) {
-      paintEmphasisUnderline(context, underline.x1, midY + 24, Math.min(labelWidth, action.w - 140), emphasis.action);
+    context.fillText(model.actionLabel, cue.textX, origin.midY);
+    const actionMark = combineActionMark(emphasis.actionDraw, emphasis.action);
+    if (actionMark) {
+      paintOpenCue(
+        context,
+        cue.ring,
+        actionMark.progress,
+        actionMark.hot ? AMBER : CUE,
+        actionMark.hot ? 3.2 : 2.2,
+      );
     }
   }
   context.restore();
