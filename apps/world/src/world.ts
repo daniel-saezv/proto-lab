@@ -70,6 +70,19 @@ import {
 } from "./navigation";
 import { DEBUG_MARKERS, VIEWPOINTS, viewpointById } from "./viewpoints";
 import {
+  HANGING_GLOW,
+  HANGING_LIGHT,
+  HANGING_SHADE,
+  HANGING_SHADE_DROP,
+  LAMP_GLOW,
+  LAMP_METAL,
+  SCONCE_GLOW,
+  SCONCE_LIGHT,
+  SCONCE_SHADE,
+  SCONCE_SHADE_Y,
+  addLampHead,
+} from "./scene-lights";
+import {
   smoothstep01,
   whiteboardCameraPose,
   whiteboardTransitionSeconds,
@@ -209,10 +222,11 @@ export function startWorld(options: {
   sun.shadow.camera.bottom = -12;
   scene.add(sun);
 
-  const lampLight = new PointLight(0xffb703, 6, 7.5, 2);
-  lampLight.position.set(-1.5, 2.6, -2.4);
+  const lampLight = new PointLight(LAMP_GLOW, SCONCE_LIGHT.intensity, SCONCE_LIGHT.distance, SCONCE_LIGHT.decay);
+  lampLight.userData.base = SCONCE_LIGHT.intensity;
+  lampLight.userData.phase = 0.4;
   scene.add(lampLight);
-  const arcadeLight = new PointLight(0xffb45a, 4.5, 5.2, 2);
+  const arcadeLight = new PointLight(LAMP_GLOW, 2.4, 8.5, 2);
   scene.add(arcadeLight);
 
   const lambertByColor = new Map<number, MeshLambertMaterial>();
@@ -593,7 +607,8 @@ export function startWorld(options: {
         const blink = Math.sin(frame * 8.5 + phase) > 0.985 ? 0.7 : 1;
         light.intensity = base * (0.92 + Math.sin(frame * 1.7 + phase) * 0.08) * blink * lampBeat;
       }
-      lampLight.intensity = 6 * (0.94 + Math.sin(frame * 2.2) * 0.06) * lampBeat;
+      const sconceBase = (lampLight.userData.base as number) ?? SCONCE_LIGHT.intensity;
+      lampLight.intensity = sconceBase * (0.94 + Math.sin(frame * 2.2) * 0.06) * lampBeat;
       if (!e2eRender) {
         inventor.position.y = Math.sin(frame * 2) * 0.04;
         const arm = inventor.userData.arm as Object3D | undefined;
@@ -1182,27 +1197,27 @@ export function startWorld(options: {
 
     addHangingLamp(lights, -1.5, -5.05, 0, true);
     addHangingLamp(lights, 2.15, -0.2, 1.4, true);
-    addHangingLamp(lights, 7.1, 4.15, 2.6, false);
+    addHangingLamp(lights, 7.85, 5.9, 2.6, false);
   }
 
-  function addHangingLamp(lights: PointLight[], x: number, z: number, phase: number, lit: boolean) {
+  function addHangingLamp(lights: PointLight[], x: number, z: number, phase: number, castsLight: boolean) {
     const y0 = CEILING_UNDERSIDE;
-    box(scene, 0.035, 0.32, 0.035, x, y0 - 0.15, z, 0x8d97a8, false);
-    const shade = new Mesh(geo(new CylinderGeometry(0.14, 0.26, 0.14, 8)), mat(PALETTE.trim));
-    shade.position.set(x, y0 - 0.36, z);
-    scene.add(shade);
-    const bulbMat = new MeshBasicMaterial({ color: PALETTE.amber, toneMapped: false });
-    materials.push(bulbMat);
-    const bulb = new Mesh(geo(new SphereGeometry(0.06, 8, 6)), bulbMat);
-    bulb.position.set(x, y0 - 0.44, z);
-    scene.add(bulb);
-    if (!lit) return;
-    const light = new PointLight(0xffb070, 2.6, 5.5, 2);
-    light.position.set(x, y0 - 0.48, z);
-    light.userData.phase = phase;
-    light.userData.base = 2.6;
-    scene.add(light);
-    lights.push(light);
+    const shadeY = y0 - HANGING_SHADE_DROP;
+    const cord = HANGING_SHADE_DROP - HANGING_SHADE.height / 2;
+    box(scene, 0.02, cord, 0.02, x, y0 - cord / 2, z, LAMP_METAL, false);
+    const light = addLampHead(
+      { parent: scene, geo, mat, materials, shadows },
+      {
+        x,
+        z,
+        shadeY,
+        shade: HANGING_SHADE,
+        glow: HANGING_GLOW,
+        lit: true,
+        light: castsLight ? { ...HANGING_LIGHT, phase } : undefined,
+      },
+    );
+    if (light) lights.push(light);
   }
 
   function addFloorPaths() {
@@ -1322,13 +1337,21 @@ export function startWorld(options: {
 
   function addLamp() {
     const x = -0.35;
-    const z = -7.28;
-    box(scene, 0.22, 0.1, 0.14, x, 2.25, z, 0x8d97a8, false);
-    const bulb = new Mesh(geo(new SphereGeometry(0.11, 10, 8)), new MeshBasicMaterial({ color: PALETTE.amber, toneMapped: false }));
-    materials.push(bulb.material);
-    bulb.position.set(x, 2.08, -7.12);
-    scene.add(bulb);
-    lampLight.position.set(x, 2.05, -6.4);
+    const z = -7.22;
+    box(scene, 0.14, 0.18, 0.05, x, SCONCE_SHADE_Y + 0.08, z, LAMP_METAL, false);
+    box(scene, 0.04, 0.04, 0.12, x, SCONCE_SHADE_Y + 0.02, z + 0.07, LAMP_METAL, false);
+    addLampHead(
+      { parent: scene, geo, mat, materials, shadows },
+      {
+        x,
+        z: z + 0.16,
+        shadeY: SCONCE_SHADE_Y,
+        shade: SCONCE_SHADE,
+        glow: SCONCE_GLOW,
+        lit: true,
+      },
+    );
+    lampLight.position.set(x, SCONCE_SHADE_Y + SCONCE_GLOW.dy - 0.06, z + 0.22);
   }
 
   function buildInventor(): Group {

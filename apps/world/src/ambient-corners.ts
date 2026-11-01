@@ -17,6 +17,17 @@ import {
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { CEILING_UNDERSIDE, LAYOUT } from "./navigation";
+import {
+  FLOOR_GLOW,
+  FLOOR_LAMPS,
+  FLOOR_LIGHT,
+  FLOOR_SHADE,
+  FLOOR_SHADE_Y,
+  LAMP_METAL,
+  PANTRY_RUG_COLOR,
+  addLampHead,
+  pantryRug,
+} from "./scene-lights";
 
 const PAL = {
   desk: 0x6d4b32,
@@ -32,7 +43,6 @@ const PAL = {
   leaf: 0x2f7d4a,
   pot: 0xc46b3a,
   fan: 0x465270,
-  rugAccent: 0x3c4a68,
   cat: 0xe07a3d,
   dog: 0x8d6e4a,
   radio: 0x6d4b32,
@@ -211,33 +221,50 @@ function addPottedPlant(f: AmbientFactories, x: number, z: number, scale: number
 }
 
 function addAccentRug(f: AmbientFactories) {
-  const rug = new Mesh(f.geo(new PlaneGeometry(2.2, 1.4)), f.mat(PAL.rugAccent));
+  const rugPlace = pantryRug();
+  const rug = new Mesh(f.geo(new PlaneGeometry(rugPlace.width, rugPlace.depth)), f.mat(PANTRY_RUG_COLOR));
   rug.rotation.x = -Math.PI / 2;
-  rug.position.set(7.15, 0.008, 4.55);
+  rug.position.set(rugPlace.x, 0.008, rugPlace.z);
   rug.receiveShadow = f.shadows;
   f.scene.add(rug);
 }
 
 function addWarmLamps(f: AmbientFactories, lamps: PointLight[]) {
-  lamps.push(addFloorLamp(f, -8.35, 7.7, 0.5, 0.6));
-  lamps.push(addFloorLamp(f, 8.55, -2.15, 0.5, 2.1));
+  for (const lamp of FLOOR_LAMPS) {
+    const light = addFloorLamp(f, lamp.x, lamp.z, lamp.intensityScale, lamp.phase);
+    if (light) lamps.push(light);
+  }
 }
 
-function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale: number, phase: number): PointLight {
-  f.box(f.scene, 0.06, 0.05, 0.06, x, 0.025, z, 0x8d97a8, false);
-  const pole = new Mesh(f.geo(new CylinderGeometry(0.03, 0.03, 1.1, 8)), f.mat(0x8d97a8));
-  pole.position.set(x, 0.58, z);
+function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale: number, phase: number): PointLight | null {
+  const mouth = FLOOR_SHADE_Y - FLOOR_SHADE.height / 2;
+  const poleHeight = mouth - 0.04;
+  const base = new Mesh(f.geo(new CylinderGeometry(0.15, 0.18, 0.04, 8)), f.mat(LAMP_METAL));
+  base.position.set(x, 0.02, z);
+  base.castShadow = f.shadows;
+  f.scene.add(base);
+  const pole = new Mesh(f.geo(new CylinderGeometry(0.016, 0.02, poleHeight, 6)), f.mat(LAMP_METAL));
+  pole.position.set(x, 0.04 + poleHeight / 2, z);
+  pole.castShadow = f.shadows;
   f.scene.add(pole);
-  const bulbMat = new MeshBasicMaterial({ color: PAL.wrapper });
-  f.materials.push(bulbMat);
-  const bulb = new Mesh(f.geo(new SphereGeometry(0.11, 10, 8)), bulbMat);
-  bulb.position.set(x, 1.18, z);
-  f.scene.add(bulb);
-  const light = new PointLight(PAL.wrapper, 4.2 * intensityScale, 4.2, 2);
-  light.position.set(x, 1.15, z);
-  light.userData.phase = phase;
-  light.userData.base = 4.2 * intensityScale;
-  f.scene.add(light);
+  const light = addLampHead(
+    { parent: f.scene, geo: f.geo, mat: f.mat, materials: f.materials, shadows: f.shadows },
+    {
+      x,
+      z,
+      shadeY: FLOOR_SHADE_Y,
+      shade: FLOOR_SHADE,
+      glow: FLOOR_GLOW,
+      lit: true,
+      light: {
+        intensity: FLOOR_LIGHT.intensity * intensityScale,
+        distance: FLOOR_LIGHT.distance,
+        decay: FLOOR_LIGHT.decay,
+        phase,
+      },
+    },
+  );
+  if (light) light.userData.base = FLOOR_LIGHT.intensity * intensityScale;
   return light;
 }
 
@@ -366,17 +393,17 @@ function paintScreen(
 function addCatOnCrates(f: AmbientFactories): Mesh {
   const x = LAYOUT.crates.x;
   const z = LAYOUT.crates.z;
-  const y = 0.62;
-  f.box(f.scene, 0.55, 0.55, 0.55, x - 0.05, 0.28, z - 0.1, 0x8d5a34);
-  f.box(f.scene, 0.4, 0.4, 0.4, x + 0.28, 0.62, z + 0.12, 0x8d5a34);
-  f.box(f.scene, 0.28, 0.18, 0.38, x, y, z, PAL.cat);
-  const head = new Mesh(f.geo(new SphereGeometry(0.14, 10, 8)), f.mat(PAL.cat));
-  head.position.set(x + 0.18, y + 0.08, z);
+  f.box(f.scene, 0.56, 0.4, 0.5, x, 0.2, z, 0x8d5a34);
+  f.box(f.scene, 0.48, 0.34, 0.42, x, 0.57, z, 0x734826);
+  const y = 0.82;
+  f.box(f.scene, 0.28, 0.16, 0.32, x - 0.02, y, z, PAL.cat);
+  const head = new Mesh(f.geo(new SphereGeometry(0.13, 10, 8)), f.mat(PAL.cat));
+  head.position.set(x - 0.16, y + 0.06, z);
   head.userData.noBatch = true;
   head.castShadow = f.shadows;
   f.scene.add(head);
-  f.box(f.scene, 0.04, 0.04, 0.04, x + 0.28, y + 0.12, z - 0.02, PAL.cat, false);
-  f.box(f.scene, 0.04, 0.04, 0.04, x + 0.28, y + 0.12, z + 0.02, PAL.cat, false);
+  f.box(f.scene, 0.04, 0.05, 0.04, x - 0.2, y + 0.16, z - 0.04, PAL.cat, false);
+  f.box(f.scene, 0.04, 0.05, 0.04, x - 0.2, y + 0.16, z + 0.04, PAL.cat, false);
   return head;
 }
 
@@ -425,7 +452,7 @@ export function tickCornerReactions(
   beatBass = 0,
   beatMid = 0,
 ) {
-  const catX = LAYOUT.crates.x + 0.18;
+  const catX = LAYOUT.crates.x - 0.16;
   const catZ = LAYOUT.crates.z;
   const nearCat = Math.hypot(player.x - catX, player.z - catZ) < 2.4;
   if (nearCat) {
