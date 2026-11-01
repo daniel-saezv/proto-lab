@@ -5,15 +5,20 @@ import { describe, expect, it } from "vitest";
 import { isShellPath } from "../../../scripts/sw.mjs";
 import {
   AMBIENCE_TRACK,
+  AUDIO_UNLOCK_POINTER_DOWN,
+  AUDIO_UNLOCK_TOUCH_START,
+  AUDIO_UNLOCK_TOUCH_END,
   LOOP_CROSSFADE_S,
   MUSIC_FADE_IN_S,
   MUSIC_FADE_OUT_S,
   MUSIC_MUTE_KEY,
+  isAudioUnlockEventType,
   isMusicMuted,
   loopOverlapSeconds,
   playbackAfterGesture,
   playbackOutputLive,
   playbackRejection,
+  shouldIgnoreAudioUnlockTarget,
   shouldResumeLobbyMusic,
   shouldRouteMediaElement,
   toggleMusicMuted,
@@ -93,6 +98,23 @@ describe("música ambiental", () => {
     expect(playbackOutputLive({ mediaPaused: false, contextState: "running", routed: false })).toBe(false);
     expect(playbackOutputLive({ mediaPaused: true, contextState: "running", routed: true })).toBe(false);
     expect(playbackOutputLive({ mediaPaused: false, contextState: "running", routed: true })).toBe(true);
+  });
+
+  it("desbloquea con inicio y fin de gesto, no con arrastre", () => {
+    expect(isAudioUnlockEventType(AUDIO_UNLOCK_TOUCH_START)).toBe(true);
+    expect(isAudioUnlockEventType(AUDIO_UNLOCK_POINTER_DOWN)).toBe(true);
+    expect(isAudioUnlockEventType(AUDIO_UNLOCK_TOUCH_END)).toBe(true);
+    expect(isAudioUnlockEventType("touchmove")).toBe(false);
+    expect(isAudioUnlockEventType("pointermove")).toBe(false);
+    expect(isAudioUnlockEventType("pointerdown")).toBe(true);
+    const mute = {
+      closest(selector: string) {
+        return selector === "#mute-music" ? mute : null;
+      },
+    };
+    expect(shouldIgnoreAudioUnlockTarget(mute)).toBe(true);
+    expect(shouldIgnoreAudioUnlockTarget(null)).toBe(false);
+    expect(shouldIgnoreAudioUnlockTarget({})).toBe(false);
   });
 
   it("separa graves y medios sin crear la muestra", () => {

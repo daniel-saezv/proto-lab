@@ -104,6 +104,39 @@ export function playbackRejection(name: string): { retryOnNextGesture: boolean; 
   return { retryOnNextGesture: false, skipTrack: true };
 }
 
+/** Tipos de evento que desbloquean audio en window (captura). */
+export const AUDIO_UNLOCK_POINTER_DOWN = "pointerdown" as const;
+export const AUDIO_UNLOCK_TOUCH_START = "touchstart" as const;
+export const AUDIO_UNLOCK_POINTER_UP = "pointerup" as const;
+export const AUDIO_UNLOCK_TOUCH_END = "touchend" as const;
+export const AUDIO_UNLOCK_CLICK = "click" as const;
+export const AUDIO_UNLOCK_KEY_DOWN = "keydown" as const;
+
+const AUDIO_UNLOCK_TYPES = new Set<string>([
+  AUDIO_UNLOCK_POINTER_DOWN,
+  AUDIO_UNLOCK_TOUCH_START,
+  AUDIO_UNLOCK_POINTER_UP,
+  AUDIO_UNLOCK_TOUCH_END,
+  AUDIO_UNLOCK_CLICK,
+  AUDIO_UNLOCK_KEY_DOWN,
+]);
+
+/**
+ * WebKit concede activación de usuario en touchstart/pointerdown y en
+ * touchend/pointerup/click, no en touchmove/pointermove. El joystick mantiene
+ * el dedo apoyado: escuchar solo el final deja la música en espera hasta soltar.
+ */
+export function isAudioUnlockEventType(type: string): boolean {
+  return AUDIO_UNLOCK_TYPES.has(type);
+}
+
+export function shouldIgnoreAudioUnlockTarget(target: EventTarget | null): boolean {
+  if (target == null || typeof target !== "object") return false;
+  const closest = (target as { closest?: (selector: string) => Element | null }).closest;
+  if (typeof closest !== "function") return false;
+  return Boolean(closest.call(target, "#mute-music"));
+}
+
 /**
  * En iOS, crear un MediaElementSource con el contexto suspendido deja la
  * salida muda aunque luego se reanude. Solo se enruta cuando ya corre.
@@ -496,6 +529,19 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     notePlayback();
   }
 
+  function tryAutoplay(): void {
+    if (heldForPrototype) return;
+    const decision = playbackAfterGesture({
+      muted,
+      paused,
+      visible: document.visibilityState === "visible",
+      sounding: outputLive(),
+    });
+    if (!decision.kick) return;
+    armed = true;
+    startOutput();
+  }
+
   function prime() {
     if (primed || muted) return;
     primed = true;
@@ -504,6 +550,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     element.preload = "auto";
     element.src = AMBIENCE_TRACK;
     performance.mark?.("proto:audio-prime");
+    queueMicrotask(() => tryAutoplay());
   }
 
   /** Enruta el elemento solo con el contexto en marcha, para no dejar iOS mudo. */
@@ -676,7 +723,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   function onUserGesture(event: Event): void {
-    if (event.target instanceof Element && event.target.closest("#mute-music")) return;
+    if (!isAudioUnlockEventType(event.type)) return;
+    if (shouldIgnoreAudioUnlockTarget(event.target)) return;
     unlock();
   }
 
@@ -710,6 +758,9 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
 
   button.addEventListener("click", onClick);
   const unlockCapture: AddEventListenerOptions = { capture: true };
+  const unlockPassive: AddEventListenerOptions = { capture: true, passive: true };
+  window.addEventListener("pointerdown", onUserGesture, unlockCapture);
+  window.addEventListener("touchstart", onUserGesture, unlockPassive);
   window.addEventListener("pointerup", onUserGesture, unlockCapture);
   window.addEventListener("touchend", onUserGesture, unlockCapture);
   window.addEventListener("click", onUserGesture, unlockCapture);
@@ -730,6 +781,9 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     dispose() {
       button.removeEventListener("click", onClick);
       const capture: AddEventListenerOptions = { capture: true };
+      const passive: AddEventListenerOptions = { capture: true, passive: true };
+      window.removeEventListener("pointerdown", onUserGesture, capture);
+      window.removeEventListener("touchstart", onUserGesture, passive);
       window.removeEventListener("pointerup", onUserGesture, capture);
       window.removeEventListener("touchend", onUserGesture, capture);
       window.removeEventListener("click", onUserGesture, capture);
