@@ -1666,8 +1666,9 @@ export function startWorld(options: {
     const eyeMat = mat(PALETTE.hair);
     const eyeL = new Mesh(eyeGeo, eyeMat);
     const eyeR = new Mesh(eyeGeo, eyeMat);
-    eyeL.position.set(-0.07, 0.03, 0.16);
-    eyeR.position.set(0.07, 0.03, 0.16);
+    // La cara es −Z, el mismo lado que la boca naranja. +Z es la nuca.
+    eyeL.position.set(-0.07, 0.05, -0.18);
+    eyeR.position.set(0.07, 0.05, -0.18);
     head.add(eyeL, eyeR);
     const eyes = trackedFuse([eyeL, eyeR]);
     eyes.castShadow = false;
