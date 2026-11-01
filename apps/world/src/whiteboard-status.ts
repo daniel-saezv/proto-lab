@@ -50,7 +50,7 @@ import {
   type BoardPaintRow,
   type BoardRowLayout,
 } from "./proposals-board-paint";
-import { BoardSession, drawAppearance, eraseAppearance } from "./proposals-board-session";
+import { BoardSession, drawAppearance, eraseAppearance, type BoardScreenName } from "./proposals-board-session";
 import type { ProposalStatusItem } from "./proposals-status-api";
 import type { WhiteboardPhase, WhiteboardStatusController, WhiteboardStatusOptions } from "./whiteboard-status-types";
 
@@ -102,6 +102,14 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   let actionDrawKey: number | null = null;
   let actionDrawStart: number | null = null;
   let hotSignature = "";
+  /** Pantalla a la que pertenecen los relojes del trazo de énfasis. */
+  let emphasisScreen: BoardScreenName | null = null;
+  /**
+   * La pantalla nueva ya se está pintando, pero el trazo no arranca hasta
+   * que la transición se asienta. Si no, el reposo (o un círculo ya cerrado)
+   * aparece, se borra y la animación vuelve a empezar.
+   */
+  let emphasisHeld = false;
   let knownSlugs = options.knownSlugs ?? [];
   let uiSignature = "";
 
@@ -207,6 +215,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   }
 
   function syncMarks(nowMs: number) {
+    if (emphasisHeld || session.isMoving()) return;
     if (session.screen === "detail" && hover?.zone === "row") hover = null;
     if (session.screen === "list" && hover && hover.zone !== "row") hover = null;
     const ids = hotIds();
@@ -270,6 +279,32 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     return true;
   }
 
+  function blankEmphasisClocks() {
+    markStart.clear();
+    activeKind.clear();
+    hotSignature = "";
+    clearActionDraw();
+  }
+
+  /** `hold` deja la pantalla en blanco hasta que la transición termina. */
+  function beginEmphasisScreen(screen: BoardScreenName, hold: boolean) {
+    if (emphasisScreen !== screen) {
+      blankEmphasisClocks();
+      emphasisScreen = screen;
+    }
+    emphasisHeld = hold;
+  }
+
+  function heldEmphasis(): DetailEmphasis {
+    return {
+      back: 0,
+      backKind: kindNow("back"),
+      action: null,
+      actionKind: kindNow("action"),
+      actionDraw: null,
+    };
+  }
+
   function resetMarks() {
     hover = null;
     markStart.clear();
@@ -277,6 +312,8 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     lastKind.clear();
     hotSignature = "";
     clearActionDraw();
+    emphasisScreen = null;
+    emphasisHeld = false;
   }
 
   function detailEmphasis(nowMs: number): DetailEmphasis {
@@ -314,8 +351,10 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     }
     const action = boardNavAction(item, knownSlugs);
     const date = formatBoardDate(item.updatedAt);
-    syncMarks(nowMs);
-    if (session.screen === "detail" && appearance.text > 0.35) syncActionDraw(nowMs, action != null);
+    if (!session.isMoving()) {
+      syncMarks(nowMs);
+      if (session.screen === "detail" && appearance.text > 0.35) syncActionDraw(nowMs, action != null);
+    }
     paintDetailBoard(
       ctx,
       {
@@ -326,7 +365,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
         actionLabel: action?.label ?? null,
       },
       appearance,
-      detailEmphasis(nowMs),
+      emphasisHeld ? heldEmphasis() : detailEmphasis(nowMs),
     );
     paintRetryIfNeeded(nowMs);
     texture.needsUpdate = true;
@@ -334,7 +373,9 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
 
   function repaint(nowMs: number) {
     if (phase === "loading" || phase === "reveal") return;
-    if (session.screen === "detail" && selectedItem() && !session.isMoving()) {
+    const paintingDetail = session.screen === "detail" && selectedItem() != null && !session.isMoving();
+    beginEmphasisScreen(paintingDetail ? "detail" : "list", false);
+    if (paintingDetail) {
       detailAppearance(nowMs, { stroke: 1, text: 1 });
       return;
     }
@@ -346,10 +387,12 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     const sample = session.motionSample(nowMs, reducedMotion);
     if (sample.stage === "settled") {
       session.settle(nowMs, reducedMotion);
+      beginEmphasisScreen(session.screen, false);
       repaint(nowMs);
       publishUi();
       return;
     }
+    if (sample.stage === "draw") beginEmphasisScreen(sample.to, true);
     if (sample.stage === "erase" && sample.from === "list") {
       layouts = paintListOutgoing(ctx, listModel(nowMs), sample.t);
     } else if (sample.stage === "draw" && sample.to === "list") {
