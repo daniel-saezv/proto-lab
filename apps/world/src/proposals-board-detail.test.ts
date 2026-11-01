@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { chalkMarkIds, drawChalkMark, pickChalkMark, type ChalkMarkId } from "./chalk-marks";
 import type { ChalkSegment } from "./proposals-board-chalk";
 import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./proposals-board-metrics";
 import {
@@ -185,6 +186,61 @@ describe("zonas de la pizarra", () => {
     expect(estimated.width).toBe(80);
     expect(estimated.height).toBe(32);
     expect(estimated.y).toBe(80 - 16);
+  });
+
+  it("cada forma remarca el texto medido sin cruzarlo y no se repite en el mismo sitio", () => {
+    const ids = chalkMarkIds();
+    expect(ids).toContain("oval");
+    expect(ids).toContain("underline");
+    expect(ids).toContain("double");
+    expect(ids).toContain("brackets");
+    expect(ids.length).toBeGreaterThanOrEqual(3);
+    expect(ids.length).toBeLessThanOrEqual(6);
+
+    const sizes = [
+      { x: 30, y: 40, width: 70, height: 16 },
+      { x: 48, y: 90, width: 180, height: 22 },
+      { x: 80, y: 220, width: 280, height: 34 },
+      { x: 36, y: 300, width: 460, height: 18 },
+    ];
+    for (const id of ids) {
+      for (const ink of sizes) {
+        const mark = drawChalkMark(id, ink);
+        expect(mark.length).toBeGreaterThan(2);
+        const gap = ringClearance(mark, ink);
+        expect(gap).toBeGreaterThanOrEqual(1.2);
+        expect(gap).toBeLessThan(14);
+        expect(drawChalkMark(id, ink)).toEqual(mark);
+        const weights = mark.map((part) => part.weight ?? 1);
+        const paces = mark.map((part) => part.pace ?? 1);
+        expect(Math.max(...weights) - Math.min(...weights)).toBeGreaterThan(0.12);
+        expect(Math.max(...paces) - Math.min(...paces)).toBeGreaterThan(0.12);
+      }
+    }
+
+    const ink = { x: 40, y: 80, width: 200, height: 24 };
+    const under = samplesOf(drawChalkMark("underline", ink));
+    expect(Math.min(...under.map((point) => point.y))).toBeGreaterThan(ink.y + ink.height);
+    const wide = pointBounds(samplesOf(drawChalkMark("underline", { ...ink, width: 240 })));
+    const narrow = pointBounds(samplesOf(drawChalkMark("underline", { ...ink, width: 90 })));
+    expect(wide.w).toBeGreaterThan(narrow.w + 100);
+    const brackets = samplesOf(drawChalkMark("brackets", ink));
+    expect(brackets.some((point) => point.x < ink.x)).toBe(true);
+    expect(brackets.some((point) => point.x > ink.x + ink.width)).toBe(true);
+    expect(drawChalkMark("underline", ink)).not.toEqual(drawChalkMark("oval", ink));
+    expect(drawChalkMark("double", ink).length).toBeGreaterThan(drawChalkMark("underline", ink).length);
+
+    const seen = new Set<ChalkMarkId>();
+    for (let last = 0; last < ids.length; last += 1) {
+      const previous = ids[last]!;
+      for (let step = 0; step < ids.length - 1; step += 1) {
+        const pick = pickChalkMark(previous, () => (step + 0.01) / (ids.length - 1));
+        expect(pick).not.toBe(previous);
+        seen.add(pick);
+      }
+    }
+    expect(pickChalkMark(null, () => 0)).toBe(ids[0]);
+    expect(seen.size).toBe(ids.length);
   });
 
   it("el círculo de la acción se traza al mostrarse y no aparece ya empezado", () => {

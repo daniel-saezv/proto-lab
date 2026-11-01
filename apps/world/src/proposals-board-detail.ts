@@ -1,4 +1,5 @@
-import { CHALK_STROKE, drawChalkSegments, paintWhiteboardFrame, quadSeg, seg, type ChalkSegment } from "./proposals-board-chalk";
+import { drawChalkMark, type ChalkMarkId } from "./chalk-marks";
+import { CHALK_STROKE, drawChalkSegments, paintWhiteboardFrame, seg, type ChalkSegment } from "./proposals-board-chalk";
 import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH, type BoardRowLayout } from "./proposals-board-metrics";
 import {
   paintBoardHeader,
@@ -67,7 +68,9 @@ export type DetailPaintModel = {
 /** Progreso 0–1 del trazo de énfasis. `null` en un control es el reposo, sin trazo caliente. */
 export type DetailEmphasis = {
   back: number | null;
+  backKind: ChalkMarkId;
   action: number | null;
+  actionKind: ChalkMarkId;
   /** Trazo del botón de acción al abrir el detalle. Sigue en 1 cuando ya se dibujó. */
   actionDraw: number | null;
 };
@@ -143,22 +146,6 @@ export function chalkMarkProgress(elapsedMs: number, reduced: boolean): number {
   return handStroke(t);
 }
 
-function ringSeed(x: number, y: number, w: number, h: number): number {
-  const mix = (n: number, k: number) => Math.imul(n ^ k, 0x9e3779b1);
-  let n = 0x811c9dc5;
-  n = mix(n, Math.round(x));
-  n = mix(n, Math.round(y));
-  n = mix(n, Math.round(w));
-  n = mix(n, Math.round(h));
-  return n >>> 0;
-}
-
-function hashUnit(seed: number, salt: number): number {
-  let n = Math.imul(seed ^ Math.imul(salt, 0x9e3779b1), 0x85ebca6b);
-  n = Math.imul(n ^ (n >>> 13), 0xc2b2ae35);
-  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
-}
-
 /** Caja de tinta medida: origen del `fillText` menos el bearing, alto real del glifo. */
 export type GlyphBox = { x: number; y: number; width: number; height: number };
 
@@ -217,98 +204,6 @@ export function measureGlyphBox(
   return { x: originX, y: baselineY - ascentFb, width, height: ascentFb + descentFb };
 }
 
-/**
- * Óvalo de tiza alrededor de la caja de tinta.
- * El margen es en píxeles, no un porcentaje del radio: un título ancho no se come el trazo.
- * La irregularidad empuja poco hacia dentro para rozar sin cruzar las letras.
- * El mismo elemento no tiembla entre fotogramas. El trazo da algo más de una vuelta.
- */
-/** Exponente para que las esquinas del texto queden dentro y el trazo no las corte. */
-function wrapExponent(halfW: number, halfH: number, pad: number): number {
-  const ax = halfW / (halfW + pad);
-  const by = halfH / (halfH + pad);
-  let n = 2;
-  while (n < 6.5 && ax ** n + by ** n > 0.72) n += 0.2;
-  return n;
-}
-
-export function chalkRingSegments(x: number, y: number, width: number, height: number): ChalkSegment[] {
-  const seed = ringSeed(x, y, width, height);
-  const boxW = Math.max(width, 1);
-  const boxH = Math.max(height, 1);
-  const pad = 8.2 + hashUnit(seed, 1) * 1.6;
-  const halfW = boxW / 2;
-  const halfH = boxH / 2;
-  const cx = x + halfW;
-  const cy = y + halfH;
-  const rx = halfW + pad;
-  const ry = halfH + pad;
-  const exponent = wrapExponent(halfW, halfH, pad) + (hashUnit(seed, 2) - 0.5) * 0.2;
-  const power = 2 / exponent;
-  const tiltMag = Math.min(0.035, 2.4 / Math.max(rx, 1));
-  const tilt = (hashUnit(seed, 3) < 0.5 ? -1 : 1) * tiltMag * (0.72 + 0.28 * hashUnit(seed, 4));
-  const overlap = 0.45 + hashUnit(seed, 5) * 0.38;
-  const start = -Math.PI * 0.72 + (hashUnit(seed, 6) - 0.5) * 0.5;
-  const wobbleAmp = 1.45 + hashUnit(seed, 7) * 0.7;
-  const wobbleFine = 0.6 + hashUnit(seed, 8) * 0.35;
-  const wobbleGrain = 0.32 + hashUnit(seed, 12) * 0.22;
-  const lump = 1.05 + hashUnit(seed, 13) * 0.75;
-  const phase1 = hashUnit(seed, 9) * Math.PI * 2;
-  const phase2 = hashUnit(seed, 10) * Math.PI * 2;
-  const phase3 = hashUnit(seed, 15) * Math.PI * 2;
-  const phase4 = hashUnit(seed, 16) * Math.PI * 2;
-  const phaseW = hashUnit(seed, 11) * Math.PI * 2;
-  const phaseW2 = hashUnit(seed, 14) * Math.PI * 2;
-  const phaseP = hashUnit(seed, 17) * Math.PI * 2;
-  const steps = 16;
-  const sweep = Math.PI * 2 + overlap;
-  const cosT = Math.cos(tilt);
-  const sinT = Math.sin(tilt);
-
-  const point = (theta: number, salt: number) => {
-    const ct = Math.cos(theta);
-    const st = Math.sin(theta);
-    let localX = Math.sign(ct) * Math.pow(Math.abs(ct), power) * rx;
-    let localY = Math.sign(st) * Math.pow(Math.abs(st), power) * ry;
-    const span = Math.hypot(localX, localY) || 1;
-    const raw =
-      Math.sin(2 * theta + phase1) * wobbleAmp +
-      Math.sin(3 * theta + phase2) * wobbleFine +
-      Math.sin(5 * theta + phase3) * wobbleGrain +
-      Math.sin(theta + phase4) * lump +
-      (hashUnit(seed, salt) - 0.5) * 0.9;
-    // Hacia dentro se aplasta: el óvalo puede ser más irregular sin cruzar la tinta.
-    const inwardLimit = -1.15;
-    const radial = raw < inwardLimit ? inwardLimit + (raw - inwardLimit) * 0.15 : raw;
-    const scale = (span + radial) / span;
-    localX *= scale;
-    localY *= scale;
-    return {
-      x: cx + localX * cosT - localY * sinT,
-      y: cy + localX * sinT + localY * cosT,
-    };
-  };
-
-  const segments: ChalkSegment[] = [];
-  for (let i = 0; i < steps; i += 1) {
-    const t0 = start + (i / steps) * sweep;
-    const t1 = start + ((i + 1) / steps) * sweep;
-    const tm = (t0 + t1) / 2;
-    const p0 = point(t0, i * 3 + 1);
-    const mid = point(tm, i * 3 + 2);
-    const p1 = point(t1, i * 3 + 3);
-    const qx = 2 * mid.x - 0.5 * p0.x - 0.5 * p1.x;
-    const qy = 2 * mid.y - 0.5 * p0.y - 0.5 * p1.y;
-    const wave = 0.5 + 0.5 * Math.sin(t0 * 3 + phaseW);
-    const weight = Math.min(1.28, Math.max(0.55, 0.58 + 0.5 * wave + 0.12 * Math.sin(t0 * 5 + phaseW2)));
-    const pace = 0.86 + 0.24 * (0.5 + 0.5 * Math.sin(t0 * 2.5 + phaseP));
-    const part = quadSeg(p0.x, p0.y, qx, qy, p1.x, p1.y, weight);
-    part.pace = pace;
-    segments.push(part);
-  }
-  return segments;
-}
-
 /** Marca › abierta. No cierra un rombo ni una caja. */
 export function chalkChevronSegments(x: number, y: number, size: number): ChalkSegment[] {
   const tip = x + size * 0.85;
@@ -323,15 +218,19 @@ export function strokeIsOpen(segments: readonly ChalkSegment[]): boolean {
   return Math.hypot(last.x2 - first.x1, last.y2 - first.y1) > 6;
 }
 
-export function rowChalkCue(layout: BoardRowLayout, ink: GlyphBox): { chevron: ChalkSegment[]; ring: ChalkSegment[] } {
+export function rowChalkCue(
+  layout: BoardRowLayout,
+  ink: GlyphBox,
+  kind: ChalkMarkId = "oval",
+): { chevron: ChalkSegment[]; ring: ChalkSegment[] } {
   return {
     chevron: chalkChevronSegments(WHITEBOARD_WIDTH - 58, layout.y + 22, 7),
-    ring: chalkRingSegments(ink.x, ink.y, ink.width, ink.height),
+    ring: drawChalkMark(kind, ink),
   };
 }
 
-export function detailBackCue(ink: GlyphBox): ChalkSegment[] {
-  return chalkRingSegments(ink.x, ink.y, ink.width, ink.height);
+export function detailBackCue(ink: GlyphBox, kind: ChalkMarkId = "oval"): ChalkSegment[] {
+  return drawChalkMark(kind, ink);
 }
 
 /** Origen del rótulo de la acción, centrado en su zona junto al chevron. */
@@ -349,11 +248,12 @@ export function actionLabelOrigin(labelWidth: number): { textX: number; midY: nu
 export function detailActionCue(
   ink: GlyphBox,
   labelWidth = ink.width,
+  kind: ChalkMarkId = "oval",
 ): { ring: ChalkSegment[]; chevron: ChalkSegment[]; textX: number } {
   const origin = actionLabelOrigin(labelWidth);
   return {
     chevron: chalkChevronSegments(origin.chevronX, origin.midY, 8),
-    ring: chalkRingSegments(ink.x, ink.y, ink.width, ink.height),
+    ring: drawChalkMark(kind, ink),
     textX: origin.textX,
   };
 }
@@ -381,7 +281,7 @@ export function paintListAffordances(
   context: CanvasRenderingContext2D,
   layouts: readonly BoardRowLayout[],
   rows: readonly { number: number; title: string }[],
-  markOf: (number: number) => number | null,
+  markOf: (number: number) => { progress: number; kind: ChalkMarkId } | null,
 ) {
   context.save();
   context.font = "700 26px sans-serif";
@@ -393,10 +293,10 @@ export function paintListAffordances(
     const row = rows.find((item) => item.number === layout.number);
     const title = truncate(context, row ? `#${row.number} · ${row.title}` : `#${layout.number}`, maxTitle);
     const ink = measureGlyphBox(context, title, 28, layout.y + 34, "alphabetic");
-    const cue = rowChalkCue(layout, ink);
     const hot = markOf(layout.number);
+    const cue = rowChalkCue(layout, ink, hot?.kind ?? "oval");
     paintOpenCue(context, cue.chevron, 1, hot == null ? CUE : AMBER, 2.6);
-    if (hot != null && hot > 0.02) paintOpenCue(context, cue.ring, hot, AMBER, 3.2);
+    if (hot != null && hot.progress > 0.02) paintOpenCue(context, cue.ring, hot.progress, AMBER, 3.2);
   }
   context.restore();
 }
@@ -484,7 +384,7 @@ export function paintDetailBoard(
   const backInk = measureGlyphBox(context, backLabel, backX, backY, "middle");
   context.fillStyle = emphasis.back == null ? CUE : INK_WARM;
   context.fillText(backLabel, backX, backY);
-  paintEmphasisRing(context, detailBackCue(backInk), emphasis.back);
+  paintEmphasisRing(context, detailBackCue(backInk, emphasis.backKind), emphasis.back);
   context.textBaseline = "alphabetic";
   context.fillStyle = INK;
   context.font = "700 40px sans-serif";
@@ -503,7 +403,7 @@ export function paintDetailBoard(
     const labelWidth = context.measureText(model.actionLabel).width;
     const origin = actionLabelOrigin(labelWidth);
     const ink = measureGlyphBox(context, model.actionLabel, origin.textX, origin.midY, "middle");
-    const cue = detailActionCue(ink, labelWidth);
+    const cue = detailActionCue(ink, labelWidth, emphasis.actionKind);
     paintOpenCue(context, cue.chevron, 1, emphasis.action == null ? CUE : AMBER, 2.8);
     context.fillStyle = emphasis.action == null ? CUE : INK_WARM;
     context.fillText(model.actionLabel, cue.textX, origin.midY);

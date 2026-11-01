@@ -9,6 +9,15 @@ export const CHALK_MARK_SRC = "/protos/audio/chalk-2.m4a";
 /** Pico del archivo cerca de −3 dB: 0,2 lo deja de fondo, sin tapar la música. */
 export const CHALK_MARK_VOLUME = 0.2;
 
+/** Cuánto del recorte se oye según la marca. La animación visual sigue en 340 ms. */
+export type ChalkSpan = "short" | "medium" | "long";
+
+export const CHALK_SPAN_SECONDS: Record<ChalkSpan, number> = {
+  short: 0.16,
+  medium: 0.26,
+  long: 0.34,
+};
+
 /** Si el clip aún no está decodificado, se recuerda la petición este tiempo. */
 const CHALK_MARK_PENDING_MS = 900;
 
@@ -73,6 +82,22 @@ export function chalkTakeWindow(take: ChalkTake, bufferSeconds: number): { offse
   return { offset, duration };
 }
 
+/**
+ * La variación aporta tono, volumen y brillo.
+ * La duración la pone la forma: un subrayado es un roce corto, el óvalo usa el pasaje entero.
+ */
+export function playbackForSpan(
+  take: ChalkTake,
+  span: ChalkSpan,
+  bufferSeconds: number,
+): { offset: number; duration: number } {
+  const window = chalkTakeWindow(take, bufferSeconds);
+  const offset = span === "long" && window.offset > 0.02 ? 0 : window.offset;
+  const room = Math.max(0, bufferSeconds - offset);
+  const duration = Math.min(room, CHALK_SPAN_SECONDS[span]);
+  return { offset, duration: Math.max(0, duration) };
+}
+
 function pageIsE2e(): boolean {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("e2e") === "1";
@@ -104,6 +129,7 @@ let failed = false;
 let active: AudioBufferSourceNode | null = null;
 let lastPlayedMs = Number.NEGATIVE_INFINITY;
 let lastTake: number | null = null;
+let pendingSpan: ChalkSpan = "medium";
 let pendingUntilMs = Number.NEGATIVE_INFINITY;
 let gestureBound = false;
 
@@ -128,13 +154,14 @@ function ensureBuffer(): void {
   });
 }
 
-function rememberPending(nowMs: number): void {
+function rememberPending(nowMs: number, span: ChalkSpan): void {
   if (active != null) return;
+  pendingSpan = span;
   pendingUntilMs = Math.max(pendingUntilMs, nowMs + CHALK_MARK_PENDING_MS);
 }
 
 function flushPending(): void {
-  if (nowClock() <= pendingUntilMs) playChalkMark(nowClock());
+  if (nowClock() <= pendingUntilMs) playChalkMark(nowClock(), pendingSpan);
 }
 
 function outputChain(ctx: AudioContext): { filter: BiquadFilterNode; gain: GainNode } {
@@ -151,12 +178,13 @@ function outputChain(ctx: AudioContext): { filter: BiquadFilterNode; gain: GainN
   return { filter, gain };
 }
 
-function startScratch(nowMs: number): boolean {
+function startScratch(nowMs: number, span: ChalkSpan): boolean {
   if (!context || !buffer) return false;
   const index = pickChalkClip(CHALK_TAKES.length, lastTake, Math.random);
   const take = CHALK_TAKES[index];
   if (!take) return false;
-  const { offset, duration } = chalkTakeWindow(take, buffer.duration);
+  const { offset, duration } = playbackForSpan(take, span, buffer.duration);
+  if (duration <= 0) return false;
   const played = duration / take.rate;
   const chain = outputChain(context);
   const source = context.createBufferSource();
@@ -219,7 +247,7 @@ export function ensureChalkMarkAudio(): void {
  * Un rasguño de la escritura seguida, con una variación distinta a la anterior.
  * Si ya hay uno sonando, no se apila otro. Si el clip aún no llegó, se recuerda la petición.
  */
-export function playChalkMark(nowMs: number): boolean {
+export function playChalkMark(nowMs: number, span: ChalkSpan = "medium"): boolean {
   const e2e = pageIsE2e();
   const muted = musicIsMuted();
   if (e2e || muted) return false;
@@ -227,7 +255,7 @@ export function playChalkMark(nowMs: number): boolean {
   if (!running || !buffer) {
     if (context) {
       ensureBuffer();
-      rememberPending(nowMs);
+      rememberPending(nowMs, span);
     }
     return false;
   }
@@ -243,5 +271,5 @@ export function playChalkMark(nowMs: number): boolean {
   ) {
     return false;
   }
-  return startScratch(nowMs);
+  return startScratch(nowMs, span);
 }

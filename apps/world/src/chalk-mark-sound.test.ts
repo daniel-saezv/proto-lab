@@ -6,9 +6,11 @@ import {
   CHALK_MARK_GAP_MS,
   CHALK_MARK_SRC,
   CHALK_MARK_VOLUME,
+  CHALK_SPAN_SECONDS,
   CHALK_TAKES,
   chalkTakeWindow,
   pickChalkClip,
+  playbackForSpan,
   shouldPlayChalkMark,
 } from "./chalk-mark-sound";
 
@@ -77,6 +79,13 @@ describe("sonido de tiza", () => {
     expect(signatures.size).toBe(CHALK_TAKES.length);
     const clipped = chalkTakeWindow({ rate: 1, gain: 1, offset: 0.4, duration: 0.3, lowpass: 8000 }, 0.2);
     expect(clipped.offset + clipped.duration).toBeLessThanOrEqual(0.2 + 1e-9);
+    const late = CHALK_TAKES.find((take) => take.offset > 0.02) ?? CHALK_TAKES[0]!;
+    const long = playbackForSpan(late, "long", 0.347);
+    const short = playbackForSpan(CHALK_TAKES[0]!, "short", 0.347);
+    expect(long.offset).toBe(0);
+    expect(long.duration).toBeCloseTo(CHALK_SPAN_SECONDS.long, 2);
+    expect(short.duration).toBeCloseTo(CHALK_SPAN_SECONDS.short, 2);
+    expect(short.duration).toBeLessThan(playbackForSpan(CHALK_TAKES[0]!, "medium", 0.347).duration);
   });
 
   it("el archivo es la escritura seguida, bajo de volumen y con la nota de licencia", () => {

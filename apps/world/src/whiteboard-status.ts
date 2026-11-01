@@ -1,4 +1,5 @@
 import { CanvasTexture, LinearFilter, SRGBColorSpace } from "three";
+import { chalkMarkSound, pickChalkMark, type ChalkMarkId } from "./chalk-marks";
 import { ensureChalkMarkAudio, playChalkMark } from "./chalk-mark-sound";
 import {
   boardNavAction,
@@ -94,6 +95,10 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   const session = new BoardSession();
   let hover: BoardHit | null = null;
   const markStart = new Map<string, number>();
+  /** Forma que se está trazando ahora. No cambia a mitad del gesto. */
+  const activeKind = new Map<string, ChalkMarkId>();
+  /** Última forma de cada sitio, para no repetirla la próxima vez. */
+  const lastKind = new Map<string, ChalkMarkId>();
   let actionDrawKey: number | null = null;
   let actionDrawStart: number | null = null;
   let hotSignature = "";
@@ -209,14 +214,27 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     if (signature === hotSignature) return;
     hotSignature = signature;
     for (const id of [...markStart.keys()]) {
-      if (!ids.includes(id)) markStart.delete(id);
+      if (!ids.includes(id)) {
+        markStart.delete(id);
+        if (id !== "action") activeKind.delete(id);
+      }
     }
     for (const id of ids) {
       if (!markStart.has(id)) {
+        let kind = activeKind.get(id);
+        if (!kind) {
+          kind = pickChalkMark(lastKind.get(id) ?? null, Math.random);
+          activeKind.set(id, kind);
+          lastKind.set(id, kind);
+        }
         markStart.set(id, nowMs);
-        playChalkMark(nowMs);
+        playChalkMark(nowMs, chalkMarkSound(kind));
       }
     }
+  }
+
+  function kindNow(id: string): ChalkMarkId {
+    return activeKind.get(id) ?? lastKind.get(id) ?? "oval";
   }
 
   function markProgress(id: string, nowMs: number): number {
@@ -228,6 +246,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   function clearActionDraw() {
     actionDrawKey = null;
     actionDrawStart = null;
+    activeKind.delete("action");
   }
 
   function syncActionDraw(nowMs: number, hasAction: boolean) {
@@ -235,7 +254,10 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     if (actionDrawKey === session.selectedNumber && actionDrawStart != null) return;
     actionDrawKey = session.selectedNumber;
     actionDrawStart = nowMs;
-    playChalkMark(nowMs);
+    const kind = pickChalkMark(lastKind.get("action") ?? null, Math.random);
+    activeKind.set("action", kind);
+    lastKind.set("action", kind);
+    playChalkMark(nowMs, chalkMarkSound(kind));
   }
 
   function marksSettled(nowMs: number): boolean {
@@ -251,6 +273,8 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   function resetMarks() {
     hover = null;
     markStart.clear();
+    activeKind.clear();
+    lastKind.clear();
     hotSignature = "";
     clearActionDraw();
   }
@@ -258,7 +282,9 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   function detailEmphasis(nowMs: number): DetailEmphasis {
     return {
       back: markStart.has("back") ? markProgress("back", nowMs) : null,
+      backKind: kindNow("back"),
       action: markStart.has("action") ? markProgress("action", nowMs) : null,
+      actionKind: kindNow("action"),
       actionDraw: actionDrawStart == null ? null : chalkMarkProgress(nowMs - actionDrawStart, reducedMotion),
     };
   }
@@ -268,7 +294,8 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     syncMarks(nowMs);
     paintListAffordances(ctx, layouts, paintRows, (number) => {
       const id = `row:${number}`;
-      return markStart.has(id) ? markProgress(id, nowMs) : null;
+      if (!markStart.has(id)) return null;
+      return { progress: markProgress(id, nowMs), kind: kindNow(id) };
     });
   }
 
