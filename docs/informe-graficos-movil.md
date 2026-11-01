@@ -2,7 +2,35 @@
 
 Fecha de la medición: 1 de noviembre de 2026. El laboratorio sigue modelado con primitivas de Three.js (cajas, esferas, cilindros, planos) y colores planos. En un iPhone la palanca que sube la calidad percibida, sin un pase extra de GPU, es el detalle de cada objeto y un sombreado que ya quepa en el fragmento que el móvil paga hoy.
 
-Este documento no cambia la app. Los lotes de más abajo son trabajo para otros agentes y se quedan en `apps/world/src`. No tocan diálogos, audio, etiquetas ni `.github/`.
+La sección 1 es el estado de partida. Lo que ya está en la rama es la sección «Implementado». No se ha tocado diálogos, audio, etiquetas ni el renderer (el tope de pixel ratio, el antialias y el shadow map siguen igual). El idle nuevo respeta `prefers-reduced-motion` y `?e2e=1`: si el movimiento está reducido, ojos y pecho se quedan en reposo.
+
+## Implementado
+
+Medido otra vez con `/?perf=1`, puntero grueso, dpr 3, viewports 390×844 y 844×390. Chromium y WebKit coinciden. El peor caso sigue siendo el spawn apaisado.
+
+| Vista | Antes, llamadas | Antes, triángulos | Después, llamadas | Después, triángulos |
+| --- | ---: | ---: | ---: | ---: |
+| Retrato, spawn | 80 | 3624 | 82 | 4622 |
+| Retrato, Inventor | 67 | 3580 | 69 | 4578 |
+| Retrato, arcade | 81 | 4010 | 83 | 5008 |
+| Retrato, pizarra | 58 | 3014 | 61 | 3892 |
+| Apaisado, spawn | 138 | 6834 | 144 | 7880 |
+| Apaisado, Inventor | 124 | 6240 | 130 | 7286 |
+| Apaisado, arcade | 137 | 6798 | 143 | 7844 |
+| Apaisado, pizarra | 85 | 4600 | 89 | 5566 |
+
+El techo era 160 llamadas y 10 000 triángulos en el apaisado. El spawn apaisado queda en 144 y 7880, con 0 proyectores de sombra y el buffer a 1,5× (585×1266 y 1266×585). El batch pasa de 290→165 a 309→175 (11 instancias, 35 fusiones). Cabe el lightmap: no añade llamadas ni triángulos; solo una textura (en retrato, 10→11 al arrancar).
+
+Qué hay en el diff:
+
+- Rincón (`ambient-lounge.ts`, bloque `attachFaceIdle`): ojos fundidos y un pecho `noBatch` en Remolón, Brasa, Naipe y Croquis. Parpadeo y respiración ±2 %. Los tick de humo, cartas y lápiz no se han reescrito.
+- Gato: orejas fundidas en la cabeza, ojos que parpadean, cola. Perro: lomo que respira (`noBatch`), párpados cerrados y orejas. Ventanas de noche a 10 Hz (`windowPaintSlot`).
+- Inventor: piernas, segundo brazo, ojos, insignia y respiración del torso. Abrigo oscuro, pelo y lentes van fundidos, así el personaje sigue en 9 mallas. Jugador: cuerpo teal fundido, ojos, balanceo al andar. Arcade: cantos y un labio del color `0x171225`, que el batch absorbe.
+- En móvil (sin shadow map): una sola malla transparente con los discos de contacto, más el del jugador pegado a sus pies. En escritorio siguen las sombras de verdad y no se dibujan los discos.
+- Suelo subdividido (16×20) y muros con 4 cortes en altura, con color de vértice de oclusión. El material es propio: no se marca `vertexColors` en el `mat()` compartido, así que el AO no se instancia con otras cajas.
+- Lightmap 128×128, lineal, solo en el suelo, intensidad 0.65. Sustituye la puntual de la lámpara de pie suroeste (−8.35, 7.7). La bombilla sigue. Las luces puntuales pasan de 7 a 6.
+
+No se ha hecho el póster extra, ni cantos de pinball y escritorio, ni el retoque de la hemisférica. El AO no cae en geometría repetida, así que `static-batch.ts` no cambia.
 
 ## 1. Estado actual
 
@@ -174,9 +202,7 @@ Cada lote lo puede llevar un agente. Los que comparten fila tocan archivos disti
 
 Archivos: `world.ts` (suelo, muros, una malla de contacto) y, si el AO llega a geometría repetida, `static-batch.ts` para que la firma de instancia incluya un hash de color de vértice. Contenido: discos de contacto fundidos, AO de suelo y muros, y solo entonces un retoque de la hemisférica si la sala queda lavada. Sin luces nuevas.
 
-**Lote 4, opcional y solo si el lote 3 sigue dentro del techo de la sección 4.**
-
-Un agente, otra vez `world.ts`: lightmap del suelo que reemplace una puntual secundaria. Si la medición no muestra aire, este lote no se hace.
+**Lote 4, el lightmap.** Hecho en esta rama: el spawn apaisado se quedó en 144 llamadas y 7880 triángulos, por debajo del techo, y el lightmap no mueve esas dos cifras. Ver «Implementado».
 
 Fuera de cola, para cualquiera de estos agentes: sombras reales, MSAA, más pixel ratio, postproceso, `MeshStandardMaterial`, modelos glTF y texturas que se repinten cada frame.
 
@@ -188,7 +214,7 @@ Escena de desarrollo (`pnpm --filter @proto-lab/world dev`), URL `/?perf=1`, sin
 
 `rendererStats()` lee `renderer.info` después de que el bucle haya avanzado. `focus()` coloca al jugador y la cámara se lee dos frames después. Las peticiones a `/api/` se abortaron: el tablón no recibió propuestas. La textura de 960×540 existe igual desde el arranque.
 
-Línea base, puntero grueso, batch activo, buffer a 1,5× (390×844 → 585×1266; 844×390 → 1266×585):
+Línea base de partida (antes del diff), puntero grueso, batch activo, buffer a 1,5× (390×844 → 585×1266; 844×390 → 1266×585). La tabla de después está en «Implementado»; el método es el mismo.
 
 | Vista | Llamadas | Triángulos |
 | --- | ---: | ---: |

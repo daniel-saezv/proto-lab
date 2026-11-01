@@ -1,5 +1,6 @@
 import {
   ACESFilmicToneMapping,
+  BufferAttribute,
   BoxGeometry,
   CanvasTexture,
   CircleGeometry,
@@ -22,6 +23,7 @@ import {
   RingGeometry,
   Scene,
   SphereGeometry,
+  LinearSRGBColorSpace,
   SRGBColorSpace,
   Texture,
   TextureLoader,
@@ -32,6 +34,8 @@ import {
   type BufferGeometry,
 } from "three";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { blinkOpen, breathScale, rigSway } from "./graphics-idle";
 import { attachInput } from "./input";
 import { getMusicEnergy } from "./ambience-music";
 import { addAmbient } from "./ambient";
@@ -71,7 +75,10 @@ import type { BoardNavAction, BoardUiSnapshot } from "./proposals-board-actions"
 import { WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./proposals-board-metrics";
 import { createWhiteboardStatus, type WhiteboardStatusController } from "./whiteboard-status";
 import { bindWhiteboardMesh } from "./world-whiteboard";
+import { LOUNGE_TABLE, NORTH_COUCH, SLACKER_COUCH, SOUTH_COUCH } from "./lounge-layout";
+import { fuseMeshes } from "./mesh-fuse";
 import { batchStaticMeshes, type BatchStats } from "./static-batch";
+import { applyShade, floorShade, floorUv, wallShade, type ShadeSpot } from "./vertex-ao";
 import type { ProposalStatusItem } from "./proposals-status-api";
 
 const PALETTE = {
@@ -185,6 +192,7 @@ export function startWorld(options: {
   const geometries: BufferGeometry[] = [];
   const materials: Material[] = [];
   const pulses: MeshBasicMaterial[] = [];
+  let contactMat: MeshBasicMaterial | null = null;
 
   const hemi = new HemisphereLight(0xd5e4ff, 0x5a4638, 1.55);
   scene.add(hemi);
@@ -234,7 +242,21 @@ export function startWorld(options: {
   yard.rotation.x = -Math.PI / 2;
   yard.position.set(0, -0.03, 2);
   scene.add(yard);
-  const floor = new Mesh(geo(new PlaneGeometry(20, 24)), mat(PALETTE.floor));
+  const floorGeo = geo(new PlaneGeometry(20, 24, 16, 20));
+  applyShade(floorGeo, (x, y) => floorShade(x, y, 10, 12, floorShadeSpots()));
+  const floorPos = floorGeo.getAttribute("position");
+  const floorUv2 = new Float32Array(floorPos.count * 2);
+  for (let i = 0; i < floorPos.count; i += 1) {
+    const uv = floorUv(floorPos.getX(i), 2 - floorPos.getY(i));
+    floorUv2[i * 2] = uv.u;
+    floorUv2[i * 2 + 1] = uv.v;
+  }
+  floorGeo.setAttribute("uv2", new BufferAttribute(floorUv2, 2));
+  const floorMat = new MeshLambertMaterial({ color: PALETTE.floor, vertexColors: true });
+  floorMat.lightMap = floorLightMap();
+  floorMat.lightMapIntensity = 0.65;
+  materials.push(floorMat);
+  const floor = new Mesh(floorGeo, floorMat);
   floor.position.z = 2;
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = shadows;
@@ -248,10 +270,12 @@ export function startWorld(options: {
 
   const wallH = CEILING_UNDERSIDE + 0.1;
   const wallY = wallH / 2;
-  box(scene, 20, wallH, 0.4, 0, wallY, -7.6, PALETTE.wall);
-  box(scene, 20, wallH, 0.4, 0, wallY, 12.2, PALETTE.wall);
-  box(scene, 0.4, wallH, 20.2, -9.8, wallY, 2.2, PALETTE.wall);
-  box(scene, 0.4, wallH, 20.2, 9.8, wallY, 2.2, PALETTE.wall);
+  const wallMat = new MeshLambertMaterial({ color: PALETTE.wall, vertexColors: true });
+  materials.push(wallMat);
+  addAoWall(20, wallH, 0.4, 0, wallY, -7.6, wallMat);
+  addAoWall(20, wallH, 0.4, 0, wallY, 12.2, wallMat);
+  addAoWall(0.4, wallH, 20.2, -9.8, wallY, 2.2, wallMat);
+  addAoWall(0.4, wallH, 20.2, 9.8, wallY, 2.2, wallMat);
   addWallTrim();
   const hangingLights: PointLight[] = [];
   addCeiling(hangingLights);
@@ -572,6 +596,20 @@ export function startWorld(options: {
         inventor.position.y = Math.sin(frame * 2) * 0.04;
         const arm = inventor.userData.arm as Object3D | undefined;
         if (arm) arm.rotation.x = Math.sin(frame * 1.6) * 0.25;
+        const armL = inventor.userData.armL as Object3D | undefined;
+        if (armL) armL.rotation.x = Math.sin(frame * 1.6 + 2.1) * 0.18;
+        const torso = inventor.userData.torso as Object3D | undefined;
+        if (torso) torso.scale.y = breathScale(frame, 0.4);
+        const inventorEyes = inventor.userData.eyes as Object3D | undefined;
+        if (inventorEyes) inventorEyes.scale.y = blinkOpen(frame, 0.3);
+        const rig = player.userData.rig as Object3D | undefined;
+        if (rig) {
+          const sway = rigSway(frame, Math.hypot(velX, velZ) > 0.45);
+          rig.rotation.z = sway.z;
+          rig.position.y = sway.y;
+        }
+        const playerEyes = player.userData.eyes as Object3D | undefined;
+        if (playerEyes) playerEyes.scale.y = blinkOpen(frame, 1.4);
       }
       const pulse = (0.82 + Math.sin(frame * 3) * 0.18) * (1 + mid * 0.08);
       for (const material of pulses) {
@@ -880,6 +918,7 @@ export function startWorld(options: {
   }
 
   for (const material of pulses) material.userData.live = true;
+  if (!shadows) addStaticContactShadows();
   player.userData.noBatch = true;
   inventor.userData.noBatch = true;
   for (const ring of highlightRings.values()) ring.userData.noBatch = true;
@@ -1253,11 +1292,93 @@ export function startWorld(options: {
     lampLight.position.set(x, 2.05, -6.4);
   }
 
+  function addAoWall(w: number, h: number, d: number, x: number, y: number, z: number, material: MeshLambertMaterial) {
+    const geometry = geo(new BoxGeometry(w, h, d, 1, 4, 1));
+    applyShade(geometry, (_px, py) => wallShade(py + h / 2, h));
+    const mesh = new Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = shadows;
+    mesh.receiveShadow = shadows;
+    scene.add(mesh);
+  }
+
+  function floorShadeSpots(): ShadeSpot[] {
+    const spots = [
+      { x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, r: 0.95 },
+      { x: LAYOUT.arcade.x, z: LAYOUT.arcade.z, r: 1.2 },
+      { x: LAYOUT.bench.x, z: LAYOUT.bench.z, r: 0.75 },
+      { x: LAYOUT.fridge.x, z: LAYOUT.fridge.z, r: 0.85 },
+      { x: SLACKER_COUCH.x, z: SLACKER_COUCH.z, r: 1.05 },
+      { x: NORTH_COUCH.x, z: NORTH_COUCH.z, r: 1.05 },
+      { x: SOUTH_COUCH.x, z: SOUTH_COUCH.z, r: 1.05 },
+      { x: LOUNGE_TABLE.x, z: LOUNGE_TABLE.z, r: 0.7 },
+    ];
+    return spots.map((spot) => ({ x: spot.x, y: 2 - spot.z, r: spot.r }));
+  }
+
+  function contactMaterial(): MeshBasicMaterial {
+    if (contactMat) return contactMat;
+    contactMat = new MeshBasicMaterial({
+      color: 0x121624,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    materials.push(contactMat);
+    return contactMat;
+  }
+
+  function addStaticContactShadows() {
+    const spots = [
+      { x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, r: 0.46 },
+      { x: LAYOUT.arcade.x, z: LAYOUT.arcade.z, r: 0.78 },
+      { x: SLACKER_COUCH.x, z: SLACKER_COUCH.z, r: 0.72 },
+      { x: NORTH_COUCH.x, z: NORTH_COUCH.z, r: 0.72 },
+      { x: SOUTH_COUCH.x, z: SOUTH_COUCH.z, r: 0.72 },
+      { x: LOUNGE_TABLE.x, z: LOUNGE_TABLE.z, r: 0.48 },
+      { x: LAYOUT.fridge.x, z: LAYOUT.fridge.z, r: 0.4 },
+    ];
+    const parts = spots.map((spot) => {
+      const geometry = new CircleGeometry(spot.r, 12);
+      geometry.rotateX(-Math.PI / 2);
+      geometry.translate(spot.x, 0.028, spot.z);
+      return geometry;
+    });
+    const merged = mergeGeometries(parts, false);
+    for (const geometry of parts) geometry.dispose();
+    if (!merged) return;
+    geo(merged);
+    const blob = new Mesh(merged, contactMaterial());
+    scene.add(blob);
+  }
+
+  function trackedFuse(meshes: Mesh[]): Mesh {
+    const fused = fuseMeshes(meshes);
+    if (!geometries.includes(fused.geometry)) geo(fused.geometry);
+    return fused;
+  }
+
   function buildInventor(): Group {
     const group = new Group();
     group.userData.interactId = "inventor";
-    box(group, 0.34, 0.46, 0.28, 0, 0.23, 0, PALETTE.coatDark);
-    box(group, 0.66, 0.78, 0.4, 0, 0.8, 0, PALETTE.coat);
+    const pelvis = box(group, 0.36, 0.18, 0.28, 0, 0.46, 0, PALETTE.coatDark);
+    const legL = box(group, 0.14, 0.42, 0.16, -0.1, 0.21, 0, PALETTE.coatDark);
+    const legR = box(group, 0.14, 0.42, 0.16, 0.1, 0.21, 0, PALETTE.coatDark);
+    const hat = new Mesh(geo(new CylinderGeometry(0.16, 0.18, 0.28, 10)), mat(PALETTE.coatDark));
+    hat.position.set(0, 1.84, 0);
+    group.add(hat);
+    trackedFuse([pelvis, legL, legR, hat]);
+
+    const torso = box(group, 0.66, 0.78, 0.4, 0, 0.8, 0, PALETTE.coat);
+    group.userData.torso = torso;
+    const pin = new Mesh(geo(new BoxGeometry(0.08, 0.08, 0.02)), new MeshBasicMaterial({ color: PALETTE.amber, toneMapped: false }));
+    materials.push(pin.material);
+    pin.position.set(0.16, 0.12, 0.22);
+    torso.add(pin);
+
     const head = new Mesh(geo(new SphereGeometry(0.26, 16, 12)), mat(PALETTE.skin));
     head.position.set(0, 1.42, 0);
     head.castShadow = shadows;
@@ -1269,24 +1390,37 @@ export function startWorld(options: {
     const brim = new Mesh(geo(new CylinderGeometry(0.3, 0.3, 0.06, 12)), mat(PALETTE.hair));
     brim.position.set(0, 1.66, 0);
     group.add(brim);
-    const top = new Mesh(geo(new CylinderGeometry(0.16, 0.18, 0.28, 10)), mat(PALETTE.coatDark));
-    top.position.set(0, 1.84, 0);
-    group.add(top);
-    const lensL = new Mesh(geo(new CylinderGeometry(0.07, 0.07, 0.04, 10)), new MeshBasicMaterial({ color: PALETTE.lens }));
-    const lensR = lensL.clone();
-    materials.push(lensL.material);
+    trackedFuse([hair, brim]);
+
+    const lensMat = new MeshBasicMaterial({ color: PALETTE.lens });
+    materials.push(lensMat);
+    const lensL = new Mesh(geo(new CylinderGeometry(0.07, 0.07, 0.04, 10)), lensMat);
+    const lensR = new Mesh(geo(new CylinderGeometry(0.07, 0.07, 0.04, 10)), lensMat);
+    const bridge = new Mesh(geo(new BoxGeometry(0.08, 0.02, 0.02)), lensMat);
     lensL.rotation.x = Math.PI / 2;
     lensR.rotation.x = Math.PI / 2;
     lensL.position.set(-0.1, 1.42, 0.24);
     lensR.position.set(0.1, 1.42, 0.24);
-    group.add(lensL, lensR);
-    const arm = new Group();
-    arm.position.set(0.42, 1.05, 0);
-    const armMesh = new Mesh(geo(new BoxGeometry(0.12, 0.48, 0.12)), mat(PALETTE.coat));
-    armMesh.position.y = -0.2;
-    arm.add(armMesh);
-    group.add(arm);
+    bridge.position.set(0, 1.45, 0.24);
+    group.add(lensL, lensR, bridge);
+    trackedFuse([lensL, lensR, bridge]);
+
+    const eyeGeo = geo(new BoxGeometry(0.06, 0.045, 0.02));
+    const eyeMat = mat(PALETTE.hair);
+    const eyeL = new Mesh(eyeGeo, eyeMat);
+    const eyeR = new Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(-0.1, 0.03, 0.22);
+    eyeR.position.set(0.1, 0.03, 0.22);
+    head.add(eyeL, eyeR);
+    const eyes = trackedFuse([eyeL, eyeR]);
+    eyes.castShadow = false;
+    group.userData.eyes = eyes;
+
+    const arm = makeArm(0.42);
+    const armL = makeArm(-0.42);
+    group.add(arm, armL);
     group.userData.arm = arm;
+    group.userData.armL = armL;
     tag(group, "Inventor", 2.15, "inventor");
     group.traverse((child) => {
       child.userData.interactId = "inventor";
@@ -1294,18 +1428,47 @@ export function startWorld(options: {
     return group;
   }
 
+  function makeArm(x: number): Group {
+    const arm = new Group();
+    arm.position.set(x, 1.05, 0);
+    const armMesh = new Mesh(geo(new BoxGeometry(0.12, 0.48, 0.12)), mat(PALETTE.coat));
+    armMesh.position.y = -0.2;
+    arm.add(armMesh);
+    return arm;
+  }
+
   function buildPlayer(): Group {
     const group = new Group();
-    box(group, 0.36, 0.55, 0.28, 0, 0.48, 0, PALETTE.teal);
-    box(group, 0.12, 0.42, 0.12, -0.28, 0.52, 0, PALETTE.teal);
-    box(group, 0.12, 0.42, 0.12, 0.28, 0.52, 0, PALETTE.teal);
+    const rig = new Group();
+    group.add(rig);
+    group.userData.rig = rig;
+    const torso = box(rig, 0.36, 0.55, 0.28, 0, 0.48, 0, PALETTE.teal);
+    const armL = box(rig, 0.12, 0.42, 0.12, -0.28, 0.52, 0, PALETTE.teal);
+    const armR = box(rig, 0.12, 0.42, 0.12, 0.28, 0.52, 0, PALETTE.teal);
+    trackedFuse([torso, armL, armR]);
     const head = new Mesh(geo(new SphereGeometry(0.2, 14, 12)), mat(PALETTE.skin));
     head.position.set(0, 0.98, 0);
     head.castShadow = shadows;
-    group.add(head);
+    rig.add(head);
     const nose = new Mesh(geo(new BoxGeometry(0.08, 0.08, 0.1)), mat(PALETTE.coat));
     nose.position.set(0, 0.96, -0.2);
-    group.add(nose);
+    rig.add(nose);
+    const eyeGeo = geo(new BoxGeometry(0.05, 0.035, 0.016));
+    const eyeMat = mat(PALETTE.hair);
+    const eyeL = new Mesh(eyeGeo, eyeMat);
+    const eyeR = new Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(-0.07, 0.03, 0.16);
+    eyeR.position.set(0.07, 0.03, 0.16);
+    head.add(eyeL, eyeR);
+    const eyes = trackedFuse([eyeL, eyeR]);
+    eyes.castShadow = false;
+    group.userData.eyes = eyes;
+    if (!shadows) {
+      const disc = new Mesh(geo(new CircleGeometry(0.34, 12)), contactMaterial());
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.y = 0.028;
+      group.add(disc);
+    }
     return group;
   }
 
@@ -1315,6 +1478,15 @@ export function startWorld(options: {
     box(group, 1.18, 1.28, 0.56, 0, 0.82, -0.02, PALETTE.cabinet);
     box(group, 0.12, 1.58, 0.68, -0.64, 0.9, 0.02, 0x171225);
     box(group, 0.12, 1.58, 0.68, 0.64, 0.9, 0.02, 0x171225);
+    for (const [ex, ez] of [
+      [-0.59, -0.3],
+      [0.59, -0.3],
+      [-0.59, 0.26],
+      [0.59, 0.26],
+    ] as const) {
+      box(group, 0.05, 1.34, 0.05, ex, 0.82, ez, 0x171225, false);
+    }
+    box(group, 1.22, 0.045, 0.6, 0, 1.48, -0.02, 0x171225, false);
     addGlowStrip(group, -0.71, 0xff5d73);
     addGlowStrip(group, 0.71, 0x3ec6ff);
     box(group, 1.28, 0.42, 0.16, 0, 1.7, 0.2, 0x1a1428, false);
@@ -1388,6 +1560,32 @@ export function startWorld(options: {
     object.position.set(0, y, 0);
     parent.add(object);
   }
+}
+
+function floorLightMap(): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = LinearSRGBColorSpace;
+  texture.flipY = true;
+  if (!context) return texture;
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, 128, 128);
+  // La lámpara de pie suroeste ya no es una PointLight. El charco vive en el suelo.
+  const uv = floorUv(-8.35, 7.7);
+  const px = uv.u * 128;
+  const py = (1 - uv.v) * 128;
+  const radius = (2.4 / 20) * 128;
+  const gradient = context.createRadialGradient(px, py, 0, px, py, radius);
+  gradient.addColorStop(0, "rgb(255, 170, 64)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  context.fillStyle = gradient;
+  context.beginPath();
+  context.arc(px, py, radius, 0, Math.PI * 2);
+  context.fill();
+  return texture;
 }
 
 function skyGradient(): CanvasTexture {
