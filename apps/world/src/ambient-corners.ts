@@ -1,4 +1,5 @@
 import {
+  BoxGeometry,
   CanvasTexture,
   Color,
   CylinderGeometry,
@@ -16,11 +17,12 @@ import {
 } from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
+import { blinkOpen, breathScale, windowPaintSlot } from "./graphics-idle";
+import { fuseMeshes } from "./mesh-fuse";
 import { CEILING_UNDERSIDE, LAYOUT } from "./navigation";
 import {
   FLOOR_GLOW,
   FLOOR_LAMPS,
-  FLOOR_LIGHT,
   FLOOR_SHADE,
   FLOOR_SHADE_Y,
   LAMP_METAL,
@@ -53,10 +55,14 @@ export type SwayPlant = { mesh: Object3D; phase: number };
 
 export type CornerInteractables = {
   catHead: Mesh;
+  catEyes: Object3D;
+  catTail: Object3D;
   dogSnore: HTMLDivElement;
+  dogChest: Object3D;
   radioDial: MeshBasicMaterial;
   fan: Group;
   windowMats: MeshBasicMaterial[];
+  windowSlot: number;
   pcScreen: MeshBasicMaterial;
   neonMat: MeshBasicMaterial;
   sway: SwayPlant[];
@@ -124,12 +130,18 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
   const windowMats: MeshBasicMaterial[] = [];
   const sway: SwayPlant[] = [];
 
+  const cat = addCatOnCrates(f);
+  const dog = addSleepingDog(f);
   return {
-    catHead: addCatOnCrates(f),
-    dogSnore: addSleepingDog(f),
+    catHead: cat.head,
+    catEyes: cat.eyes,
+    catTail: cat.tail,
+    dogSnore: dog.snore,
+    dogChest: dog.chest,
     radioDial: addRadio(f),
     fan,
     windowMats,
+    windowSlot: -1,
     pcScreen,
     neonMat,
     sway,
@@ -230,13 +242,12 @@ function addAccentRug(f: AmbientFactories) {
 }
 
 function addWarmLamps(f: AmbientFactories, lamps: PointLight[]) {
-  for (const lamp of FLOOR_LAMPS) {
-    const light = addFloorLamp(f, lamp.x, lamp.z, lamp.intensityScale, lamp.phase);
-    if (light) lamps.push(light);
-  }
+  // El charco va en el lightmap. La pantalla no añade otra PointLight.
+  void lamps;
+  for (const lamp of FLOOR_LAMPS) addFloorLamp(f, lamp.x, lamp.z);
 }
 
-function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale: number, phase: number): PointLight | null {
+function addFloorLamp(f: AmbientFactories, x: number, z: number) {
   const mouth = FLOOR_SHADE_Y - FLOOR_SHADE.height / 2;
   const poleHeight = mouth - 0.04;
   const base = new Mesh(f.geo(new CylinderGeometry(0.15, 0.18, 0.04, 8)), f.mat(LAMP_METAL));
@@ -247,7 +258,7 @@ function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale:
   pole.position.set(x, 0.04 + poleHeight / 2, z);
   pole.castShadow = f.shadows;
   f.scene.add(pole);
-  const light = addLampHead(
+  addLampHead(
     { parent: f.scene, geo: f.geo, mat: f.mat, materials: f.materials, shadows: f.shadows },
     {
       x,
@@ -256,16 +267,8 @@ function addFloorLamp(f: AmbientFactories, x: number, z: number, intensityScale:
       shade: FLOOR_SHADE,
       glow: FLOOR_GLOW,
       lit: true,
-      light: {
-        intensity: FLOOR_LIGHT.intensity * intensityScale,
-        distance: FLOOR_LIGHT.distance,
-        decay: FLOOR_LIGHT.decay,
-        phase,
-      },
     },
   );
-  if (light) light.userData.base = FLOOR_LIGHT.intensity * intensityScale;
-  return light;
 }
 
 function addCeilingFan(f: AmbientFactories, fan: Group) {
@@ -390,21 +393,51 @@ function paintScreen(
   }
 }
 
-function addCatOnCrates(f: AmbientFactories): Mesh {
+function addCatOnCrates(f: AmbientFactories): { head: Mesh; eyes: Object3D; tail: Object3D } {
   const x = LAYOUT.crates.x;
   const z = LAYOUT.crates.z;
   f.box(f.scene, 0.56, 0.4, 0.5, x, 0.2, z, 0x8d5a34);
   f.box(f.scene, 0.48, 0.34, 0.42, x, 0.57, z, 0x734826);
-  const y = 0.82;
-  f.box(f.scene, 0.28, 0.16, 0.32, x - 0.02, y, z, PAL.cat);
-  const head = new Mesh(f.geo(new SphereGeometry(0.13, 10, 8)), f.mat(PAL.cat));
-  head.position.set(x - 0.16, y + 0.06, z);
+  const y = 0.84;
+  f.box(f.scene, 0.28, 0.16, 0.32, x, y, z, PAL.cat);
+
+  const pivot = new Group();
+  pivot.position.set(x - 0.14, y + 0.05, z);
+  f.scene.add(pivot);
+  const skull = new Mesh(f.geo(new SphereGeometry(0.13, 10, 8)), f.mat(PAL.cat));
+  const earGeo = f.geo(new BoxGeometry(0.04, 0.08, 0.026));
+  const earL = new Mesh(earGeo, f.mat(PAL.cat));
+  earL.position.set(-0.045, 0.1, 0.01);
+  earL.rotation.z = 0.45;
+  const earR = new Mesh(earGeo, f.mat(PAL.cat));
+  earR.position.set(0.045, 0.1, 0.01);
+  earR.rotation.z = -0.45;
+  pivot.add(skull, earL, earR);
+  const head = fuseMeshes([skull, earL, earR]);
+  f.geo(head.geometry);
   head.userData.noBatch = true;
   head.castShadow = f.shadows;
-  f.scene.add(head);
-  f.box(f.scene, 0.04, 0.05, 0.04, x - 0.2, y + 0.16, z - 0.04, PAL.cat, false);
-  f.box(f.scene, 0.04, 0.05, 0.04, x - 0.2, y + 0.16, z + 0.04, PAL.cat, false);
-  return head;
+
+  const eyeGeo = f.geo(new BoxGeometry(0.03, 0.024, 0.014));
+  const eyeMat = f.mat(0x1a1a22);
+  const eyeL = new Mesh(eyeGeo, eyeMat);
+  eyeL.position.set(-0.038, 0.02, 0.11);
+  const eyeR = new Mesh(eyeGeo, eyeMat);
+  eyeR.position.set(0.038, 0.02, 0.11);
+  head.add(eyeL, eyeR);
+  const eyes = fuseMeshes([eyeL, eyeR]);
+  f.geo(eyes.geometry);
+  eyes.userData.noBatch = true;
+  eyes.castShadow = false;
+
+  const tail = new Group();
+  tail.userData.noBatch = true;
+  tail.position.set(x + 0.1, y - 0.02, z);
+  const seg = new Mesh(f.geo(new BoxGeometry(0.16, 0.04, 0.04)), f.mat(PAL.cat));
+  seg.position.x = 0.06;
+  tail.add(seg);
+  f.scene.add(tail);
+  return { head, eyes, tail };
 }
 
 function addRadio(f: AmbientFactories): MeshBasicMaterial {
@@ -423,7 +456,7 @@ function addRadio(f: AmbientFactories): MeshBasicMaterial {
   return dialMat;
 }
 
-function addSleepingDog(f: AmbientFactories): HTMLDivElement {
+function addSleepingDog(f: AmbientFactories): { snore: HTMLDivElement; chest: Object3D } {
   const x = LAYOUT.dog.x;
   const z = LAYOUT.dog.z;
   f.box(f.scene, 0.55, 0.14, 0.24, x, 0.08, z, PAL.dog);
@@ -431,6 +464,15 @@ function addSleepingDog(f: AmbientFactories): HTMLDivElement {
   head.position.set(x - 0.32, 0.1, z + 0.04);
   head.castShadow = f.shadows;
   f.scene.add(head);
+  f.box(f.scene, 0.04, 0.07, 0.03, x - 0.36, 0.2, z + 0.09, PAL.dog, false);
+  f.box(f.scene, 0.04, 0.07, 0.03, x - 0.36, 0.2, z - 0.01, PAL.dog, false);
+  const chest = new Mesh(f.geo(new BoxGeometry(0.32, 0.06, 0.16)), f.mat(PAL.dog));
+  chest.position.set(x, 0.16, z);
+  chest.userData.noBatch = true;
+  chest.castShadow = false;
+  f.scene.add(chest);
+  f.box(f.scene, 0.016, 0.008, 0.028, x - 0.42, 0.125, z + 0.01, 0x1a1a22, false);
+  f.box(f.scene, 0.016, 0.008, 0.028, x - 0.42, 0.125, z + 0.07, 0x1a1a22, false);
   f.box(f.scene, 0.16, 0.08, 0.1, x + 0.26, 0.06, z - 0.06, PAL.dog, false);
 
   const snore = document.createElement("div");
@@ -440,7 +482,7 @@ function addSleepingDog(f: AmbientFactories): HTMLDivElement {
   const label = new CSS2DObject(snore);
   label.position.set(x - 0.1, 0.35, z);
   f.scene.add(label);
-  return snore;
+  return { snore, chest };
 }
 
 export function tickCornerReactions(
@@ -452,7 +494,7 @@ export function tickCornerReactions(
   beatBass = 0,
   beatMid = 0,
 ) {
-  const catX = LAYOUT.crates.x - 0.16;
+  const catX = LAYOUT.crates.x - 0.14;
   const catZ = LAYOUT.crates.z;
   const nearCat = Math.hypot(player.x - catX, player.z - catZ) < 2.4;
   if (nearCat) {
@@ -484,7 +526,14 @@ export function tickCornerReactions(
       const blink = Math.sin(time * 7.4 + phase) > 0.984 ? 0.72 : 1;
       lamp.intensity = base * (0.93 + Math.sin(time * 1.8 + phase) * 0.07) * blink * (1 + beatBass * 0.18);
     }
-    paintNightWindows(interact.windowMats, time);
+    const slot = windowPaintSlot(time);
+    if (slot !== interact.windowSlot) {
+      interact.windowSlot = slot;
+      paintNightWindows(interact.windowMats, time);
+    }
+    interact.catEyes.scale.y = blinkOpen(time, 0.6);
+    interact.catTail.rotation.z = Math.sin(time * 2.4) * 0.4;
+    interact.dogChest.scale.y = breathScale(time, 1.3);
     blinkScreenMaterial(interact.pcScreen, time);
     interact.pcScreen.color.setScalar(1 + beatMid * 0.22);
     const neonPulse = (0.75 + Math.sin(time * 2.8) * 0.25) * (1 + beatMid * 0.12);
