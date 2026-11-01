@@ -72,6 +72,35 @@ export function softenTowardLimit(
   return velocity * (room / zone);
 }
 
+/**
+ * Dirección de andar en el plano XZ. `forward` y `right` son el stick o
+ * el teclado (W/S y D/A). El yaw es el de la cámara: adelante es
+ * (sin yaw, −cos yaw) y la derecha, (cos yaw, sin yaw).
+ */
+export function moveWish(yaw: number, forward: number, right: number): { x: number; z: number } {
+  const forwardX = Math.sin(yaw);
+  const forwardZ = -Math.cos(yaw);
+  const rightX = Math.cos(yaw);
+  const rightZ = Math.sin(yaw);
+  return {
+    x: right * rightX + forward * forwardX,
+    z: right * rightZ + forward * forwardZ,
+  };
+}
+
+/**
+ * Rotación Y de Three.js para que la cara (−Z local) apunte hacia (dirX, dirZ).
+ * atan2(dirX, −dirZ) deja la cara en el reflejo y, al ir de lado, el personaje anda de espaldas.
+ */
+export function facingYaw(dirX: number, dirZ: number): number {
+  return Math.atan2(-dirX, -dirZ);
+}
+
+/** La cara mira hacia el adelante de la cámara, no hacia el yaw tal cual. */
+export function lookFacingYaw(yaw: number): number {
+  return facingYaw(Math.sin(yaw), -Math.cos(yaw));
+}
+
 export function dampAngle(current: number, target: number, dt: number, sharpness = 8): number {
   let diff = target - current;
   while (diff > Math.PI) diff -= Math.PI * 2;

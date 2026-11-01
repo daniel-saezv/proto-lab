@@ -4,7 +4,10 @@ import {
   approachVelocity,
   dampAngle,
   dampBlockedAxis,
+  facingYaw,
+  lookFacingYaw,
   lookRateFromDeflection,
+  moveWish,
   shapeStick,
   smoothLookInput,
   softenTowardLimit,
@@ -79,5 +82,53 @@ describe("controles del lobby", () => {
     const next = dampAngle(0.1, Math.PI * 2 - 0.1, 1 / 60, 8);
     expect(next).toBeLessThan(0.1);
     expect(next).toBeGreaterThan(-0.3);
+  });
+
+  it("la cara mira hacia donde camina, también de lado y tras varios rumbos", () => {
+    const faceOf = (theta: number) => ({ x: -Math.sin(theta), z: -Math.cos(theta) });
+    const align = (theta: number, dirX: number, dirZ: number) => {
+      const face = faceOf(theta);
+      const mag = Math.hypot(dirX, dirZ);
+      return (face.x * dirX + face.z * dirZ) / mag;
+    };
+    const yaws = [0, 0.15, Math.PI / 2, Math.PI, -1.2, 2.4, -2.8];
+    const sticks: Array<[number, number]> = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+      [0.35, -0.8],
+    ];
+    for (const yaw of yaws) {
+      expect(align(lookFacingYaw(yaw), Math.sin(yaw), -Math.cos(yaw))).toBeGreaterThan(0.999);
+      for (const [forward, right] of sticks) {
+        const wish = moveWish(yaw, forward, right);
+        expect(align(facingYaw(wish.x, wish.z), wish.x, wish.z)).toBeGreaterThan(0.999);
+      }
+    }
+
+    let yaw = 0.15;
+    let rotation = 0;
+    const sequence: Array<[number, number]> = [
+      [1, 0],
+      [0, -1],
+      [1, 0.4],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [-0.2, -1],
+      [1, -1],
+    ];
+    for (const [forward, right] of sequence) {
+      yaw += 0.55;
+      const wish = moveWish(yaw, forward, right);
+      const target = facingYaw(wish.x, wish.z);
+      for (let frame = 0; frame < 90; frame += 1) rotation = dampAngle(rotation, target, 1 / 60, 7.5);
+      expect(align(rotation, wish.x, wish.z)).toBeGreaterThan(0.99);
+    }
   });
 });

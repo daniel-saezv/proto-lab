@@ -1,4 +1,5 @@
 import {
+  BoxGeometry,
   CanvasTexture,
   CylinderGeometry,
   Group,
@@ -13,6 +14,8 @@ import {
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { createNameplateElement } from "./nameplates";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
+import { blinkOpen, breathScale, idlePhase } from "./graphics-idle";
+import { fuseMeshes } from "./mesh-fuse";
 import type { DialogueCue } from "./dialogue-cues";
 import {
   LOUNGE_FURNITURE,
@@ -99,6 +102,7 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
   const sketch = addSketcher(parent, croquis, f, act);
 
   const nameplates = [slacker.plate, pipe.plate, cards.plate, sketch.plate];
+  const faceIdles = collectFaceIdles(parent);
 
   return {
     colliders: LOUNGE_FURNITURE.map((item) => ({
@@ -131,6 +135,8 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
       cards.tick(time);
       sketch.tick(time);
       tv.tick(time, dt, beatMid);
+      // Idle de cara. El humo, las cartas y el lápiz siguen en los tick de arriba.
+      for (const idle of faceIdles) idle(time);
     },
     setDialogueCue(cue) {
       act.cue = cue;
@@ -438,7 +444,46 @@ function addSeated(
   legL.rotation.x = -0.62;
   const legR = f.box(body, 0.12, 0.12, 0.4, 0.11, -0.02, 0.3, colors.pants, false);
   legR.rotation.x = -0.5;
+  attachFaceIdle(body, head, f, colors.shirt, idlePhase(npc.id));
   return body;
+}
+
+type FaceIdle = { tick: (time: number) => void };
+
+/** Ojos y pecho, fuera del batch. No modifica el tick de cada persona. */
+function attachFaceIdle(body: Group, head: Mesh, f: AmbientFactories, shirt: number, phase: number) {
+  const eyeGeo = f.geo(new BoxGeometry(0.04, 0.028, 0.018));
+  const eyeMat = f.mat(0x1a1a22);
+  const eyeL = new Mesh(eyeGeo, eyeMat);
+  eyeL.position.set(-0.055, 0.02, 0.15);
+  const eyeR = new Mesh(eyeGeo, eyeMat);
+  eyeR.position.set(0.055, 0.02, 0.15);
+  head.add(eyeL, eyeR);
+  const eyes = fuseMeshes([eyeL, eyeR]);
+  f.geo(eyes.geometry);
+  eyes.userData.noBatch = true;
+  eyes.castShadow = false;
+
+  const chest = f.box(body, 0.24, 0.12, 0.05, 0, 0.34, 0.08, shirt, false);
+  chest.userData.noBatch = true;
+  chest.castShadow = false;
+
+  const idle: FaceIdle = {
+    tick(time) {
+      eyes.scale.y = blinkOpen(time, phase);
+      chest.scale.y = breathScale(time, phase);
+    },
+  };
+  body.userData.faceIdle = idle;
+}
+
+function collectFaceIdles(root: Group): Array<(time: number) => void> {
+  const ticks: Array<(time: number) => void> = [];
+  root.traverse((object) => {
+    const idle = object.userData.faceIdle as FaceIdle | undefined;
+    if (idle) ticks.push((time) => idle.tick(time));
+  });
+  return ticks;
 }
 
 function addNameplate(body: Group, npc: LoungeNpc): { id: string; element: HTMLElement; anchor: CSS2DObject } {
