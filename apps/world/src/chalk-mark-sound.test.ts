@@ -90,8 +90,7 @@ describe("sonido de tiza", () => {
 
   it("el archivo es la escritura seguida, bajo de volumen y con la nota de licencia", () => {
     expect(CHALK_MARK_SRC).toBe("/protos/audio/chalk-2.m4a");
-    expect(CHALK_MARK_VOLUME).toBeGreaterThan(0.05);
-    expect(CHALK_MARK_VOLUME).toBeLessThan(0.35);
+    expect(CHALK_MARK_VOLUME).toBe(0.15);
     const audioDir = join(dirname(fileURLToPath(import.meta.url)), "../public/protos/audio");
     expect(existsSync(join(audioDir, "chalk-1.m4a"))).toBe(false);
     expect(existsSync(join(audioDir, "chalk-3.m4a"))).toBe(false);

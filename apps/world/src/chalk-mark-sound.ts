@@ -6,8 +6,8 @@ export const CHALK_MARK_GAP_MS = 400;
 /** El único recorte: la escritura seguida. `revision-audio` reescribe esta URL. */
 export const CHALK_MARK_SRC = "/protos/audio/chalk-2.m4a";
 
-/** Pico del archivo cerca de −3 dB: 0,2 lo deja de fondo, sin tapar la música. */
-export const CHALK_MARK_VOLUME = 0.2;
+/** Pico del archivo cerca de −3 dB: 0,15 lo deja de fondo, sin tapar la música. */
+export const CHALK_MARK_VOLUME = 0.15;
 
 /** Cuánto del recorte se oye según la marca. La animación visual sigue en 340 ms. */
 export type ChalkSpan = "short" | "medium" | "long";
