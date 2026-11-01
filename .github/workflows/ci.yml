@@ -55,6 +55,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test:unit
 
+  # La imagen de los e2e está fijada abajo (v1.64.1-noble). Este job ya no
+  # etiqueta el contenedor; se conserva hasta confirmar si el check es obligatorio.
   playwright-version:
     name: Versión Playwright (lockfile)
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
@@ -70,29 +72,29 @@ jobs:
           version=$(bash .github/scripts/playwright-lockfile-version.sh)
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
-  # Chromium en runners de 2 vCPU va a 1 worker (SwiftShader). Partir el proyecto
-  # en shards baja el reloj de pared: el grupo en serie de private-assets ocupa
-  # un shard entero y no comparte máquina con el test de cámara.
-  # Contenedor: mcr.microsoft.com/playwright:v<lockfile>-noble (ver job playwright-version).
+  # Chromium en runners de 2 vCPU va a 1 worker (SwiftShader). Tres shards bajan
+  # el reloj de pared. El grupo en serie de private-assets no se parte y puede
+  # compartir máquina con otros tests del mismo shard.
+  # Imagen fijada: al subir @playwright/test, actualiza este tag (la acción
+  # de e2e exige que el CLI del contenedor coincida con el lockfile).
   e2e-chromium:
-    name: E2E (chromium ${{ matrix.shard }}/6)
-    needs: playwright-version
+    name: E2E (chromium ${{ matrix.shard }}/3)
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
     timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/playwright
         with:
           browser: chromium
           project: chromium
-          shard: ${{ matrix.shard }}/6
+          shard: ${{ matrix.shard }}/3
 
   # Mantiene el nombre del check obligatorio. Queda pendiente hasta que
   # terminan los shards; la duración que muestra GitHub es solo esta compuerta.
@@ -114,11 +116,10 @@ jobs:
 
   e2e-webkit:
     name: E2E (webkit-iphone)
-    needs: playwright-version
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
