@@ -883,6 +883,20 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   await expect(page.locator("#game-selector")).toBeHidden();
 });
 
+test("en el iPhone la música del joystick no vuelve a idle tras unos segundos", async ({ page }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "gesto táctil iOS");
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  const mute = page.getByTestId("mute-music");
+  const viewport = page.viewportSize();
+  expect(viewport).toBeTruthy();
+  await dispatchTouchDrag(page, viewport!.width * 0.22, viewport!.height * 0.72, 0, -48);
+  await expect(mute).toHaveAttribute("data-playback", "playing");
+  await expect
+    .poll(async () => mute.getAttribute("data-playback"), { timeout: 4000, intervals: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400] })
+    .toBe("playing");
+});
+
 async function dispatchTouchDrag(
   page: import("@playwright/test").Page,
   x: number,

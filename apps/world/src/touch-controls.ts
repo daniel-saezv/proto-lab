@@ -57,6 +57,7 @@ export function attachTouchControls(options: {
   function bindTapZone(zone: HTMLElement, side: "move" | "look") {
     const onDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
+      onGesture();
       if (!zonesEnabled || options.isBlocked() || shouldIgnoreTouchAt(event.clientX, event.clientY)) return;
       tapState.down = true;
       tapState.x = event.clientX;
@@ -95,7 +96,10 @@ export function attachTouchControls(options: {
   const unbindLookTap = bindTapZone(options.zoneLook, "look");
 
   function wireMove(collection: NippleCollection) {
-    collection.on("start", () => bumpActive(1));
+    collection.on("start", () => {
+      onGesture();
+      bumpActive(1);
+    });
     collection.on("end", () => {
       bumpActive(-1);
       moveForward = 0;
@@ -110,7 +114,10 @@ export function attachTouchControls(options: {
   }
 
   function wireLook(collection: NippleCollection) {
-    collection.on("start", () => bumpActive(1));
+    collection.on("start", () => {
+      onGesture();
+      bumpActive(1);
+    });
     collection.on("end", () => {
       bumpActive(-1);
       lookX = 0;

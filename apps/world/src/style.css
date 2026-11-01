@@ -206,23 +206,59 @@ body.reading-board #interact {
 }
 .speech-bubble[hidden] { display: none !important; }
 
+.nameplate-anchor {
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
 .nameplate {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: inline-block;
-  transform: translate(-50%, -140%);
   padding: 5px 10px;
   border: 2px solid var(--amber);
   border-radius: 999px;
   background: rgba(10, 12, 22, 0.92);
   color: var(--ink);
   font-size: 14px;
+  line-height: 1.15;
   font-weight: 800;
   letter-spacing: 0.01em;
   white-space: nowrap;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transform: translate(-50%, calc(-100% - 10px)) scale(0.96);
+  transform-origin: center bottom;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.nameplate-anchor[data-mode="name"] .nameplate {
+  opacity: 1;
+  transform: translate(-50%, calc(-100% - 10px)) scale(1);
 }
 .nameplate.is-near {
   background: var(--amber);
   color: #1a1203;
+}
+.nameplate-pip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow:
+    0 0 0 2px rgba(10, 12, 22, 0.88),
+    0 0 8px rgba(255, 183, 3, 0.55);
+  opacity: 0;
+  transform: translate(-50%, calc(-100% - 8px)) scale(0.6);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.nameplate-anchor[data-mode="pip"] .nameplate-pip {
+  opacity: 1;
+  transform: translate(-50%, calc(-100% - 8px)) scale(1);
 }
 .nameplate--proto-update {
   box-shadow: 0 0 0 2px rgba(255, 183, 3, 0.55), 0 6px 16px rgba(0, 0, 0, 0.45);
@@ -234,6 +270,18 @@ body.reading-board #interact {
   opacity: 0.9;
 }
 @media (prefers-reduced-motion: reduce) {
+  .nameplate,
+  .nameplate-pip {
+    transition: none;
+  }
+  .nameplate,
+  .nameplate-anchor[data-mode="name"] .nameplate {
+    transform: translate(-50%, calc(-100% - 10px));
+  }
+  .nameplate-pip,
+  .nameplate-anchor[data-mode="pip"] .nameplate-pip {
+    transform: translate(-50%, calc(-100% - 8px));
+  }
   .nameplate--proto-update {
     box-shadow: 0 0 0 2px rgba(255, 183, 3, 0.75), 0 6px 16px rgba(0, 0, 0, 0.45);
   }

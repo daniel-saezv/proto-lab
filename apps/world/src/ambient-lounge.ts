@@ -12,6 +12,7 @@ import {
   type Material,
 } from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { createNameplateElement } from "./nameplates";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { blinkOpen, breathScale, idlePhase } from "./graphics-idle";
 import { fuseMeshes } from "./mesh-fuse";
@@ -54,11 +55,13 @@ export type LoungeNpcSpot = {
   approach: { x: number; z: number };
 };
 
+type LoungePlate = { id: string; element: HTMLElement; anchor: CSS2DObject };
+
 export type LoungeGroup = {
   colliders: AmbientCollider[];
   slacker: { x: number; z: number; radius: number; approach: { x: number; z: number } };
   npcs: LoungeNpcSpot[];
-  nameplates: { id: string; element: HTMLElement }[];
+  nameplates: LoungePlate[];
   bubble: HTMLElement;
   tick: (time: number, dt: number, beatMid: number) => void;
 };
@@ -199,7 +202,7 @@ function addTelevision(parent: Group, f: AmbientFactories): { tick: (time: numbe
 
 function addSlacker(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
   bubble: HTMLElement;
-  plate: { id: string; element: HTMLElement };
+  plate: LoungePlate;
   tick: (time: number) => void;
 } {
   const body = addSeated(parent, npc, { shirt: 0x4a5568, pants: 0x3d4a5c, hair: 0x2a2933 }, f, 0.52, 0.34);
@@ -259,7 +262,7 @@ function addSlacker(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
 }
 
 function addPiper(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
-  plate: { id: string; element: HTMLElement };
+  plate: LoungePlate;
   tick: (time: number) => void;
 } {
   const body = addSeated(parent, npc, { shirt: 0x8d4a3a, pants: 0x4a3428, hair: 0x3a2418 }, f, 0.52, 0.18);
@@ -316,7 +319,7 @@ function addPiper(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
 }
 
 function addDealer(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
-  plate: { id: string; element: HTMLElement };
+  plate: LoungePlate;
   tick: (time: number) => void;
 } {
   const body = addSeated(parent, npc, { shirt: 0x1f4d4a, pants: 0x173430, hair: 0x1a1a22 }, f, 0.52, 0.4);
@@ -353,7 +356,7 @@ function addDealer(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
 }
 
 function addSketcher(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
-  plate: { id: string; element: HTMLElement };
+  plate: LoungePlate;
   tick: (time: number) => void;
 } {
   const cushion = f.box(parent, 0.52, 0.08, 0.48, npc.x, 0.06, npc.z, PALETTE.cushion, false);
@@ -452,16 +455,13 @@ function collectFaceIdles(root: Group): Array<(time: number) => void> {
   return ticks;
 }
 
-function addNameplate(body: Group, npc: LoungeNpc): { id: string; element: HTMLElement } {
-  const anchor = document.createElement("div");
-  const plate = document.createElement("span");
-  plate.className = "nameplate";
-  plate.textContent = npc.name;
-  anchor.append(plate);
+function addNameplate(body: Group, npc: LoungeNpc): { id: string; element: HTMLElement; anchor: CSS2DObject } {
+  const { anchor, plate } = createNameplateElement(npc.name);
   const label = new CSS2DObject(anchor);
+  label.center.set(0, 0);
   label.position.set(0, 0.96, 0);
   body.add(label);
-  return { id: npc.id, element: plate };
+  return { id: npc.id, element: plate, anchor: label };
 }
 
 function createTvTexture(materials: Material[]): {
