@@ -87,21 +87,95 @@ export function shouldResumeLobbyMusic(input: {
 /**
  * Un gesto solo cuenta si de verdad hay que llamar a play() y resume().
  * Si el intento anterior fue rechazado, el siguiente gesto vuelve a intentarlo.
+ * Tras el primer arranque (`engaged`), gestos repetidos (touchstart + touchend,
+ * nipple + window) no deben reiniciar la pista.
  */
 export function playbackAfterGesture(input: {
   muted: boolean;
   paused: boolean;
   visible: boolean;
   sounding: boolean;
+  engaged: boolean;
 }): { kick: boolean } {
-  if (input.muted || input.paused || !input.visible || input.sounding) return { kick: false };
+  if (input.muted || input.paused || !input.visible) return { kick: false };
+  if (input.engaged || input.sounding) return { kick: false };
   return { kick: true };
+}
+
+/**
+ * Evita un segundo startOutput() en el mismo arranque: en iOS un play() extra
+ * aborta el anterior; outputLive() aún puede ser false con el elemento sonando
+ * o el AudioContext en suspended tras salir del handler del gesto.
+ */
+export function shouldShortCircuitStartOutput(input: {
+  engaged: boolean;
+  outputLive: boolean;
+  bufferLoopActive: boolean;
+  mediaPlaying: boolean;
+}): boolean {
+  if (!input.engaged) return false;
+  if (input.outputLive || input.bufferLoopActive) return true;
+  return input.mediaPlaying;
+}
+
+/** El decode del bucle ocurre fuera del gesto; en iOS el contexto suele estar suspended. */
+export function shouldDeferBufferLoopUpgrade(contextState: string | undefined): boolean {
+  return contextState !== "running";
+}
+
+/** No pausar el elemento media hasta que el bucle WebAudio esté programado y el contexto corra. */
+export function shouldQuietMediaForBufferHandoff(input: {
+  contextState: string;
+  loopVoiceCount: number;
+}): boolean {
+  return input.contextState === "running" && input.loopVoiceCount > 0;
+}
+
+/** Espejo de `data-playback` en el botón silenciar. */
+export function playbackUiState(input: { muted: boolean; sounded: boolean; armed: boolean }): string {
+  if (input.muted) return "muted";
+  if (input.sounded) return "playing";
+  if (input.armed) return "waiting";
+  return "idle";
 }
 
 export function playbackRejection(name: string): { retryOnNextGesture: boolean; skipTrack: boolean } {
   if (name === "NotAllowedError") return { retryOnNextGesture: true, skipTrack: false };
   if (name === "AbortError") return { retryOnNextGesture: false, skipTrack: false };
   return { retryOnNextGesture: false, skipTrack: true };
+}
+
+/** Tipos de evento que desbloquean audio en window (captura). */
+export const AUDIO_UNLOCK_POINTER_DOWN = "pointerdown" as const;
+export const AUDIO_UNLOCK_TOUCH_START = "touchstart" as const;
+export const AUDIO_UNLOCK_POINTER_UP = "pointerup" as const;
+export const AUDIO_UNLOCK_TOUCH_END = "touchend" as const;
+export const AUDIO_UNLOCK_CLICK = "click" as const;
+export const AUDIO_UNLOCK_KEY_DOWN = "keydown" as const;
+
+const AUDIO_UNLOCK_TYPES = new Set<string>([
+  AUDIO_UNLOCK_POINTER_DOWN,
+  AUDIO_UNLOCK_TOUCH_START,
+  AUDIO_UNLOCK_POINTER_UP,
+  AUDIO_UNLOCK_TOUCH_END,
+  AUDIO_UNLOCK_CLICK,
+  AUDIO_UNLOCK_KEY_DOWN,
+]);
+
+/**
+ * WebKit concede activación de usuario en touchstart/pointerdown y en
+ * touchend/pointerup/click, no en touchmove/pointermove. El joystick mantiene
+ * el dedo apoyado: escuchar solo el final deja la música en espera hasta soltar.
+ */
+export function isAudioUnlockEventType(type: string): boolean {
+  return AUDIO_UNLOCK_TYPES.has(type);
+}
+
+export function shouldIgnoreAudioUnlockTarget(target: EventTarget | null): boolean {
+  if (target == null || typeof target !== "object") return false;
+  const closest = (target as { closest?: (selector: string) => Element | null }).closest;
+  if (typeof closest !== "function") return false;
+  return Boolean(closest.call(target, "#mute-music"));
 }
 
 /**
@@ -151,6 +225,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   let heldForPrototype = false;
   let releaseGeneration = 0;
   let armed = false;
+  let engaged = false;
   let sounded = false;
   let primed = false;
   let ctx: AudioContext | null = null;
@@ -172,6 +247,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   let loopTimer: number | null = null;
   let stopTimer: number | null = null;
   let resumeOffset = 0;
+  let bufferUpgradePending = false;
 
   function paint() {
     const sounding = !muted;
@@ -192,7 +268,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   function audible(): boolean {
-    return armed && wantsAudio();
+    return (armed || engaged) && wantsAudio();
   }
 
   function routed(): boolean {
@@ -226,9 +302,18 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     master.gain.linearRampToValueAtTime(value, now + seconds);
   }
 
+  function markEngaged() {
+    engaged = true;
+  }
+
+  function clearEngaged() {
+    engaged = false;
+  }
+
   function notePlayback() {
     if (!outputLive()) return;
     sounded = true;
+    markEngaged();
     paintPlayback();
   }
 
@@ -362,6 +447,11 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     if (elementGain) elementGain.gain.setValueAtTime(1, ctx?.currentTime ?? 0);
     if (!source && !sourceFailed) audio.volume = MASTER_LEVEL;
     else audio.volume = 1;
+    if (!audio.paused && Number.isFinite(audio.currentTime) && audio.currentTime > 0) {
+      markEngaged();
+      notePlayback();
+      return;
+    }
     const generation = ++playGeneration;
     const pending = audio.play();
     if (pending) {
@@ -379,7 +469,10 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     sounded = false;
     paintPlayback();
     const name = error instanceof DOMException ? error.name : "";
-    if (playbackRejection(name).skipTrack) audio?.pause();
+    if (playbackRejection(name).skipTrack) {
+      clearEngaged();
+      audio?.pause();
+    }
   }
 
   function ensureAudioElement(): HTMLAudioElement | null {
@@ -406,6 +499,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     });
     audio.addEventListener("playing", () => {
       performance.mark?.("proto:audio-playing");
+      markEngaged();
       notePlayback();
     });
     audio.addEventListener("canplay", () => {
@@ -488,12 +582,42 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     }
   }
 
-  function upgradeToLoop() {
-    if (!buffer || !audible() || usingBuffer) return;
+  function applyBufferLoopUpgrade(): boolean {
+    if (!buffer || !audible() || usingBuffer || !ctx) return false;
+    if (shouldDeferBufferLoopUpgrade(ctx.state)) {
+      bufferUpgradePending = true;
+      return false;
+    }
+    bufferUpgradePending = false;
     const offset = audio && Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
     startLooped(offset);
-    quietElement();
+    if (shouldQuietMediaForBufferHandoff({ contextState: ctx.state, loopVoiceCount: loopVoices.length })) {
+      quietElement();
+    }
     notePlayback();
+    return true;
+  }
+
+  function upgradeToLoop() {
+    if (!buffer || !audible() || usingBuffer) return;
+    applyBufferLoopUpgrade();
+  }
+
+  function tryAutoplay(): void {
+    if (heldForPrototype) return;
+    const decision = playbackAfterGesture({
+      muted,
+      paused,
+      visible: document.visibilityState === "visible",
+      sounding: outputLive(),
+      engaged,
+    });
+    if (!decision.kick) return;
+    startOutput();
+    if (engaged || outputLive()) {
+      armed = true;
+      paintPlayback();
+    }
   }
 
   function prime() {
@@ -504,6 +628,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     element.preload = "auto";
     element.src = AMBIENCE_TRACK;
     performance.mark?.("proto:audio-prime");
+    queueMicrotask(() => tryAutoplay());
   }
 
   /** Enruta el elemento solo con el contexto en marcha, para no dejar iOS mudo. */
@@ -525,12 +650,17 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   function onContextState(): void {
     if (!ctx || ctx.state === "closed") return;
     if (ctx.state !== "running") {
-      sounded = false;
-      paintPlayback();
+      if (!engaged) {
+        sounded = false;
+        paintPlayback();
+      }
       return;
     }
     // Sin otro play(): un play() fuera del gesto aborta el arranque en iOS.
     connectElement();
+    if (bufferUpgradePending || (buffer && audible() && !usingBuffer)) {
+      applyBufferLoopUpgrade();
+    }
     notePlayback();
   }
 
@@ -561,6 +691,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
 
   function releasePlayback(): void {
     heldForPrototype = true;
+    clearEngaged();
+    bufferUpgradePending = false;
     playGeneration += 1;
     releaseGeneration += 1;
     const generation = releaseGeneration;
@@ -600,6 +732,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
 
   function silence(): void {
     playGeneration += 1;
+    clearEngaged();
+    bufferUpgradePending = false;
     const generation = playGeneration;
     ramp(0, MUSIC_FADE_OUT_S);
     sounded = false;
@@ -614,6 +748,13 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     }, MUSIC_FADE_OUT_S * 1000);
   }
 
+  function maintainOutput(): void {
+    if (!ctx || !master || !audio) return;
+    cancelStop();
+    void ctx.resume().catch(() => {});
+    ramp(MASTER_LEVEL, MUSIC_FADE_IN_S);
+  }
+
   /**
    * resume() y play() en este mismo turno, sin await delante.
    * No se vuelve a llamar a play() cuando el contexto pasa a running.
@@ -626,6 +767,18 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     prime();
     ensureGraph();
     if (!ctx || !master || !audio) return;
+    const mediaPlaying = !audio.paused && !!audio.getAttribute("src");
+    if (
+      shouldShortCircuitStartOutput({
+        engaged,
+        outputLive: outputLive(),
+        bufferLoopActive: usingBuffer && loopVoices.length > 0,
+        mediaPlaying,
+      })
+    ) {
+      maintainOutput();
+      return;
+    }
     cancelStop();
     void ctx.resume().catch(() => {});
     ramp(MASTER_LEVEL, MUSIC_FADE_IN_S);
@@ -634,9 +787,23 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       return;
     }
     if (buffer) {
-      startLooped(resumeOffset);
-      if (!audio.paused) quietElement();
-      notePlayback();
+      if (applyBufferLoopUpgrade()) return;
+      connectElement();
+      if (
+        !audio.paused &&
+        !!audio.getAttribute("src") &&
+        playbackOutputLive({
+          mediaPaused: false,
+          contextState: ctx.state,
+          routed: routed(),
+        })
+      ) {
+        markEngaged();
+        sounded = true;
+        paintPlayback();
+        return;
+      }
+      beginElement();
       return;
     }
     connectElement();
@@ -659,6 +826,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       paused,
       visible: document.visibilityState === "visible",
       sounding: outputLive(),
+      engaged,
     });
     if (!decision.kick) return;
     armed = true;
@@ -676,7 +844,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   function onUserGesture(event: Event): void {
-    if (event.target instanceof Element && event.target.closest("#mute-music")) return;
+    if (!isAudioUnlockEventType(event.type)) return;
+    if (shouldIgnoreAudioUnlockTarget(event.target)) return;
     unlock();
   }
 
@@ -702,6 +871,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   const onClick = () => {
     muted = toggleMusicMuted(storage);
     armed = true;
+    if (muted) clearEngaged();
     paint();
     if (!muted) prime();
     if (wantsAudio()) startOutput();
@@ -710,6 +880,9 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
 
   button.addEventListener("click", onClick);
   const unlockCapture: AddEventListenerOptions = { capture: true };
+  const unlockPassive: AddEventListenerOptions = { capture: true, passive: true };
+  window.addEventListener("pointerdown", onUserGesture, unlockCapture);
+  window.addEventListener("touchstart", onUserGesture, unlockPassive);
   window.addEventListener("pointerup", onUserGesture, unlockCapture);
   window.addEventListener("touchend", onUserGesture, unlockCapture);
   window.addEventListener("click", onUserGesture, unlockCapture);
@@ -730,6 +903,9 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     dispose() {
       button.removeEventListener("click", onClick);
       const capture: AddEventListenerOptions = { capture: true };
+      const passive: AddEventListenerOptions = { capture: true, passive: true };
+      window.removeEventListener("pointerdown", onUserGesture, capture);
+      window.removeEventListener("touchstart", onUserGesture, passive);
       window.removeEventListener("pointerup", onUserGesture, capture);
       window.removeEventListener("touchend", onUserGesture, capture);
       window.removeEventListener("click", onUserGesture, capture);
