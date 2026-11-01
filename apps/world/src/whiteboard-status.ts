@@ -1,4 +1,5 @@
 import { CanvasTexture, LinearFilter, SRGBColorSpace } from "three";
+import { ensureChalkMarkAudio, playChalkMark } from "./chalk-mark-sound";
 import {
   boardNavAction,
   buildBoardUi,
@@ -58,6 +59,7 @@ const PULSE_INTERVAL_MS = 100;
 const HIGHLIGHT_MS = 1400;
 
 export function createWhiteboardStatus(options: WhiteboardStatusOptions): WhiteboardStatusController {
+  ensureChalkMarkAudio();
   const reducedMotion = options.reducedMotion ?? window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const canvas = document.createElement("canvas");
   canvas.width = WHITEBOARD_WIDTH;
@@ -208,7 +210,10 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
       if (!ids.includes(id)) markStart.delete(id);
     }
     for (const id of ids) {
-      if (!markStart.has(id)) markStart.set(id, nowMs);
+      if (!markStart.has(id)) {
+        markStart.set(id, nowMs);
+        playChalkMark(nowMs);
+      }
     }
   }
 

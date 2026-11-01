@@ -1,4 +1,4 @@
-import { CHALK_STROKE, drawChalkSegments, paintWhiteboardFrame, seg, type ChalkSegment } from "./proposals-board-chalk";
+import { CHALK_STROKE, drawChalkSegments, paintWhiteboardFrame, quadSeg, seg, type ChalkSegment } from "./proposals-board-chalk";
 import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH, type BoardRowLayout } from "./proposals-board-metrics";
 import {
   paintBoardHeader,
@@ -88,8 +88,11 @@ const AMBER = "#ffb703";
 
 export type ChalkAppearance = { stroke: number; text: number };
 
-/** Cuánto tarda en trazarse el subrayado al enfocar o al pasar por encima. */
+/** Cuánto tarda en trazarse el círculo de tiza al enfocar o al pasar por encima. */
 export const MARK_DRAW_MS = 340;
+
+/** Porción del círculo que queda en reposo, tenue. */
+const REST_MARK = 0.62;
 
 export function chalkMarkProgress(elapsedMs: number, reduced: boolean): number {
   if (reduced) return 1;
@@ -97,10 +100,76 @@ export function chalkMarkProgress(elapsedMs: number, reduced: boolean): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Subrayado a mano: dos trazos con una panza, no una regla ni un recuadro. */
-export function chalkUnderlineSegments(x: number, y: number, width: number): ChalkSegment[] {
-  const mid = x + width * 0.47;
-  return [seg(x, y, mid, y + 2.4), seg(mid, y + 2.4, x + width, y - 0.8)];
+function ringSeed(x: number, y: number, w: number, h: number): number {
+  const mix = (n: number, k: number) => Math.imul(n ^ k, 0x9e3779b1);
+  let n = 0x811c9dc5;
+  n = mix(n, Math.round(x));
+  n = mix(n, Math.round(y));
+  n = mix(n, Math.round(w));
+  n = mix(n, Math.round(h));
+  return n >>> 0;
+}
+
+function hashUnit(seed: number, salt: number): number {
+  let n = Math.imul(seed ^ Math.imul(salt, 0x9e3779b1), 0x85ebca6b);
+  n = Math.imul(n ^ (n >>> 13), 0xc2b2ae35);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Óvalo de tiza alrededor de una caja de texto.
+ * El radio, la inclinación y el grosor salen de la caja: el mismo elemento no tiembla entre fotogramas.
+ * El trazo da algo más de una vuelta para que el final pase el inicio.
+ */
+export function chalkRingSegments(x: number, y: number, width: number, height: number): ChalkSegment[] {
+  const seed = ringSeed(x, y, width, height);
+  const padX = 7 + hashUnit(seed, 1) * 3;
+  const padY = 4 + hashUnit(seed, 2) * 2.5;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const rx = width / 2 + padX;
+  const ry = Math.max(12, height / 2 + padY);
+  const tiltMag = Math.min(0.07, 5.2 / Math.max(rx, 1));
+  const tilt = (hashUnit(seed, 3) < 0.5 ? -1 : 1) * tiltMag * (0.72 + 0.28 * hashUnit(seed, 4));
+  const overlap = 0.45 + hashUnit(seed, 5) * 0.38;
+  const start = -Math.PI * 0.72 + (hashUnit(seed, 6) - 0.5) * 0.5;
+  const wobbleA = 0.028 + hashUnit(seed, 7) * 0.02;
+  const wobbleB = 0.016 + hashUnit(seed, 8) * 0.014;
+  const phase1 = hashUnit(seed, 9) * Math.PI * 2;
+  const phase2 = hashUnit(seed, 10) * Math.PI * 2;
+  const phaseW = hashUnit(seed, 11) * Math.PI * 2;
+  const steps = 16;
+  const sweep = Math.PI * 2 + overlap;
+  const cosT = Math.cos(tilt);
+  const sinT = Math.sin(tilt);
+
+  const point = (theta: number, salt: number) => {
+    const wobble = 1 + wobbleA * Math.sin(2 * theta + phase1) + wobbleB * Math.sin(3 * theta + phase2);
+    const localX = Math.cos(theta) * rx * wobble;
+    const localY = Math.sin(theta) * ry * wobble;
+    const jitter = (hashUnit(seed, salt) - 0.5) * 1.6;
+    const jx = jitter * Math.cos(theta + 1.1);
+    const jy = jitter * Math.sin(theta + 0.6) * 0.55;
+    return {
+      x: cx + localX * cosT - localY * sinT + jx,
+      y: cy + localX * sinT + localY * cosT + jy,
+    };
+  };
+
+  const segments: ChalkSegment[] = [];
+  for (let i = 0; i < steps; i += 1) {
+    const t0 = start + (i / steps) * sweep;
+    const t1 = start + ((i + 1) / steps) * sweep;
+    const tm = (t0 + t1) / 2;
+    const p0 = point(t0, i * 3 + 1);
+    const mid = point(tm, i * 3 + 2);
+    const p1 = point(t1, i * 3 + 3);
+    const qx = 2 * mid.x - 0.5 * p0.x - 0.5 * p1.x;
+    const qy = 2 * mid.y - 0.5 * p0.y - 0.5 * p1.y;
+    const weight = 0.66 + 0.64 * (0.5 + 0.5 * Math.sin(t0 * 3 + phaseW));
+    segments.push(quadSeg(p0.x, p0.y, qx, qy, p1.x, p1.y, weight));
+  }
+  return segments;
 }
 
 /** Marca › abierta. No cierra un rombo ni una caja. */
@@ -117,21 +186,24 @@ export function strokeIsOpen(segments: readonly ChalkSegment[]): boolean {
   return Math.hypot(last.x2 - first.x1, last.y2 - first.y1) > 6;
 }
 
-export function rowChalkCue(layout: BoardRowLayout, titleWidth: number): { chevron: ChalkSegment[]; underline: ChalkSegment[] } {
+export function rowChalkCue(layout: BoardRowLayout, titleWidth: number): { chevron: ChalkSegment[]; ring: ChalkSegment[] } {
   const width = Math.max(84, Math.min(titleWidth, 300));
+  const textTop = layout.y + 12;
   return {
     chevron: chalkChevronSegments(WHITEBOARD_WIDTH - 58, layout.y + 22, 7),
-    underline: chalkUnderlineSegments(28, layout.y + 40, width),
+    ring: chalkRingSegments(28, textTop, width, 28),
   };
 }
 
 export function detailBackCue(labelWidth: number): ChalkSegment[] {
   const back = detailBackRect();
   const width = Math.max(96, Math.min(labelWidth, 240));
-  return chalkUnderlineSegments(back.x + 36, back.y + back.h / 2 + 24, width);
+  const font = 32;
+  const midY = back.y + back.h / 2;
+  return chalkRingSegments(back.x + 36, midY - font / 2, width, font);
 }
 
-export function detailActionCue(labelWidth: number): { underline: ChalkSegment[]; chevron: ChalkSegment[]; textX: number } {
+export function detailActionCue(labelWidth: number): { ring: ChalkSegment[]; chevron: ChalkSegment[]; textX: number } {
   const action = detailActionRect();
   const midY = action.y + action.h / 2;
   const textW = Math.max(120, Math.min(labelWidth, action.w - 140));
@@ -139,10 +211,12 @@ export function detailActionCue(labelWidth: number): { underline: ChalkSegment[]
   const gap = 16;
   const group = chevronSize + gap + textW;
   const left = action.x + (action.w - group) / 2;
+  const font = 36;
+  const textX = left + chevronSize + gap;
   return {
     chevron: chalkChevronSegments(left, midY, chevronSize),
-    underline: chalkUnderlineSegments(left + chevronSize + gap, midY + 24, textW),
-    textX: left + chevronSize + gap,
+    ring: chalkRingSegments(textX, midY - font / 2, textW, font),
+    textX,
   };
 }
 
@@ -183,7 +257,7 @@ export function paintListAffordances(
     const cue = rowChalkCue(layout, titleWidth);
     const hot = markOf(layout.number);
     paintOpenCue(context, cue.chevron, 1, hot == null ? CUE : AMBER, 2.6);
-    if (hot != null && hot > 0.02) paintOpenCue(context, cue.underline, hot, AMBER, 3.2);
+    if (hot != null && hot > 0.02) paintOpenCue(context, cue.ring, hot, AMBER, 3.2);
   }
   context.restore();
 }
@@ -240,15 +314,10 @@ function layoutsFor(model: BoardPaintModel): BoardRowLayout[] {
   return layouts;
 }
 
-function paintEmphasisUnderline(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  hot: number | null,
-) {
-  const drawn = hot == null ? width * 0.62 : width;
-  paintOpenCue(context, chalkUnderlineSegments(x, y, drawn), hot == null ? 1 : hot, hot == null ? CUE : AMBER, hot == null ? 2.2 : 3.2);
+function paintEmphasisRing(context: CanvasRenderingContext2D, segments: readonly ChalkSegment[], hot: number | null) {
+  const progress = hot == null ? REST_MARK : hot;
+  if (progress <= 0.02) return;
+  paintOpenCue(context, segments, progress, hot == null ? CUE : AMBER, hot == null ? 2.2 : 3.2);
 }
 
 export function paintDetailBoard(
@@ -274,7 +343,7 @@ export function paintDetailBoard(
   const backWidth = context.measureText(backLabel).width;
   context.fillStyle = emphasis.back == null ? CUE : INK_WARM;
   context.fillText(backLabel, back.x + 36, back.y + back.h / 2);
-  paintEmphasisUnderline(context, back.x + 36, back.y + back.h / 2 + 24, Math.min(backWidth, 240), emphasis.back);
+  paintEmphasisRing(context, detailBackCue(backWidth), emphasis.back);
   context.textBaseline = "alphabetic";
   context.fillStyle = INK;
   context.font = "700 40px sans-serif";
@@ -296,10 +365,7 @@ export function paintDetailBoard(
     paintOpenCue(context, cue.chevron, 1, emphasis.action == null ? CUE : AMBER, 2.8);
     context.fillStyle = emphasis.action == null ? CUE : INK_WARM;
     context.fillText(model.actionLabel, cue.textX, midY);
-    const underline = cue.underline[0];
-    if (underline) {
-      paintEmphasisUnderline(context, underline.x1, midY + 24, Math.min(labelWidth, action.w - 140), emphasis.action);
-    }
+    paintEmphasisRing(context, cue.ring, emphasis.action);
   }
   context.restore();
 }
