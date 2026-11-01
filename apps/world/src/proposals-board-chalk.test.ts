@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOARD_SLATE,
+  boardDoodleIds,
+  doodleSegments,
   loadingSkeletonProgress,
+  paintWhiteboardFrame,
   quadSeg,
   revealComplete,
   revealRowProgress,
+  rerollBoardDoodles,
   seg,
   skeletonGrandTotalLength,
+  titleChalkSwash,
+  type BoardDoodleId,
+  type ChalkSegment,
 } from "./proposals-board-chalk";
+import { WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./proposals-board-metrics";
+import { paintWhiteboard } from "./proposals-board-paint";
 
 describe("proposals-board-chalk", () => {
   it("el esqueleto tiene longitud total", () => {
@@ -31,6 +41,68 @@ describe("proposals-board-chalk", () => {
     expect(curve.qy).toBe(24);
   });
 
+  it("los dibujos son cosas concretas y no invaden el contenido", () => {
+    const { context, calls, fillStyle } = recordingContext();
+    const ids: BoardDoodleId[] = ["gatito", "perrito", "pajaro", "caracol", "avion", "pez", "barco"];
+    for (const id of ids) {
+      const parts = doodleSegments(id);
+      expect(parts.length).toBeGreaterThan(4);
+      expect(parts.length).toBeLessThanOrEqual(22);
+      for (const part of parts) {
+        expect(part.len).toBeLessThan(180);
+        const band = doodleBand(id);
+        expect(segmentBand(part)).toBe(band);
+        for (const point of segmentPoints(part)) {
+          if (band === "header") {
+            expect(point.x).toBeGreaterThan(700);
+            expect(point.x).toBeLessThan(920);
+          } else {
+            expect(point.x).toBeGreaterThan(16);
+            expect(point.x).toBeLessThan(260);
+          }
+        }
+      }
+    }
+    rerollBoardDoodles(() => 0);
+    expect(boardDoodleIds()).toEqual(["gatito", "avion"]);
+    paintWhiteboardFrame(context);
+    const slate = calls.find(
+      (call) => call.op === "fillRect" && call.args[2] === WHITEBOARD_WIDTH && call.args[3] === WHITEBOARD_HEIGHT,
+    );
+    expect(slate?.fillStyle).toBe(BOARD_SLATE);
+    expect(fillStyle()).toBe(BOARD_SLATE);
+    expect(calls.filter((call) => call.op === "strokeRect")).toHaveLength(0);
+    expect(calls.filter((call) => call.op === "quadraticCurveTo" || call.op === "lineTo").length).toBeGreaterThan(8);
+  });
+
+  it("el subrayado de Tablón es un gesto corto bajo el título", () => {
+    const swash = titleChalkSwash();
+    expect(swash).toHaveLength(1);
+    const part = swash[0]!;
+    expect(part.qx).toBeTypeOf("number");
+    expect(part.len).toBeGreaterThan(40);
+    expect(part.len).toBeLessThan(160);
+    expect(part.x1).toBeGreaterThanOrEqual(28);
+    expect(part.x2).toBeLessThan(180);
+    const ys = [part.y1, part.y2, part.qy ?? part.y1];
+    expect(Math.min(...ys)).toBeGreaterThan(46);
+    expect(Math.max(...ys)).toBeLessThan(72);
+  });
+
+  it("el carril se pinta con círculos y sin marco", () => {
+    const { context, calls } = recordingContext();
+    paintWhiteboard(context, {
+      rows: [{ number: 1, title: "Uno", phase: "recibida", highlight: 0 }],
+      overflow: 0,
+      partial: false,
+      pulseT: 0.2,
+      reducedMotion: true,
+    });
+    expect(calls.filter((call) => call.op === "arc").length).toBeGreaterThan(0);
+    expect(calls.filter((call) => call.op === "rotate")).toHaveLength(0);
+    expect(calls.filter((call) => call.op === "strokeRect")).toHaveLength(0);
+  });
+
   it("revela filas escalonadas en ~780 ms", () => {
     const start = 1000;
     expect(revealRowProgress(start, start + 20, 0, 2)).toBeLessThan(0.05);
@@ -39,3 +111,53 @@ describe("proposals-board-chalk", () => {
     expect(revealComplete(start, start + 820, 2)).toBe(true);
   });
 });
+
+function segmentPoints(part: ChalkSegment): { x: number; y: number }[] {
+  const points = [
+    { x: part.x1, y: part.y1 },
+    { x: part.x2, y: part.y2 },
+  ];
+  if (part.qx != null && part.qy != null) points.push({ x: part.qx, y: part.qy });
+  return points;
+}
+
+function segmentYs(part: ChalkSegment): number[] {
+  return segmentPoints(part).map((point) => point.y);
+}
+
+function doodleBand(id: BoardDoodleId): "header" | "footer" {
+  return id === "avion" || id === "pez" || id === "barco" ? "footer" : "header";
+}
+
+function segmentBand(part: ChalkSegment): "header" | "footer" | "row" {
+  const ys = segmentYs(part);
+  if (ys.every((y) => y >= 4 && y <= 68)) return "header";
+  if (ys.every((y) => y >= 512 && y <= 536)) return "footer";
+  return "row";
+}
+
+function recordingContext() {
+  const calls: { op: string; args: unknown[]; fillStyle: unknown }[] = [];
+  const state: Record<string, unknown> = { fillStyle: "", globalAlpha: 1 };
+  const context = new Proxy(state, {
+    get(target, prop) {
+      if (prop === "measureText") {
+        return (text: string) => ({ width: String(text).length * 14 });
+      }
+      if (typeof prop !== "string") return undefined;
+      if (prop in target && typeof target[prop] !== "function") return target[prop];
+      return (...args: unknown[]) => {
+        calls.push({ op: prop, args, fillStyle: target.fillStyle });
+      };
+    },
+    set(target, prop, value) {
+      target[prop as string] = value;
+      return true;
+    },
+  });
+  return {
+    context: context as unknown as CanvasRenderingContext2D,
+    calls,
+    fillStyle: () => state.fillStyle,
+  };
+}

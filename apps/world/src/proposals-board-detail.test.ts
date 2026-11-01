@@ -11,6 +11,7 @@ import {
   detailActionRect,
   detailBackCue,
   detailBackRect,
+  detailDivider,
   detailFits,
   detailRegionsDisjoint,
   hitBoard,
@@ -41,6 +42,18 @@ function pointBounds(points: readonly { x: number; y: number }[]) {
 }
 
 describe("zonas de la pizarra", () => {
+  it("el separador del detalle es un arco y no llega a los bordes", () => {
+    const rule = detailDivider();
+    expect(rule.qx).toBeTypeOf("number");
+    expect(rule.x1).toBeGreaterThan(32);
+    expect(rule.x2).toBeLessThan(WHITEBOARD_WIDTH - 32);
+    const midY = 0.25 * rule.y1 + 0.5 * (rule.qy ?? rule.y1) + 0.25 * rule.y2;
+    const chordY = (rule.y1 + rule.y2) / 2;
+    expect(Math.abs(midY - chordY)).toBeGreaterThan(3);
+    expect(midY).toBeGreaterThan(300);
+    expect(midY).toBeLessThan(360);
+  });
+
   it("el detalle cabe en la pizarra y la acción es grande", () => {
     const back = detailBackRect();
     const action = detailActionRect();

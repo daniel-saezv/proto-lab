@@ -1,10 +1,12 @@
 import { trackStepVisuals, type TrackStepVisual } from "./proposals-board-track";
 import {
+  BOARD_SLATE,
+  CHALK_STROKE,
+  drawChalkSegments,
   paintEmptyChalkIcon,
   paintWhiteboardFrame,
   seg,
-  drawChalkSegments,
-  CHALK_STROKE,
+  titleChalkSwash,
   type ChalkSegment,
 } from "./proposals-board-chalk";
 import type { ProposalStatusItem } from "./proposals-status-api";
@@ -26,7 +28,7 @@ export {
 } from "./proposals-board-metrics";
 
 const COLORS = {
-  bg: "#1d3f36",
+  bg: BOARD_SLATE,
   ink: "#f4efe4",
   inkMuted: "rgba(244, 239, 228, 0.55)",
   amber: "#ffb703",
@@ -74,25 +76,25 @@ function truncateText(context: CanvasRenderingContext2D, text: string, maxWidth:
   return `${trimmed}…`;
 }
 
-function drawDiamond(
+function drawChalkDot(
   context: CanvasRenderingContext2D,
   cx: number,
   cy: number,
-  size: number,
-  fill: string,
+  radius: number,
+  fill: string | null,
   stroke?: string,
 ) {
-  context.save();
-  context.translate(cx, cy);
-  context.rotate(Math.PI / 4);
-  context.fillStyle = fill;
-  context.fillRect(-size / 2, -size / 2, size, size);
+  context.beginPath();
+  context.arc(cx, cy, radius, 0, Math.PI * 2);
+  if (fill) {
+    context.fillStyle = fill;
+    context.fill();
+  }
   if (stroke) {
     context.strokeStyle = stroke;
     context.lineWidth = 2;
-    context.strokeRect(-size / 2, -size / 2, size, size);
+    context.stroke();
   }
-  context.restore();
 }
 
 function drawTrack(
@@ -122,39 +124,39 @@ function drawTrack(
       context.lineTo(x + segment * (i + 1) + segment / 2 - dotSize * 0.55, cy);
       context.stroke();
     }
+    const radius = dotSize / 2;
     if (visual === "active" && !reducedMotion) {
       const pulse = 0.55 + Math.sin(pulseT * Math.PI * 2) * 0.35;
       context.globalAlpha = 0.35;
-      drawDiamond(context, cx, cy, dotSize * (1 + pulse * 0.35), "transparent", COLORS.amber);
+      drawChalkDot(context, cx, cy, radius * (1 + pulse * 0.35), null, COLORS.amber);
       context.globalAlpha = 1;
     }
     if (visual === "celebrate" && !reducedMotion) {
-      context.fillStyle = COLORS.amber;
       for (let s = 0; s < 3; s += 1) {
         const angle = pulseT * Math.PI * 2 + s * 2.1;
         const sparkX = cx + Math.cos(angle) * dotSize * 0.9;
         const sparkY = cy + Math.sin(angle) * dotSize * 0.5;
-        drawDiamond(context, sparkX, sparkY, 5, COLORS.amber);
+        drawChalkDot(context, sparkX, sparkY, 2.4, COLORS.amber);
       }
     }
     if (visual === "fail") {
-      drawDiamond(context, cx, cy, dotSize, "rgba(255, 107, 107, 0.35)", COLORS.fail);
+      drawChalkDot(context, cx, cy, radius, "rgba(255, 107, 107, 0.35)", COLORS.fail);
       context.fillStyle = COLORS.fail;
       context.font = `800 ${Math.round(dotSize * 0.75)}px sans-serif`;
       context.textAlign = "center";
       context.textBaseline = "middle";
       context.fillText("!", cx, cy + 1);
     } else if (visual === "filled" || visual === "celebrate") {
-      drawDiamond(context, cx, cy, dotSize, COLORS.amber);
+      drawChalkDot(context, cx, cy, radius, COLORS.amber);
       context.fillStyle = "#1a1203";
       context.font = `800 ${Math.round(dotSize * 0.55)}px sans-serif`;
       context.textAlign = "center";
       context.textBaseline = "middle";
       context.fillText("✓", cx, cy + 1);
     } else if (visual === "active") {
-      drawDiamond(context, cx, cy, dotSize, "rgba(255, 183, 3, 0.25)", COLORS.amber);
+      drawChalkDot(context, cx, cy, radius, "rgba(255, 183, 3, 0.22)", COLORS.amber);
     } else {
-      drawDiamond(context, cx, cy, dotSize, "rgba(20, 24, 43, 0.85)", COLORS.line);
+      drawChalkDot(context, cx, cy, radius, null, "rgba(244, 239, 228, 0.38)");
     }
   }
 }
@@ -212,7 +214,7 @@ export function paintWhiteboardRowTrack(
 ) {
   const marginX = 28;
   const trackWidth = WHITEBOARD_WIDTH - marginX * 2;
-  context.fillStyle = "#1d3f36";
+  context.fillStyle = COLORS.bg;
   context.fillRect(marginX - 8, layout.trackY - 8, trackWidth + 16, layout.trackHeight + 16);
   if (row.highlight > 0) {
     context.fillStyle = COLORS.highlight;
@@ -255,6 +257,7 @@ export function paintBoardHeader(context: CanvasRenderingContext2D, partial: boo
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
   context.fillText("Tablón", 32, 46);
+  drawChalkSegments(context, titleChalkSwash(), 1, CHALK_STROKE, 2.2);
   if (partial) {
     context.fillStyle = COLORS.inkMuted;
     context.font = "600 22px sans-serif";

@@ -2,6 +2,11 @@ import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./propos
 
 export const CHALK_STROKE = "rgba(244, 239, 228, 0.42)";
 export const CHALK_STROKE_DIM = "rgba(244, 239, 228, 0.22)";
+/**
+ * Verde único de la pizarra. El repintado parcial del carril usa el mismo
+ * color: un degradado dejaría un parche plano en cada pulso.
+ */
+export const BOARD_SLATE = "#184438";
 export const SKELETON_ROW_COUNT = 3;
 export const LOADING_LOOP_MS = 2200;
 export const REVEAL_TOTAL_MS = 780;
@@ -242,15 +247,176 @@ export function drawChalkSegments(
   drawStraightChalk(context, segments, progress, stroke, lineWidth);
 }
 
+/** Tiza de los dibujos de margen. Más baja que el texto y distinta del ámbar del énfasis. */
+export const DOODLE_STROKE = "rgba(244, 239, 228, 0.62)";
+
+export type BoardDoodleId = "gatito" | "perrito" | "pajaro" | "caracol" | "avion" | "pez" | "barco";
+
+const HEADER_DOODLES: readonly BoardDoodleId[] = ["gatito", "perrito", "pajaro", "caracol"];
+const FOOTER_DOODLES: readonly BoardDoodleId[] = ["avion", "pez", "barco"];
+
+/** Esquina alta derecha: por debajo del título y a la izquierda del «·». */
+const HEADER_AT = { x: 742, y: 8 };
+/** Pie izquierdo, bajo la última fila y lejos del «+N». */
+const FOOTER_AT = { x: 28, y: 514 };
+
+function shift(parts: readonly ChalkSegment[], dx: number, dy: number): ChalkSegment[] {
+  return parts.map((part) => {
+    const next: ChalkSegment = {
+      x1: part.x1 + dx,
+      y1: part.y1 + dy,
+      x2: part.x2 + dx,
+      y2: part.y2 + dy,
+      len: part.len,
+    };
+    if (part.qx != null && part.qy != null) {
+      next.qx = part.qx + dx;
+      next.qy = part.qy + dy;
+    }
+    return next;
+  });
+}
+
+function oval(cx: number, cy: number, rx: number, ry: number): ChalkSegment[] {
+  return [
+    quadSeg(cx + rx, cy, cx + rx, cy - ry, cx, cy - ry),
+    quadSeg(cx, cy - ry, cx - rx, cy - ry, cx - rx, cy),
+    quadSeg(cx - rx, cy, cx - rx, cy + ry, cx, cy + ry),
+    quadSeg(cx, cy + ry, cx + rx, cy + ry, cx + rx, cy),
+  ];
+}
+
+function doodleLocal(id: BoardDoodleId): ChalkSegment[] {
+  if (id === "gatito") {
+    return [
+      ...oval(46, 24, 16, 14),
+      seg(34, 14, 40, 2),
+      seg(40, 2, 48, 12),
+      seg(48, 12, 56, 2),
+      seg(56, 2, 60, 14),
+      seg(40, 24, 42, 24),
+      seg(52, 24, 54, 24),
+      seg(46, 28, 44, 32),
+      seg(46, 28, 48, 32),
+      seg(30, 28, 14, 26),
+      seg(62, 28, 76, 26),
+      quadSeg(58, 32, 86, 28, 112, 36),
+      quadSeg(60, 38, 88, 48, 108, 40),
+      seg(78, 46, 76, 52),
+      seg(96, 44, 98, 52),
+      quadSeg(112, 34, 136, 16, 118, 8),
+    ];
+  }
+  if (id === "perrito") {
+    return [
+      ...oval(50, 24, 15, 13),
+      quadSeg(38, 16, 18, 22, 28, 40),
+      seg(58, 14, 66, 4),
+      seg(66, 4, 62, 16),
+      seg(44, 24, 46, 24),
+      seg(56, 24, 58, 24),
+      seg(50, 28, 48, 32),
+      seg(50, 32, 52, 38),
+      quadSeg(62, 30, 92, 26, 120, 34),
+      quadSeg(64, 36, 94, 46, 116, 38),
+      seg(82, 44, 80, 52),
+      seg(104, 42, 106, 52),
+      quadSeg(120, 32, 142, 20, 128, 12),
+    ];
+  }
+  if (id === "pajaro") {
+    return [
+      ...oval(48, 30, 22, 12),
+      ...oval(78, 20, 10, 9),
+      seg(86, 18, 104, 16),
+      seg(104, 16, 88, 22),
+      seg(76, 18, 78, 18),
+      quadSeg(40, 26, 28, 8, 58, 22),
+      seg(40, 40, 36, 52),
+      seg(58, 40, 62, 52),
+    ];
+  }
+  if (id === "caracol") {
+    return [
+      ...oval(40, 24, 16, 14),
+      quadSeg(32, 26, 24, 34, 36, 30),
+      quadSeg(52, 34, 86, 42, 118, 32),
+      seg(104, 30, 100, 14),
+      seg(100, 14, 106, 12),
+      seg(112, 30, 118, 12),
+      seg(118, 12, 124, 14),
+    ];
+  }
+  if (id === "avion") {
+    return [
+      quadSeg(8, 12, 90, 8, 168, 12),
+      quadSeg(20, 14, 90, 18, 150, 14),
+      seg(78, 10, 108, 2),
+      seg(108, 2, 118, 12),
+      seg(16, 12, 4, 2),
+      seg(4, 2, 24, 10),
+      seg(150, 12, 156, 12),
+    ];
+  }
+  if (id === "pez") {
+    return [
+      ...oval(78, 12, 36, 9),
+      seg(42, 12, 18, 2),
+      seg(18, 2, 24, 12),
+      seg(24, 12, 18, 20),
+      seg(18, 20, 42, 12),
+      seg(96, 10, 98, 10),
+      seg(70, 6, 86, 2),
+    ];
+  }
+  return [
+    quadSeg(8, 14, 80, 20, 150, 12),
+    seg(8, 14, 150, 12),
+    seg(70, 14, 70, 2),
+    seg(70, 4, 98, 12),
+    seg(98, 12, 70, 14),
+  ];
+}
+
+function doodleAnchor(id: BoardDoodleId): { x: number; y: number } {
+  return HEADER_DOODLES.includes(id) ? HEADER_AT : FOOTER_AT;
+}
+
+export function doodleSegments(id: BoardDoodleId): ChalkSegment[] {
+  const at = doodleAnchor(id);
+  return shift(doodleLocal(id), at.x, at.y);
+}
+
+let shownDoodles: readonly BoardDoodleId[] = ["gatito", "avion"];
+
+function pickOne(ids: readonly BoardDoodleId[], random: () => number): BoardDoodleId {
+  const index = Math.min(ids.length - 1, Math.floor(random() * ids.length));
+  return ids[index]!;
+}
+
+/** Nueva pareja al entrar en la vista. El pie y la cabecera no se pisan. */
+export function rerollBoardDoodles(random: () => number = Math.random): readonly BoardDoodleId[] {
+  shownDoodles = [pickOne(HEADER_DOODLES, random), pickOne(FOOTER_DOODLES, random)];
+  return shownDoodles;
+}
+
+export function boardDoodleIds(): readonly BoardDoodleId[] {
+  return shownDoodles;
+}
+
+export function boardDoodleSegments(): ChalkSegment[] {
+  return shownDoodles.flatMap((id) => doodleSegments(id));
+}
+
+/** Subrayado corto bajo «Tablón». No cruza el ancho: es un gesto, no una regla. */
+export function titleChalkSwash(): ChalkSegment[] {
+  return [quadSeg(36, 64, 96, 56, 154, 66)];
+}
+
 export function paintWhiteboardFrame(context: CanvasRenderingContext2D) {
-  context.fillStyle = "#1d3f36";
+  context.fillStyle = BOARD_SLATE;
   context.fillRect(0, 0, WHITEBOARD_WIDTH, WHITEBOARD_HEIGHT);
-  context.strokeStyle = "rgba(109, 75, 50, 0.85)";
-  context.lineWidth = 10;
-  context.strokeRect(6, 6, WHITEBOARD_WIDTH - 12, WHITEBOARD_HEIGHT - 12);
-  context.strokeStyle = "rgba(244, 239, 228, 0.12)";
-  context.lineWidth = 2;
-  context.strokeRect(14, 14, WHITEBOARD_WIDTH - 28, WHITEBOARD_HEIGHT - 28);
+  drawChalkSegments(context, boardDoodleSegments(), 1, DOODLE_STROKE, 2);
 }
 
 export function paintSkeletonBoard(
@@ -266,6 +432,7 @@ export function paintSkeletonBoard(
   context.textBaseline = "alphabetic";
   if (headerDone || reducedMotion) {
     context.fillText("Tablón", 32, 46);
+    drawChalkSegments(context, titleChalkSwash(), 1, CHALK_STROKE, 2.2);
   } else {
     drawChalkSegments(context, [seg(32, 46, 170, 46)], loadingSkeletonProgress(timeMs, false) * 0.4, CHALK_STROKE, 3);
   }
