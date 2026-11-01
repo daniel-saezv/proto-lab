@@ -84,7 +84,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Reutiliza helpers en `e2e/helpers.ts`, rutas simuladas del `beforeEach` y `/?e2e=1`.
 - Tests con viewport o dispositivo fijo (`Pixel 7`, iPhone, `isMobile` manual) solo en **un** proyecto Playwright (`chromium` o `webkit-iphone`, según corresponda).
 - Tests solo WebKit para comportamiento Safari/iOS (gestos táctiles, desbloqueo de audio, pantalla completa, safe areas).
-- En CI, `playwright.config.ts` usa **1 worker** en Chromium (SwiftShader compite en runners de 2 vCPU) y **2** en webkit-iphone si el job lo lanza con `--project=webkit-iphone`. Chromium además va en **6 shards** (ver CI/CD); webkit no se parte.
+- En CI, `playwright.config.ts` usa **1 worker** en Chromium (SwiftShader compite en runners de 2 vCPU) y **2** en webkit-iphone si el job lo lanza con `--project=webkit-iphone`. Chromium además va en **3 shards** (ver CI/CD); webkit no se parte.
 - Un test que solo pasa en reintento hay que arreglarlo o quitarlo; no subas reintentos ni timeouts para ocultarlo.
 
 ## Buenas prácticas
@@ -108,9 +108,9 @@ Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml), en `pull_reques
 En pull request corren en paralelo:
 
 - **`verificar`**: typecheck, tests unitarios y build (sin e2e).
-- **`Versión Playwright (lockfile)`**: lee la versión de `@playwright/test` del lockfile para etiquetar la imagen Docker de los e2e.
-- **`E2E (chromium 1/6)` … `E2E (chromium 6/6)`**: contenedor `mcr.microsoft.com/playwright:v<versión lockfile>-noble` (navegadores y deps del sistema en la imagen; `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` en `pnpm install`), luego `pnpm build` y `playwright test --project=chromium --shard=n/6`. Un worker por runner: en los runners de 2 vCPU, SwiftShader se satura si el lobby sigue pintando mientras hay otro WebGL. El grupo en serie de recursos privados no se parte; seis shards lo dejan solo en un job.
-- **`E2E (chromium)`**: compuerta que espera a los seis shards. El nombre del check obligatorio no cambia. Su duración en la UI es solo el arranque de la compuerta; el tiempo real es el del shard más lento.
+- **`Versión Playwright (lockfile)`**: lee la versión de `@playwright/test` del lockfile. Los e2e no usan esa salida: el tag de la imagen está escrito en el workflow.
+- **`E2E (chromium 1/3)` … `E2E (chromium 3/3)`**: contenedor `mcr.microsoft.com/playwright:v1.64.1-noble` (tag fijado en el workflow; navegadores y deps del sistema en la imagen; `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` en `pnpm install`), luego `pnpm build` y `playwright test --project=chromium --shard=n/3`. Un worker por runner: en los runners de 2 vCPU, SwiftShader se satura si el lobby sigue pintando mientras hay otro WebGL. El grupo en serie de recursos privados no se parte entre shards. Al subir `@playwright/test`, hay que actualizar el tag: la acción de e2e exige que el CLI del contenedor coincida con el lockfile.
+- **`E2E (chromium)`**: compuerta que espera a los tres shards. El nombre del check obligatorio no cambia. Su duración en la UI es solo el arranque de la compuerta; el tiempo real es el del shard más lento.
 - **`E2E (webkit-iphone)`**: mismo contenedor Playwright que Chromium, un solo job, sin shard.
 
 En **`verificar`** (y en **`Typecheck y unitarios (main)`** en push a `main`), `assert-playwright-docker-image.sh` comprueba con `docker manifest inspect` que exista la imagen `-noble` de esa versión antes de mergear un bump de Playwright sin tag publicado.
