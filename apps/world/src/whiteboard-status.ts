@@ -14,6 +14,7 @@ import {
   paintRetryChalk,
   paintSkeletonBoard,
   paintWhiteboardFrame,
+  rerollBoardDoodles,
   revealComplete,
   revealRowProgress,
 } from "./proposals-board-chalk";
@@ -609,7 +610,9 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     },
     setInteractive(on: boolean) {
       if (!on) resetMarks();
+      const entering = on && !session.interactive;
       const changed = session.setInteractive(on, rowNumbers());
+      if (entering) rerollBoardDoodles();
       if (!changed) return;
       if (phase === "live" || phase === "empty") repaint(performance.now());
       publishUi();

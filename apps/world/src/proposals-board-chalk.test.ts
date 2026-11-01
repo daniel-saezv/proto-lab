@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   BOARD_SLATE,
-  boardChalkDust,
-  chalkFlaskMark,
+  boardDoodleIds,
+  doodleSegments,
   loadingSkeletonProgress,
   paintWhiteboardFrame,
   quadSeg,
   revealComplete,
   revealRowProgress,
+  rerollBoardDoodles,
   seg,
   skeletonGrandTotalLength,
   titleChalkSwash,
+  type BoardDoodleId,
   type ChalkSegment,
 } from "./proposals-board-chalk";
 import { WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./proposals-board-metrics";
@@ -39,8 +41,30 @@ describe("proposals-board-chalk", () => {
     expect(curve.qy).toBe(24);
   });
 
-  it("la pizarra no cierra un marco y el polvo queda en los márgenes", () => {
+  it("los dibujos son cosas concretas y no invaden el contenido", () => {
     const { context, calls, fillStyle } = recordingContext();
+    const ids: BoardDoodleId[] = ["gatito", "perrito", "pajaro", "caracol", "avion", "pez", "barco"];
+    for (const id of ids) {
+      const parts = doodleSegments(id);
+      expect(parts.length).toBeGreaterThan(4);
+      expect(parts.length).toBeLessThanOrEqual(22);
+      for (const part of parts) {
+        expect(part.len).toBeLessThan(180);
+        const band = doodleBand(id);
+        expect(segmentBand(part)).toBe(band);
+        for (const point of segmentPoints(part)) {
+          if (band === "header") {
+            expect(point.x).toBeGreaterThan(700);
+            expect(point.x).toBeLessThan(920);
+          } else {
+            expect(point.x).toBeGreaterThan(16);
+            expect(point.x).toBeLessThan(260);
+          }
+        }
+      }
+    }
+    rerollBoardDoodles(() => 0);
+    expect(boardDoodleIds()).toEqual(["gatito", "avion"]);
     paintWhiteboardFrame(context);
     const slate = calls.find(
       (call) => call.op === "fillRect" && call.args[2] === WHITEBOARD_WIDTH && call.args[3] === WHITEBOARD_HEIGHT,
@@ -48,17 +72,7 @@ describe("proposals-board-chalk", () => {
     expect(slate?.fillStyle).toBe(BOARD_SLATE);
     expect(fillStyle()).toBe(BOARD_SLATE);
     expect(calls.filter((call) => call.op === "strokeRect")).toHaveLength(0);
-
-    const dust = [...boardChalkDust(), ...chalkFlaskMark()];
-    expect(dust.length).toBeGreaterThan(0);
-    expect(dust.length).toBeLessThanOrEqual(24);
-    for (const part of dust) {
-      expect(part.len).toBeLessThan(80);
-      const band = segmentBand(part);
-      expect(band === "header" || band === "footer").toBe(true);
-    }
-    expect(dust.some((part) => segmentBand(part) === "header")).toBe(true);
-    expect(dust.some((part) => segmentBand(part) === "footer")).toBe(true);
+    expect(calls.filter((call) => call.op === "quadraticCurveTo" || call.op === "lineTo").length).toBeGreaterThan(8);
   });
 
   it("el subrayado de Tablón es un gesto corto bajo el título", () => {
@@ -98,14 +112,27 @@ describe("proposals-board-chalk", () => {
   });
 });
 
+function segmentPoints(part: ChalkSegment): { x: number; y: number }[] {
+  const points = [
+    { x: part.x1, y: part.y1 },
+    { x: part.x2, y: part.y2 },
+  ];
+  if (part.qx != null && part.qy != null) points.push({ x: part.qx, y: part.qy });
+  return points;
+}
+
 function segmentYs(part: ChalkSegment): number[] {
-  return [part.y1, part.y2, ...(part.qy == null ? [] : [part.qy])];
+  return segmentPoints(part).map((point) => point.y);
+}
+
+function doodleBand(id: BoardDoodleId): "header" | "footer" {
+  return id === "avion" || id === "pez" || id === "barco" ? "footer" : "header";
 }
 
 function segmentBand(part: ChalkSegment): "header" | "footer" | "row" {
   const ys = segmentYs(part);
-  if (ys.every((y) => y < 40)) return "header";
-  if (ys.every((y) => y >= 508)) return "footer";
+  if (ys.every((y) => y >= 4 && y <= 68)) return "header";
+  if (ys.every((y) => y >= 512 && y <= 536)) return "footer";
   return "row";
 }
 

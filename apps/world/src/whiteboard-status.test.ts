@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { boardDoodleIds } from "./proposals-board-chalk";
 import { BOARD_MOTION_MS } from "./proposals-board-session";
 import type { ProposalStatusItem } from "./proposals-status-api";
 
@@ -239,6 +240,38 @@ describe("trazos de énfasis al cambiar de pantalla", () => {
     expect(againBorn?.back).toBe(0);
     expect(againBorn?.actionDraw).toBe(0);
     expect(againBorn?.actionDraw).not.toBe(1);
+
+    board.dispose();
+  });
+
+  it("al salir de la vista la escena conserva los dibujos de esa vista", () => {
+    installCanvas();
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    const board = createWhiteboardStatus({
+      reducedMotion: true,
+      knownSlugs: ["chispa"],
+    });
+    board.setItems(items, false);
+    expect(board.getPhase()).toBe("live");
+    expect(board.getUi().interactive).toBe(false);
+
+    board.setInteractive(true);
+    const inView = boardDoodleIds().join("+");
+    expect(inView).toBe("gatito+avion");
+    expect(board.getUi().interactive).toBe(true);
+
+    board.selectRow(8);
+    expect(board.getUi().screen).toBe("detail");
+    expect(boardDoodleIds().join("+")).toBe(inView);
+
+    board.setInteractive(false);
+    expect(board.getUi().interactive).toBe(false);
+    expect(board.getUi().screen).toBe("list");
+    expect(boardDoodleIds().join("+")).toBe(inView);
+
+    random.mockReturnValue(0.99);
+    board.setInteractive(true);
+    expect(boardDoodleIds().join("+")).toBe("caracol+barco");
 
     board.dispose();
   });
