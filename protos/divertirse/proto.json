@@ -1,0 +1,18 @@
+{
+  "slug": "divertirse",
+  "title": "Permite divertirse",
+  "description": "Gamu se quiere ir a casa a dormir. Toca a los amigos que brillan para retenerlo en la pista y pasa el relevo antes de que se les acabe el ánimo.",
+  "author": "daniel-saezv",
+  "date": "2026-11-01",
+  "tags": ["fiesta", "3d", "movil"],
+  "cover": null,
+  "preview": "preview.webp",
+  "version": "0.1.0",
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-01",
+      "note": "Primera versión: fiesta 3D en la que retienes a Gamu con relevos de ánimo antes de que cruce la puerta."
+    }
+  ]
+}

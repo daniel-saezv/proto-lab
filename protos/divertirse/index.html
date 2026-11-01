@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#140c18" />
+    <title>Permite divertirse</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        height: 100dvh;
+        background: #140c18;
+        color: #fff6ea;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        min-height: 100dvh;
+        box-sizing: border-box;
+      }
+      #hud {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 2px 12px;
+        align-items: baseline;
+        padding: calc(8px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 6px calc(12px + env(safe-area-inset-left));
+      }
+      #hud p { margin: 0; }
+      #game-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+      }
+      #clock, #score { font-variant-numeric: tabular-nums; font-weight: 700; }
+      #clock { color: #d7c6ff; }
+      #score { color: #ffd23f; }
+      #sleep-row {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        align-items: center;
+        font-size: 0.85rem;
+        font-weight: 700;
+      }
+      #sleep {
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+      }
+      #sleep span {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #7aa2ff, #c084fc 55%, #ff5d8f);
+        transform-origin: left center;
+      }
+      #status {
+        grid-column: 1 / -1;
+        min-height: 1.35em;
+        margin: 0;
+        font-weight: 700;
+        color: #ffe3a3;
+      }
+      #stage { flex: 1; min-height: 0; position: relative; touch-action: none; outline: none; }
+      #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+      #roster {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        padding: 8px calc(12px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+      }
+      .friend {
+        position: relative;
+        min-height: 64px;
+        padding: 8px 8px 14px;
+        border: 0;
+        border-radius: 16px;
+        color: #1a1020;
+        font: inherit;
+        font-weight: 800;
+        line-height: 1.15;
+        text-align: left;
+        touch-action: manipulation;
+        box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.12);
+      }
+      .friend small { display: block; font-weight: 700; opacity: 0.8; }
+      .friend .meter {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.18);
+        overflow: hidden;
+      }
+      .friend .meter span {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: rgba(20, 12, 24, 0.72);
+      }
+      .friend.is-ready { transform: translateY(-1px); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55), inset 0 -8px 0 rgba(0, 0, 0, 0.12); }
+      .friend.is-hold { box-shadow: 0 0 0 3px #fff6ea; }
+      .friend.is-dim { filter: saturate(0.7) brightness(0.9); }
+      .veil {
+        position: fixed;
+        inset: 0;
+        z-index: 4;
+        display: grid;
+        place-items: center;
+        align-content: center;
+        gap: 14px;
+        padding: calc(18px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
+        background: rgba(12, 8, 18, 0.72);
+        text-align: center;
+        touch-action: manipulation;
+      }
+      .veil[hidden] { display: none; }
+      .veil h2, .veil p { margin: 0; max-width: 36rem; }
+      .veil h2 { font-size: clamp(1.6rem, 5vw, 2.3rem); }
+      .veil p { font-size: 1.05rem; line-height: 1.4; }
+      .veil button, #webgl-error button {
+        font: inherit;
+        font-size: 1.15rem;
+        font-weight: 800;
+        min-height: 56px;
+        padding: 12px 22px;
+        border: 0;
+        border-radius: 999px;
+        background: #ffb703;
+        color: #1a1203;
+        touch-action: manipulation;
+      }
+      #webgl-error {
+        margin: 24px;
+        font-size: 1.2rem;
+        font-weight: 700;
+      }
+      #webgl-error[hidden] { display: none; }
+      @media (max-width: 420px) {
+        #game-title { font-size: 1rem; }
+        .friend { min-height: 58px; font-size: 0.92rem; }
+      }
+      @media (max-height: 520px) {
+        #hud { padding-top: calc(4px + env(safe-area-inset-top)); }
+        .friend { min-height: 48px; padding-top: 6px; }
+        .veil { gap: 8px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .friend.is-ready { transform: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <header id="hud">
+      <p id="game-title" data-testid="game-title">Permite divertirse</p>
+      <p id="clock" data-testid="clock">0:00</p>
+      <p id="score" data-testid="score">0</p>
+      <div id="sleep-row">
+        <span>Sueño</span>
+        <div id="sleep" data-testid="sleep" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Sueño de Gamu"><span></span></div>
+      </div>
+      <p id="status" data-testid="status" aria-live="polite">Toca a un amigo que brille para sujetar a Gamu.</p>
+    </header>
+    <main id="stage" tabindex="0" aria-label="Pista de la fiesta"></main>
+    <div id="roster" data-testid="roster" role="group" aria-label="Amigos"></div>
+    <p id="webgl-error" data-testid="webgl-error" hidden>Hace falta WebGL para esta fiesta.</p>
+    <div id="intro" class="veil" data-testid="intro">
+      <h2>Que no se vaya a dormir</h2>
+      <p>Todo el mundo baila, pero Gamu quiere cruzar la puerta e irse a casa. Toca a un amigo que brille para que lo retenga.</p>
+      <p>Pasa el relevo antes de que se le acabe el ánimo. Mira es rápida, Teo aguanta, Nia va en medio. Un bostezo lo lanza hacia la puerta.</p>
+      <button type="button" id="start" data-testid="start-party">Que siga la fiesta</button>
+    </div>
+    <div id="again" class="veil" data-testid="game-over" hidden>
+      <h2>Gamu se fue a dormir</h2>
+      <p id="over-score" data-testid="over-score"></p>
+      <button type="button" id="retry" data-testid="retry">Otra noche</button>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

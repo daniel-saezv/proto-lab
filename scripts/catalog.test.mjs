@@ -10,10 +10,14 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 describe("catálogo", () => {
   it("lee el prototipo de ejemplo", () => {
     const entries = readCatalog(root);
-    expect(entries.map((entry) => entry.slug)).toEqual(["asset-lab", "chispa"]);
+    expect(entries.map((entry) => entry.slug)).toEqual(["asset-lab", "chispa", "divertirse"]);
     const chispa = entries.find((entry) => entry.slug === "chispa");
     expect(chispa?.href).toBe("/protos/chispa/");
     expect(chispa?.history?.length).toBeGreaterThan(0);
+    const divertirse = entries.find((entry) => entry.slug === "divertirse");
+    expect(divertirse?.href).toBe("/protos/divertirse/");
+    expect(divertirse?.title).toBe("Permite divertirse");
+    expect(divertirse?.hidden).toBe(false);
   });
 });
 
