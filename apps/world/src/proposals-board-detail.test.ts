@@ -5,6 +5,7 @@ import {
   actionLabelOrigin,
   chalkMarkProgress,
   combineActionMark,
+  handStroke,
   detailActionCue,
   detailActionRect,
   detailBackCue,
@@ -74,6 +75,22 @@ describe("zonas de la pizarra", () => {
     expect(chalkMarkProgress(MARK_DRAW_MS / 2, false)).toBeGreaterThan(0);
     expect(chalkMarkProgress(MARK_DRAW_MS / 2, false)).toBeLessThan(1);
     expect(chalkMarkProgress(MARK_DRAW_MS, false)).toBe(1);
+    expect(handStroke(0)).toBe(0);
+    expect(handStroke(1)).toBe(1);
+    let drawn = 0;
+    for (let step = 1; step <= 8; step += 1) {
+      const next = handStroke(step / 8);
+      expect(next).toBeGreaterThan(drawn);
+      drawn = next;
+    }
+    const slope = (from: number, to: number) => (handStroke(to) - handStroke(from)) / (to - from);
+    const press = slope(0, 0.12);
+    const flick = slope(0.28, 0.4);
+    const hesitate = slope(0.48, 0.6);
+    const brake = slope(0.9, 1);
+    expect(flick).toBeGreaterThan(press * 1.3);
+    expect(flick).toBeGreaterThan(hesitate * 1.12);
+    expect(brake).toBeLessThan(flick * 0.75);
 
     const layout = computeRowLayouts(1)[0]!;
     layout.number = 7;
@@ -289,6 +306,8 @@ function expectIrregularChalkCircle(
 
   const weights = segments.map((part) => part.weight ?? 1);
   expect(Math.max(...weights) - Math.min(...weights)).toBeGreaterThan(0.25);
+  const paces = segments.map((part) => part.pace ?? 1);
+  expect(Math.max(...paces) - Math.min(...paces)).toBeGreaterThan(0.12);
 
   const first = points[0]!;
   const last = points[points.length - 1]!;

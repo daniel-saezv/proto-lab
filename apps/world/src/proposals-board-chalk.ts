@@ -18,6 +18,11 @@ export type ChalkSegment = {
   qy?: number;
   /** Grosor relativo al lineWidth del trazo. 1 si falta. */
   weight?: number;
+  /**
+   * Tiempo relativo del tramo. 1 si falta: se avanza con la longitud.
+   * Por encima de 1 la mano frena; por debajo, acelera.
+   */
+  pace?: number;
 };
 
 export function seg(x1: number, y1: number, x2: number, y2: number): ChalkSegment {
@@ -167,7 +172,20 @@ function drawStraightChalk(
   context.stroke();
 }
 
-/** Curvas y grosor por tramo. Cada pieza se pinta sola para que el espesor pueda variar. */
+/** Tiempo que cuesta pintar el tramo. El ritmo de la mano no sigue solo la longitud. */
+function segmentCost(part: ChalkSegment): number {
+  const pace = part.pace ?? 1;
+  return part.len * (pace > 0 ? pace : 1);
+}
+
+/** Presión de tiza: el tramo más cargado es más opaco, sin apagar el trazo. */
+function pressureAlpha(weight: number | undefined): number {
+  if (weight == null) return 1;
+  const grip = Math.min(1, Math.max(0, (weight - 0.55) / 0.7));
+  return 0.84 + 0.16 * grip;
+}
+
+/** Curvas, grosor y opacidad por tramo. Cada pieza se pinta sola. */
 function drawVariedChalk(
   context: CanvasRenderingContext2D,
   segments: readonly ChalkSegment[],
@@ -176,17 +194,20 @@ function drawVariedChalk(
   lineWidth: number,
 ) {
   let total = 0;
-  for (const part of segments) total += part.len;
+  for (const part of segments) total += segmentCost(part);
   let budget = progress * total;
+  const previousAlpha = context.globalAlpha;
   context.strokeStyle = stroke;
   context.lineCap = "round";
   context.lineJoin = "round";
   for (const part of segments) {
     if (budget <= 0) break;
-    const take = Math.min(budget, part.len);
-    const t = part.len > 0 ? take / part.len : 1;
+    const cost = segmentCost(part);
+    const take = Math.min(budget, cost);
+    const t = cost > 0 ? take / cost : 1;
     context.beginPath();
     context.lineWidth = lineWidth * (part.weight ?? 1);
+    context.globalAlpha = previousAlpha * pressureAlpha(part.weight);
     context.moveTo(part.x1, part.y1);
     if (part.qx != null && part.qy != null) {
       if (t >= 0.999) context.quadraticCurveTo(part.qx, part.qy, part.x2, part.y2);
@@ -202,6 +223,7 @@ function drawVariedChalk(
     context.stroke();
     budget -= take;
   }
+  context.globalAlpha = previousAlpha;
 }
 
 export function drawChalkSegments(

@@ -111,10 +111,36 @@ export const MARK_DRAW_MS = 340;
 /** Porción del círculo que queda en reposo, tenue. */
 const REST_MARK = 0.62;
 
+/**
+ * Velocidad de la mano a lo largo de los 340 ms: apoya despacio, acelera,
+ * frena un momento al girar la muñeca y suelta. Siempre positiva.
+ */
+const HAND_SPEEDS = [0.62, 0.84, 1.12, 1.28, 0.9, 1.02, 1.18, 0.86, 0.58];
+
+const HAND_CUMULATIVE = (() => {
+  const cum = [0];
+  const steps = HAND_SPEEDS.length - 1;
+  for (let i = 0; i < steps; i += 1) {
+    const dt = 1 / steps;
+    cum.push(cum[i]! + ((HAND_SPEEDS[i]! + HAND_SPEEDS[i + 1]!) / 2) * dt);
+  }
+  return cum;
+})();
+
+/** 0 al apoyar, 1 al cerrar. No es lineal: la mano no lleva velocidad constante. */
+export function handStroke(t: number): number {
+  const steps = HAND_SPEEDS.length - 1;
+  const u = Math.min(1, Math.max(0, t)) * steps;
+  const i = Math.min(steps - 1, Math.floor(u));
+  const span = HAND_CUMULATIVE[i + 1]! - HAND_CUMULATIVE[i]!;
+  const along = HAND_CUMULATIVE[i]! + span * (u - i);
+  return along / HAND_CUMULATIVE[steps]!;
+}
+
 export function chalkMarkProgress(elapsedMs: number, reduced: boolean): number {
   if (reduced) return 1;
   const t = Math.min(1, Math.max(0, elapsedMs / MARK_DRAW_MS));
-  return t * t * (3 - 2 * t);
+  return handStroke(t);
 }
 
 function ringSeed(x: number, y: number, w: number, h: number): number {
@@ -223,11 +249,17 @@ export function chalkRingSegments(x: number, y: number, width: number, height: n
   const tilt = (hashUnit(seed, 3) < 0.5 ? -1 : 1) * tiltMag * (0.72 + 0.28 * hashUnit(seed, 4));
   const overlap = 0.45 + hashUnit(seed, 5) * 0.38;
   const start = -Math.PI * 0.72 + (hashUnit(seed, 6) - 0.5) * 0.5;
-  const wobbleAmp = 0.85 + hashUnit(seed, 7) * 0.45;
-  const wobbleFine = 0.35 + hashUnit(seed, 8) * 0.2;
+  const wobbleAmp = 1.45 + hashUnit(seed, 7) * 0.7;
+  const wobbleFine = 0.6 + hashUnit(seed, 8) * 0.35;
+  const wobbleGrain = 0.32 + hashUnit(seed, 12) * 0.22;
+  const lump = 1.05 + hashUnit(seed, 13) * 0.75;
   const phase1 = hashUnit(seed, 9) * Math.PI * 2;
   const phase2 = hashUnit(seed, 10) * Math.PI * 2;
+  const phase3 = hashUnit(seed, 15) * Math.PI * 2;
+  const phase4 = hashUnit(seed, 16) * Math.PI * 2;
   const phaseW = hashUnit(seed, 11) * Math.PI * 2;
+  const phaseW2 = hashUnit(seed, 14) * Math.PI * 2;
+  const phaseP = hashUnit(seed, 17) * Math.PI * 2;
   const steps = 16;
   const sweep = Math.PI * 2 + overlap;
   const cosT = Math.cos(tilt);
@@ -239,9 +271,16 @@ export function chalkRingSegments(x: number, y: number, width: number, height: n
     let localX = Math.sign(ct) * Math.pow(Math.abs(ct), power) * rx;
     let localY = Math.sign(st) * Math.pow(Math.abs(st), power) * ry;
     const span = Math.hypot(localX, localY) || 1;
-    const radial = Math.sin(2 * theta + phase1) * wobbleAmp + Math.sin(3 * theta + phase2) * wobbleFine;
-    const jitter = (hashUnit(seed, salt) - 0.5) * 0.6;
-    const scale = (span + radial + jitter) / span;
+    const raw =
+      Math.sin(2 * theta + phase1) * wobbleAmp +
+      Math.sin(3 * theta + phase2) * wobbleFine +
+      Math.sin(5 * theta + phase3) * wobbleGrain +
+      Math.sin(theta + phase4) * lump +
+      (hashUnit(seed, salt) - 0.5) * 0.9;
+    // Hacia dentro se aplasta: el óvalo puede ser más irregular sin cruzar la tinta.
+    const inwardLimit = -1.15;
+    const radial = raw < inwardLimit ? inwardLimit + (raw - inwardLimit) * 0.15 : raw;
+    const scale = (span + radial) / span;
     localX *= scale;
     localY *= scale;
     return {
@@ -260,8 +299,12 @@ export function chalkRingSegments(x: number, y: number, width: number, height: n
     const p1 = point(t1, i * 3 + 3);
     const qx = 2 * mid.x - 0.5 * p0.x - 0.5 * p1.x;
     const qy = 2 * mid.y - 0.5 * p0.y - 0.5 * p1.y;
-    const weight = 0.66 + 0.64 * (0.5 + 0.5 * Math.sin(t0 * 3 + phaseW));
-    segments.push(quadSeg(p0.x, p0.y, qx, qy, p1.x, p1.y, weight));
+    const wave = 0.5 + 0.5 * Math.sin(t0 * 3 + phaseW);
+    const weight = Math.min(1.28, Math.max(0.55, 0.58 + 0.5 * wave + 0.12 * Math.sin(t0 * 5 + phaseW2)));
+    const pace = 0.86 + 0.24 * (0.5 + 0.5 * Math.sin(t0 * 2.5 + phaseP));
+    const part = quadSeg(p0.x, p0.y, qx, qy, p1.x, p1.y, weight);
+    part.pace = pace;
+    segments.push(part);
   }
   return segments;
 }
