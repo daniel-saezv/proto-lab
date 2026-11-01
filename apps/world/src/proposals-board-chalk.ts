@@ -2,6 +2,11 @@ import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./propos
 
 export const CHALK_STROKE = "rgba(244, 239, 228, 0.42)";
 export const CHALK_STROKE_DIM = "rgba(244, 239, 228, 0.22)";
+/**
+ * Verde único de la pizarra. El repintado parcial del carril usa el mismo
+ * color: un degradado dejaría un parche plano en cada pulso.
+ */
+export const BOARD_SLATE = "#184438";
 export const SKELETON_ROW_COUNT = 3;
 export const LOADING_LOOP_MS = 2200;
 export const REVEAL_TOTAL_MS = 780;
@@ -242,15 +247,42 @@ export function drawChalkSegments(
   drawStraightChalk(context, segments, progress, stroke, lineWidth);
 }
 
+/** Polvo suelto en el margen superior o en el pie. Fuera de las filas, para que el pulso del carril no lo borre. */
+export function boardChalkDust(): ChalkSegment[] {
+  return [
+    seg(748, 16, 770, 12),
+    seg(804, 24, 826, 18),
+    quadSeg(852, 14, 866, 22, 880, 15),
+    seg(902, 22, 922, 16),
+    seg(132, 522, 158, 518),
+    quadSeg(196, 528, 214, 520, 234, 526),
+    seg(268, 518, 292, 524),
+    seg(612, 524, 638, 518),
+    seg(676, 530, 698, 524),
+  ];
+}
+
+/** Marca de taller: una tiza gastada en el pie izquierdo, lejos del «+N». */
+export function chalkFlaskMark(): ChalkSegment[] {
+  return [
+    quadSeg(36, 520, 62, 514, 88, 518),
+    quadSeg(36, 527, 62, 522, 86, 524),
+    seg(36, 520, 36, 527),
+    seg(88, 518, 94, 521),
+    seg(86, 524, 94, 521),
+  ];
+}
+
+/** Subrayado corto bajo «Tablón». No cruza el ancho: es un gesto, no una regla. */
+export function titleChalkSwash(): ChalkSegment[] {
+  return [quadSeg(36, 64, 96, 56, 154, 66)];
+}
+
 export function paintWhiteboardFrame(context: CanvasRenderingContext2D) {
-  context.fillStyle = "#1d3f36";
+  context.fillStyle = BOARD_SLATE;
   context.fillRect(0, 0, WHITEBOARD_WIDTH, WHITEBOARD_HEIGHT);
-  context.strokeStyle = "rgba(109, 75, 50, 0.85)";
-  context.lineWidth = 10;
-  context.strokeRect(6, 6, WHITEBOARD_WIDTH - 12, WHITEBOARD_HEIGHT - 12);
-  context.strokeStyle = "rgba(244, 239, 228, 0.12)";
-  context.lineWidth = 2;
-  context.strokeRect(14, 14, WHITEBOARD_WIDTH - 28, WHITEBOARD_HEIGHT - 28);
+  drawChalkSegments(context, boardChalkDust(), 1, CHALK_STROKE_DIM, 1.6);
+  drawChalkSegments(context, chalkFlaskMark(), 1, CHALK_STROKE, 2);
 }
 
 export function paintSkeletonBoard(
@@ -266,6 +298,7 @@ export function paintSkeletonBoard(
   context.textBaseline = "alphabetic";
   if (headerDone || reducedMotion) {
     context.fillText("Tablón", 32, 46);
+    drawChalkSegments(context, titleChalkSwash(), 1, CHALK_STROKE, 2.2);
   } else {
     drawChalkSegments(context, [seg(32, 46, 170, 46)], loadingSkeletonProgress(timeMs, false) * 0.4, CHALK_STROKE, 3);
   }

@@ -1,5 +1,5 @@
 import { drawChalkMark, type ChalkMarkId } from "./chalk-marks";
-import { CHALK_STROKE, drawChalkSegments, paintWhiteboardFrame, seg, type ChalkSegment } from "./proposals-board-chalk";
+import { CHALK_STROKE, drawChalkSegments, paintWhiteboardFrame, quadSeg, seg, type ChalkSegment } from "./proposals-board-chalk";
 import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH, type BoardRowLayout } from "./proposals-board-metrics";
 import {
   paintBoardHeader,
@@ -10,6 +10,11 @@ import {
 } from "./proposals-board-paint";
 
 export type BoardRect = { x: number; y: number; w: number; h: number };
+
+/** Separador entre la fase y la acción. Un arco, no una regla de lado a lado. */
+export function detailDivider(): ChalkSegment {
+  return quadSeg(48, 334, WHITEBOARD_WIDTH / 2, 324, WHITEBOARD_WIDTH - 48, 336);
+}
 
 /** Zona de «volver a la lista». Alta a propósito para el dedo en vertical. */
 export function detailBackRect(): BoardRect {
@@ -369,7 +374,7 @@ export function paintDetailBoard(
   const back = detailBackRect();
   const action = model.actionLabel ? detailActionRect() : null;
   if (appearance.stroke > 0.02) {
-    drawChalkSegments(context, [seg(36, 332, WHITEBOARD_WIDTH - 36, 332)], appearance.stroke, CHALK_STROKE, 2);
+    drawChalkSegments(context, [detailDivider()], appearance.stroke, CHALK_STROKE, 2);
   }
   const titleY = 188;
   if (appearance.text <= 0.02) return;
