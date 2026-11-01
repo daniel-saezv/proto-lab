@@ -118,6 +118,19 @@ export function shouldShortCircuitStartOutput(input: {
   return input.mediaPlaying;
 }
 
+/** El decode del bucle ocurre fuera del gesto; en iOS el contexto suele estar suspended. */
+export function shouldDeferBufferLoopUpgrade(contextState: string | undefined): boolean {
+  return contextState !== "running";
+}
+
+/** No pausar el elemento media hasta que el bucle WebAudio esté programado y el contexto corra. */
+export function shouldQuietMediaForBufferHandoff(input: {
+  contextState: string;
+  loopVoiceCount: number;
+}): boolean {
+  return input.contextState === "running" && input.loopVoiceCount > 0;
+}
+
 export function playbackRejection(name: string): { retryOnNextGesture: boolean; skipTrack: boolean } {
   if (name === "NotAllowedError") return { retryOnNextGesture: true, skipTrack: false };
   if (name === "AbortError") return { retryOnNextGesture: false, skipTrack: false };
@@ -226,6 +239,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   let loopTimer: number | null = null;
   let stopTimer: number | null = null;
   let resumeOffset = 0;
+  let bufferUpgradePending = false;
 
   function paint() {
     const sounding = !muted;
@@ -425,6 +439,11 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     if (elementGain) elementGain.gain.setValueAtTime(1, ctx?.currentTime ?? 0);
     if (!source && !sourceFailed) audio.volume = MASTER_LEVEL;
     else audio.volume = 1;
+    if (!audio.paused && Number.isFinite(audio.currentTime) && audio.currentTime > 0) {
+      markEngaged();
+      notePlayback();
+      return;
+    }
     const generation = ++playGeneration;
     const pending = audio.play();
     if (pending) {
@@ -555,12 +574,25 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     }
   }
 
-  function upgradeToLoop() {
-    if (!buffer || !audible() || usingBuffer) return;
+  function applyBufferLoopUpgrade(): boolean {
+    if (!buffer || !audible() || usingBuffer || !ctx) return false;
+    if (shouldDeferBufferLoopUpgrade(ctx.state)) {
+      bufferUpgradePending = true;
+      return false;
+    }
+    bufferUpgradePending = false;
     const offset = audio && Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
     startLooped(offset);
-    quietElement();
+    if (shouldQuietMediaForBufferHandoff({ contextState: ctx.state, loopVoiceCount: loopVoices.length })) {
+      quietElement();
+    }
     notePlayback();
+    return true;
+  }
+
+  function upgradeToLoop() {
+    if (!buffer || !audible() || usingBuffer) return;
+    applyBufferLoopUpgrade();
   }
 
   function tryAutoplay(): void {
@@ -615,6 +647,9 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     }
     // Sin otro play(): un play() fuera del gesto aborta el arranque en iOS.
     connectElement();
+    if (bufferUpgradePending || (buffer && audible() && !usingBuffer)) {
+      applyBufferLoopUpgrade();
+    }
     notePlayback();
   }
 
@@ -646,6 +681,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   function releasePlayback(): void {
     heldForPrototype = true;
     clearEngaged();
+    bufferUpgradePending = false;
     playGeneration += 1;
     releaseGeneration += 1;
     const generation = releaseGeneration;
@@ -686,6 +722,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   function silence(): void {
     playGeneration += 1;
     clearEngaged();
+    bufferUpgradePending = false;
     const generation = playGeneration;
     ramp(0, MUSIC_FADE_OUT_S);
     sounded = false;
@@ -739,9 +776,23 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       return;
     }
     if (buffer) {
-      startLooped(resumeOffset);
-      if (!audio.paused) quietElement();
-      notePlayback();
+      if (applyBufferLoopUpgrade()) return;
+      connectElement();
+      if (
+        !audio.paused &&
+        !!audio.getAttribute("src") &&
+        playbackOutputLive({
+          mediaPaused: false,
+          contextState: ctx.state,
+          routed: routed(),
+        })
+      ) {
+        markEngaged();
+        sounded = true;
+        paintPlayback();
+        return;
+      }
+      beginElement();
       return;
     }
     connectElement();

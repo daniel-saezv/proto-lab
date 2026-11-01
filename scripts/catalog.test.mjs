@@ -43,6 +43,13 @@ describe("service worker", () => {
     expect(isShellPath("/protos/audio/luanda.m4a")).toBe(false);
   });
 
+  it("deja las peticiones de audio del lobby fuera del fetch del SW", () => {
+    const source = renderServiceWorker(["/index.html", "/assets/app.js"]);
+    expect(source).toContain("function mustBypass(url, method)");
+    expect(source).toContain("if (mustBypass(url, event.request.method)) return;");
+    expect(source).toContain('url.pathname.startsWith("/protos/")');
+  });
+
   it("revalida el HTML de los prototipos y deja immutable el JS con hash y el audio", () => {
     const headers = readFileSync(join(root, "apps/world/public/_headers"), "utf8");
     expect(headers).toMatch(/\/protos\/\*/);

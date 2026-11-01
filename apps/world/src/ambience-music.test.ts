@@ -22,6 +22,8 @@ import {
   shouldResumeLobbyMusic,
   shouldRouteMediaElement,
   shouldShortCircuitStartOutput,
+  shouldDeferBufferLoopUpgrade,
+  shouldQuietMediaForBufferHandoff,
   toggleMusicMuted,
   writeBandEnergies,
 } from "./ambience-music";
@@ -137,6 +139,23 @@ describe("música ambiental", () => {
         mediaPlaying: true,
       }),
     ).toBe(false);
+  });
+
+  it("no silencia el elemento media hasta que el bucle WebAudio pueda sonar", () => {
+    expect(shouldDeferBufferLoopUpgrade("suspended")).toBe(true);
+    expect(shouldDeferBufferLoopUpgrade("interrupted")).toBe(true);
+    expect(shouldDeferBufferLoopUpgrade("running")).toBe(false);
+    expect(shouldDeferBufferLoopUpgrade(undefined)).toBe(true);
+
+    expect(
+      shouldQuietMediaForBufferHandoff({ contextState: "suspended", loopVoiceCount: 2 }),
+    ).toBe(false);
+    expect(
+      shouldQuietMediaForBufferHandoff({ contextState: "running", loopVoiceCount: 0 }),
+    ).toBe(false);
+    expect(
+      shouldQuietMediaForBufferHandoff({ contextState: "running", loopVoiceCount: 2 }),
+    ).toBe(true);
   });
 
   it("desbloquea con inicio y fin de gesto, no con arrastre", () => {
