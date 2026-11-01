@@ -12,6 +12,7 @@ import {
   HemisphereLight,
   Mesh,
   MeshBasicMaterial,
+  Matrix4,
   MeshLambertMaterial,
   Object3D,
   OrthographicCamera,
@@ -32,6 +33,14 @@ import {
   type BufferGeometry,
 } from "three";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
+import {
+  createNameplateElement,
+  estimateNameWidth,
+  planarGaze,
+  projectToScreen,
+  resolveNameplates,
+  type NameplateCandidate,
+} from "./nameplates";
 import { attachInput } from "./input";
 import { getMusicEnergy } from "./ambience-music";
 import { addAmbient } from "./ambient";
@@ -256,7 +265,21 @@ export function startWorld(options: {
   const hangingLights: PointLight[] = [];
   addCeiling(hangingLights);
   addMoon();
-  const nameplates = new Map<string, HTMLElement>();
+  type PlateRecord = {
+    anchorEl: HTMLElement;
+    plate: HTMLElement;
+    object: CSS2DObject;
+    label: string;
+    update: boolean;
+    mode: string;
+    near: boolean;
+  };
+  const plateById = new Map<string, PlateRecord>();
+  const nameWorld = new Vector3();
+  const nameViewProjection = new Matrix4();
+  let nameFocusId: string | null = null;
+  let labelViewW = 1;
+  let labelViewH = 1;
   const highlightRings = new Map<string, Mesh>();
   const lobbyWhiteboard = createWhiteboardStatus({
     reducedMotion: reduced,
@@ -329,10 +352,11 @@ export function startWorld(options: {
   }
 
   function syncArcadeUpdateBadge(entry: CatalogEntry) {
-    const plate = nameplates.get("arcade");
+    const plate = plateById.get("arcade");
     if (plate) {
       const unseen = options.isPrototypeUnseen?.(entry.slug) ?? false;
-      plate.classList.toggle("nameplate--proto-update", unseen);
+      plate.update = unseen;
+      plate.plate.classList.toggle("nameplate--proto-update", unseen);
     }
   }
 
@@ -410,7 +434,7 @@ export function startWorld(options: {
     })),
   ];
   const loungeIds = new Set(ambient.npcs.map((npc) => npc.id));
-  for (const plate of ambient.nameplates) nameplates.set(plate.id, plate.element);
+  for (const plate of ambient.nameplates) trackPlate(plate.id, plate.element, plate.anchor, plate.element.textContent ?? "");
 
   addRangeRing("inventor", LAYOUT.inventor.x, LAYOUT.inventor.z, PALETTE.amber);
   addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
@@ -464,6 +488,8 @@ export function startWorld(options: {
   function resize() {
     const width = Math.max(options.viewport.clientWidth, 1);
     const height = Math.max(options.viewport.clientHeight, 1);
+    labelViewW = width;
+    labelViewH = height;
     camera.aspect = width / height;
     camera.fov = camera.aspect < 0.9 ? 78 : 58;
     camera.updateProjectionMatrix();
@@ -652,7 +678,59 @@ export function startWorld(options: {
       options.onTarget(label);
     }
     for (const [id, ring] of highlightRings) ring.visible = boardPhase === "idle" && id === best?.id;
-    for (const [id, plate] of nameplates) plate.classList.toggle("is-near", id === best?.id);
+    syncNameplates();
+  }
+
+  function trackPlate(id: string, plate: HTMLElement, object: CSS2DObject, label: string) {
+    plateById.set(id, {
+      anchorEl: object.element,
+      plate,
+      object,
+      label,
+      update: plate.classList.contains("nameplate--proto-update"),
+      mode: "",
+      near: false,
+    });
+  }
+
+  function syncNameplates() {
+    const active = cameraMode === "top" ? overviewCamera : camera;
+    active.updateMatrixWorld();
+    nameViewProjection.multiplyMatrices(active.projectionMatrix, active.matrixWorldInverse);
+    const forwardX = Math.sin(yaw);
+    const forwardZ = -Math.cos(yaw);
+    const elements = nameViewProjection.elements;
+    const candidates: NameplateCandidate[] = [];
+    for (const [id, plate] of plateById) {
+      plate.object.getWorldPosition(nameWorld);
+      const screen = projectToScreen(nameWorld.x, nameWorld.y, nameWorld.z, elements, labelViewW, labelViewH);
+      // El mueble croquis comparte id con el NPC y entra en la lista con radio 0.
+      const spot = spots.find((item) => item.id === id && item.radius > 0);
+      const targetX = spot?.x ?? nameWorld.x;
+      const targetZ = spot?.z ?? nameWorld.z;
+      const distance = Math.hypot(player.position.x - targetX, player.position.z - targetZ);
+      candidates.push({
+        id,
+        x: screen.x,
+        y: screen.y,
+        inView: screen.inView,
+        distance,
+        inRange: !!spot && spot.radius > 0 && distance <= spot.radius,
+        gaze: planarGaze(player.position.x, player.position.z, forwardX, forwardZ, targetX, targetZ),
+        nameWidth: estimateNameWidth(plate.label, plate.update),
+      });
+    }
+    const layout = resolveNameplates(candidates, nameFocusId);
+    nameFocusId = layout.focusId;
+    for (const decision of layout.decisions) {
+      const plate = plateById.get(decision.id);
+      if (!plate || (plate.mode === decision.mode && plate.near === decision.near)) continue;
+      plate.mode = decision.mode;
+      plate.near = decision.near;
+      plate.anchorEl.dataset.mode = decision.mode;
+      plate.plate.classList.toggle("is-near", decision.near);
+      plate.plate.setAttribute("aria-hidden", decision.mode === "name" ? "false" : "true");
+    }
   }
 
   function currentSpot(): Spot | null {
@@ -1378,15 +1456,12 @@ export function startWorld(options: {
   }
 
   function tag(parent: Object3D, text: string, y: number, id?: string) {
-    const anchor = document.createElement("div");
-    const plate = document.createElement("span");
-    plate.className = "nameplate";
-    plate.textContent = text;
-    anchor.append(plate);
-    if (id) nameplates.set(id, plate);
+    const { anchor, plate } = createNameplateElement(text);
     const object = new CSS2DObject(anchor);
+    object.center.set(0, 0);
     object.position.set(0, y, 0);
     parent.add(object);
+    if (id) trackPlate(id, plate, object, text);
   }
 }
 
