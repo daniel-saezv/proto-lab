@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { dialogueSpeakerName } from "./dialogue";
+import { emphasisPlain, lineRuns } from "./dialogue-emphasis";
 import { chooseScript, loungeScript, scriptNode, startScript, type DialogueScript } from "./dialogue-script";
+import { lineDurationMs } from "./dialogue-type";
 import { LOUNGE_NPCS } from "./lounge-layout";
 
 function joined(script: DialogueScript): string {
   return Object.values(script.nodes)
-    .map((node) => node.text)
+    .map((node) => emphasisPlain(node.text))
     .join("\n");
 }
 
@@ -19,11 +21,11 @@ describe("guion de diálogo", () => {
     const script = loungeScript("remolon");
     expect(script).toBeTruthy();
     const start = startScript(script!);
-    expect(scriptNode(start).text).toContain("a medias");
+    expect(emphasisPlain(scriptNode(start).text)).toContain("a medias");
     const halves = chooseScript(start, "choice-remolon-halves");
     expect(halves).not.toBe("close");
     if (halves === "close") return;
-    expect(scriptNode(halves).text).toContain("Croquis");
+    expect(emphasisPlain(scriptNode(halves).text)).toContain("Croquis");
     expect(chooseScript(halves, "choice-remolon-stay")).toBe("close");
   });
 
@@ -84,6 +86,24 @@ describe("guion de diálogo", () => {
         }
       }
       expect([...seen].sort(), npc.id).toEqual(Object.keys(script.nodes).sort());
+    }
+  });
+
+  it("marca una frase corta por nodo y reserva el gesto para parte del guion", () => {
+    for (const npc of LOUNGE_NPCS) {
+      const script = loungeScript(npc.id)!;
+      let cues = 0;
+      for (const node of Object.values(script.nodes)) {
+        const { plain, runs } = lineRuns(node.text);
+        const marks = runs.filter((run) => run.kind);
+        expect(marks, npc.id).toHaveLength(1);
+        expect(marks[0]!.text.length, npc.id).toBeLessThanOrEqual(24);
+        expect(plain, npc.id).not.toMatch(/[{}]/);
+        expect(lineDurationMs(plain), npc.id).toBeLessThan(6500);
+        if (node.cue) cues += 1;
+      }
+      expect(cues, npc.id).toBeGreaterThanOrEqual(1);
+      expect(cues, npc.id).toBeLessThan(Object.keys(script.nodes).length);
     }
   });
 });

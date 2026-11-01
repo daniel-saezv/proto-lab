@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { emphasisPlain, lineRuns } from "./dialogue-emphasis";
 import { INVENTOR_RESULT_OK, inventorSpeech } from "./dialogue-speech";
 import type { CatalogEntry } from "./types";
 
@@ -38,5 +39,22 @@ describe("inventorSpeech", () => {
   it("el mensaje de éxito no habla de varias máquinas", () => {
     expect(INVENTOR_RESULT_OK).toContain("la máquina");
     expect(INVENTOR_RESULT_OK).not.toMatch(/máquinas/i);
+  });
+
+  it("el énfasis no se come las frases fijas y cabe en una marca por línea", () => {
+    const draft = { kind: "propuesta" as const, title: "", description: "" };
+    const samples = [
+      inventorSpeech({ name: "greet" }, draft, []),
+      inventorSpeech({ name: "title", mode: "propuesta" }, draft, []),
+      inventorSpeech({ name: "pick" }, { kind: "iteracion", title: "", description: "" }, [chispa]),
+      inventorSpeech({ name: "sending" }, draft, []),
+    ];
+    for (const text of samples) {
+      const { plain, runs } = lineRuns(text);
+      expect(runs.filter((run) => run.kind).length).toBeLessThanOrEqual(1);
+      expect(plain).not.toMatch(/[{}]/);
+    }
+    expect(emphasisPlain(samples[0]!)).toContain("la máquina de este laboratorio");
+    expect(emphasisPlain(samples[2]!)).toContain("de la lista");
   });
 });

@@ -1033,3 +1033,153 @@ body.board-open #hint,
 body.board-open #labels {
   visibility: hidden !important;
 }
+
+/* Juice de diálogo. Bloque propio: no comparte reglas con etiquetas ni con el tablón. */
+#dialogue .portrait { position: relative; }
+#dialogue .dlg-visual { white-space: pre-wrap; }
+#dialogue .dialogue-text[data-typing="1"] { cursor: pointer; touch-action: manipulation; }
+#dialogue.dialogue-arrive {
+  animation: dlg-arrive 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+#dialogue .dialogue-choice,
+#dialogue .dialogue-input {
+  animation: dlg-choice 280ms cubic-bezier(0.2, 0.85, 0.2, 1) both;
+}
+#dialogue .dlg-em { font-style: normal; }
+#dialogue .dlg-em--em,
+#dialogue .dlg-em--mark {
+  color: var(--amber);
+  font-weight: 800;
+}
+#dialogue .dlg-em--mark:not(:empty)::before {
+  content: "✦\00a0";
+  font-weight: 700;
+}
+#dialogue .dlg-em--glow {
+  color: #ffe7a3;
+  text-shadow: 0 0 10px rgba(255, 183, 3, 0.75);
+}
+#dialogue .dlg-em--shake {
+  display: inline-block;
+  color: #ffd7b0;
+  font-weight: 800;
+}
+#dialogue .dlg-em--shake.is-on { animation: dlg-shake 0.42s linear 1; }
+#dialogue .dlg-caret {
+  display: inline-block;
+  width: 0.55ch;
+  height: 0.9em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  border-bottom: 2px solid var(--amber);
+  animation: dlg-caret 0.9s steps(1) infinite;
+}
+#dialogue[data-cue="slouch"] .portrait--remolon { animation: dlg-slouch 2.4s ease-in-out infinite; }
+#dialogue[data-cue="smoke"] .portrait--brasa::before,
+#dialogue[data-cue="smoke"] .portrait--brasa::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  bottom: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(220, 224, 230, 0.9);
+  pointer-events: none;
+  animation: dlg-smoke 1.5s ease-out infinite;
+}
+#dialogue[data-cue="smoke"] .portrait--brasa::before {
+  left: 16px;
+  animation-delay: 0.6s;
+}
+#dialogue[data-cue="shuffle"] .portrait--naipe::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  bottom: 2px;
+  width: 10px;
+  height: 14px;
+  border-radius: 2px;
+  background: #f4efe4;
+  box-shadow: -4px 2px 0 #1f8a80;
+  pointer-events: none;
+  animation: dlg-shuffle 0.7s ease-in-out infinite;
+}
+#dialogue[data-cue="sketch"] .portrait--croquis::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  width: 16px;
+  height: 2px;
+  background: var(--amber);
+  transform-origin: left center;
+  pointer-events: none;
+  animation: dlg-sketch 0.8s ease-in-out infinite;
+}
+#dialogue[data-emph="1"] .portrait { animation: dlg-nod 0.42s ease-in-out 1; }
+@keyframes dlg-arrive {
+  from { transform: translateX(-50%) translateY(14px); }
+  to { transform: translateX(-50%) translateY(0); }
+}
+@keyframes dlg-choice {
+  from { transform: translateY(8px); }
+  to { transform: translateY(0); }
+}
+@keyframes dlg-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-1px) rotate(-0.5deg); }
+  75% { transform: translateX(1px) rotate(0.5deg); }
+}
+@keyframes dlg-caret {
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes dlg-nod {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  40% { transform: translateY(-3px) rotate(-4deg); }
+  70% { transform: translateY(0) rotate(3deg); }
+}
+@keyframes dlg-slouch {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(3deg); }
+}
+@keyframes dlg-smoke {
+  0% { transform: translateY(0) scale(0.4); opacity: 0; }
+  25% { opacity: 0.75; }
+  100% { transform: translateY(-16px) scale(1.05); opacity: 0; }
+}
+@keyframes dlg-shuffle {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(12deg) translateY(-2px); }
+}
+@keyframes dlg-sketch {
+  0% { transform: scaleX(0.25); opacity: 0.9; }
+  100% { transform: scaleX(1); opacity: 0.35; }
+}
+#dialogue.dialogue-still.dialogue-arrive,
+#dialogue.dialogue-still .dialogue-choice,
+#dialogue.dialogue-still .dialogue-input,
+#dialogue.dialogue-still .dlg-em--shake.is-on,
+#dialogue.dialogue-still .dlg-caret,
+#dialogue.dialogue-still .portrait,
+#dialogue.dialogue-still[data-cue] .portrait::before,
+#dialogue.dialogue-still[data-cue] .portrait::after,
+#dialogue.dialogue-still[data-emph] .portrait {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  #dialogue.dialogue-arrive,
+  #dialogue .dialogue-choice,
+  #dialogue .dialogue-input,
+  #dialogue .dlg-em--shake.is-on,
+  #dialogue .dlg-caret,
+  #dialogue[data-emph="1"] .portrait,
+  #dialogue[data-cue="slouch"] .portrait--remolon,
+  #dialogue[data-cue="smoke"] .portrait--brasa::before,
+  #dialogue[data-cue="smoke"] .portrait--brasa::after,
+  #dialogue[data-cue="shuffle"] .portrait--naipe::after,
+  #dialogue[data-cue="sketch"] .portrait--croquis::after {
+    animation: none;
+  }
+}

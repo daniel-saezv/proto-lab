@@ -91,7 +91,16 @@ const dialogue = createDialogue({
   submit: sendProposal,
   onShowInstallHelp: () => installHelp.open(),
   onOpen: blockWorldInput,
-  onClose: restoreWorldInput,
+  onClose: () => {
+    if (world?.isDialogueFraming()) return;
+    restoreWorldInput();
+  },
+  onFocus: (focus) => {
+    world?.setDialogueFocus(focus);
+  },
+  onEmphasis: () => {
+    world?.pulseDialogue();
+  },
 });
 
 const overlay = createOverlay(
@@ -422,6 +431,12 @@ async function bootWorld() {
       },
       onBoardUi: syncBoardControls,
       onBoardAction: performBoardAction,
+      onDialogueFrame: (open) => {
+        if (open) blockWorldInput();
+        else if (!dialogue.isOpen() && !overlay.isOpen() && !selector.isOpen() && !installHelp.isOpen()) {
+          restoreWorldInput();
+        }
+      },
       onWhiteboardReady: (controller) => {
         lobbyWhiteboard = controller;
         flushProposalStatusToBoards();

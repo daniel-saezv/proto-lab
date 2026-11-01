@@ -21,11 +21,11 @@ export function inventorSpeech(
   const proto = prototypes.find((entry) => entry.slug === draft.slug);
   switch (phase.name) {
     case "greet":
-      return "Eh, has entrado. Soy el Inventor: cuido la máquina de este laboratorio. Dentro van encendiéndose los mundos, apps y juegos que el grupo va tejiendo. ¿Qué se te ofrece?";
+      return "Eh, has entrado. Soy el {em}Inventor{/em}: cuido la máquina de este laboratorio. Dentro van encendiéndose los mundos, apps y juegos que el grupo va tejiendo. ¿Qué se te ofrece?";
     case "title":
       return phase.mode === "propuesta"
-        ? "Eso me gusta. ¿Cómo llamamos a la idea? Algo corto, para el cuaderno."
-        : `Vale, «${proto?.title ?? ITERATION_FALLBACK}». Ponle un título corto a este cambio.`;
+        ? "Eso me gusta. ¿Cómo llamamos a la idea? Algo corto, para el {em}cuaderno{/em}."
+        : `Vale, «${proto?.title ?? ITERATION_FALLBACK}». Ponle un título corto a este {em}cambio{/em}.`;
     case "body":
       return phase.mode === "propuesta"
         ? `«${draft.title}». Cuéntame de qué va: qué se hace, cómo se juega o qué problema resuelve.`
@@ -33,12 +33,12 @@ export function inventorSpeech(
     case "pick":
       return prototypes.length === 0
         ? "Todavía no hay mundos encendidos que retocar. Cuando alguien deje uno en la máquina, volvemos a hablar."
-        : "¿Cuál de estos mundos, apps o juegos quieres retocar? Elígelo de la lista.";
+        : "¿Cuál de estos mundos, apps o juegos quieres {em}retocar{/em}? Elígelo de la lista.";
     case "confirm":
       return draft.kind === "iteracion"
-        ? `Anotaría una mejora de «${proto?.title ?? draft.slug}», que va por la versión ${proto?.version ?? "?"}.\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`
-        : `A ver si lo he entendido. Dejaría esto en el tablón, como petición tuya, para que el dueño lo lea:\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`;
+        ? `Anotaría una {em}mejora{/em} de «${proto?.title ?? draft.slug}», que va por la versión ${proto?.version ?? "?"}.\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`
+        : `A ver si lo he entendido. Dejaría esto en el {em}tablón{/em}, como petición tuya, para que el dueño lo lea:\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`;
     case "sending":
-      return "Un momento, que mojo la pluma…";
+      return "Un momento, que mojo la {em}pluma{/em}…";
   }
 }
