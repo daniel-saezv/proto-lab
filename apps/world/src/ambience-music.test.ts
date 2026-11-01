@@ -21,6 +21,7 @@ import {
   shouldIgnoreAudioUnlockTarget,
   shouldResumeLobbyMusic,
   shouldRouteMediaElement,
+  shouldShortCircuitStartOutput,
   toggleMusicMuted,
   writeBandEnergies,
 } from "./ambience-music";
@@ -83,11 +84,12 @@ describe("música ambiental", () => {
   });
 
   it("reintenta el audio en el siguiente gesto si el anterior no pudo sonar", () => {
-    expect(playbackAfterGesture({ muted: false, paused: false, visible: true, sounding: false })).toEqual({ kick: true });
-    expect(playbackAfterGesture({ muted: false, paused: false, visible: true, sounding: true })).toEqual({ kick: false });
-    expect(playbackAfterGesture({ muted: true, paused: false, visible: true, sounding: false })).toEqual({ kick: false });
-    expect(playbackAfterGesture({ muted: false, paused: true, visible: true, sounding: false })).toEqual({ kick: false });
-    expect(playbackAfterGesture({ muted: false, paused: false, visible: false, sounding: false })).toEqual({ kick: false });
+    expect(playbackAfterGesture({ muted: false, paused: false, visible: true, sounding: false, engaged: false })).toEqual({ kick: true });
+    expect(playbackAfterGesture({ muted: false, paused: false, visible: true, sounding: true, engaged: false })).toEqual({ kick: false });
+    expect(playbackAfterGesture({ muted: false, paused: false, visible: true, sounding: false, engaged: true })).toEqual({ kick: false });
+    expect(playbackAfterGesture({ muted: true, paused: false, visible: true, sounding: false, engaged: false })).toEqual({ kick: false });
+    expect(playbackAfterGesture({ muted: false, paused: true, visible: true, sounding: false, engaged: false })).toEqual({ kick: false });
+    expect(playbackAfterGesture({ muted: false, paused: false, visible: false, sounding: false, engaged: false })).toEqual({ kick: false });
     expect(playbackRejection("NotAllowedError")).toEqual({ retryOnNextGesture: true, skipTrack: false });
     expect(playbackRejection("AbortError").skipTrack).toBe(false);
     expect(playbackRejection("NotSupportedError").skipTrack).toBe(true);
@@ -98,6 +100,43 @@ describe("música ambiental", () => {
     expect(playbackOutputLive({ mediaPaused: false, contextState: "running", routed: false })).toBe(false);
     expect(playbackOutputLive({ mediaPaused: true, contextState: "running", routed: true })).toBe(false);
     expect(playbackOutputLive({ mediaPaused: false, contextState: "running", routed: true })).toBe(true);
+  });
+
+  it("no reinicia la pista con gestos repetidos ni tras autoplay fallido", () => {
+    const autoplayRejected = { muted: false, paused: false, visible: true, sounding: false, engaged: false };
+    expect(playbackAfterGesture(autoplayRejected).kick).toBe(true);
+
+    const touchStart = { ...autoplayRejected, engaged: false };
+    const touchEndSameGesture = { ...autoplayRejected, engaged: true, sounding: false };
+    expect(playbackAfterGesture(touchStart).kick).toBe(true);
+    expect(playbackAfterGesture(touchEndSameGesture).kick).toBe(false);
+
+    expect(
+      shouldShortCircuitStartOutput({
+        engaged: true,
+        outputLive: false,
+        bufferLoopActive: false,
+        mediaPlaying: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldShortCircuitStartOutput({
+        engaged: true,
+        outputLive: false,
+        bufferLoopActive: false,
+        mediaPlaying: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldShortCircuitStartOutput({
+        engaged: false,
+        outputLive: false,
+        bufferLoopActive: false,
+        mediaPlaying: true,
+      }),
+    ).toBe(false);
   });
 
   it("desbloquea con inicio y fin de gesto, no con arrastre", () => {
