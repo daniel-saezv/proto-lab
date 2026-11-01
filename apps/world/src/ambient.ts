@@ -1,3 +1,4 @@
+import type { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import {
   CanvasTexture,
   Color,
@@ -73,7 +74,7 @@ export type AmbientHandle = {
   colliders: AmbientCollider[];
   slacker: { x: number; z: number; radius: number; approach: { x: number; z: number } };
   npcs: LoungeNpcSpot[];
-  nameplates: { id: string; element: HTMLElement }[];
+  nameplates: { id: string; element: HTMLElement; anchor: CSS2DObject }[];
   tick: (time: number, dt: number, player: Vector3, beatBass?: number, beatMid?: number) => void;
   setDialogueCue: (cue: DialogueCue | null) => void;
   pulseDialogue: () => void;
