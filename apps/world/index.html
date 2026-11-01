@@ -28,11 +28,20 @@
       </div>
     </div>
     <div id="shell" hidden>
-      <p class="sr-only">Laboratorio en tres dimensiones. Camina con WASD o el joystick, mira arrastrando y pulsa E o el botón para usar lo que tengas delante.</p>
+      <p class="sr-only">Laboratorio en tres dimensiones. En una pantalla táctil, toca a la izquierda para caminar y a la derecha para mirar. Con teclado, WASD para caminar y el ratón para mirar. Pulsa E o el botón para usar lo que tengas delante.</p>
       <div id="viewport"></div>
       <div id="labels"></div>
       <p id="hint" data-testid="hint"></p>
-      <button id="mute-music" type="button" data-testid="mute-music" aria-pressed="false" aria-label="Silenciar música">Silenciar</button>
+      <button id="mute-music" type="button" data-testid="mute-music" aria-pressed="false" aria-label="Silenciar música">
+        <svg class="mute-icon mute-icon--on" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" d="M4 9.5h3.2L12 5.8v12.4l-4.8-3.7H4z" />
+          <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M15.5 9.2a3.8 3.8 0 0 1 0 5.6M17.8 7a6.6 6.6 0 0 1 0 10" />
+        </svg>
+        <svg class="mute-icon mute-icon--off" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" d="M4 9.5h3.2L12 5.8v12.4l-4.8-3.7H4z" />
+          <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M16 10.2 20 14.2M20 10.2l-4 4" />
+        </svg>
+      </button>
       <button id="board-back" type="button" data-testid="board-back" hidden>Volver</button>
       <div id="board-a11y" class="sr-only" data-testid="board-a11y" role="region" aria-label="Tablón de propuestas" hidden></div>
       <button id="interact" type="button" data-testid="interact" hidden></button>
