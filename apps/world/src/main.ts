@@ -46,12 +46,14 @@ const stage = must("#stage");
 const fallback = must("#fallback");
 
 const touch = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
-hint.textContent = touch
-  ? "Toca a la izquierda para caminar y a la derecha para mirar"
-  : "WASD para caminar, arrastra el ratón para mirar, E para usar";
+// En táctil el cartel tapa el cielo y los joysticks se descubren al tocar.
+// La misma explicación queda en el texto solo para lectores de pantalla.
 if (touch) {
+  hint.hidden = true;
   touchControls.hidden = false;
   shell.classList.add("has-joystick");
+} else {
+  hint.textContent = "WASD para caminar, arrastra el ratón para mirar, E para usar";
 }
 
 let inputEnabled = true;

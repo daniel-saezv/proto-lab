@@ -253,7 +253,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     const sounding = !muted;
     button.setAttribute("aria-pressed", muted ? "true" : "false");
     button.setAttribute("aria-label", sounding ? "Silenciar música" : "Activar música");
-    button.textContent = sounding ? "Silenciar" : "Activar";
+    // Iconos en el HTML (mute-icon--on / mute-icon--off). textContent los borraría
+    // y volvería a dejar un rótulo que iOS selecciona al arrastrar el joystick.
     button.dataset.state = muted ? "muted" : "on";
     paintPlayback();
   }

@@ -46,6 +46,39 @@ export function lookRatesFromStickVector(
 const INTERACTIVE_SELECTOR =
   "button, a[href], input, textarea, select, label, [role='dialog'], #dialogue, #game-selector, #install-help, #stage, #fallback, #boot";
 
+/** Campos donde copiar y pegar tiene que seguir funcionando. */
+export const TEXT_SELECTION_EDITABLE = "input, textarea, select, [contenteditable='true']";
+
+/** Cromo del lobby: un arrastre no debe subrayarlo ni abrir el menú de copiar. */
+export const TEXT_SELECTION_CHROME = "button, #hint, #labels, #touch-controls, #interact, #mute-music, #board-back";
+
+export type SelectionHost = {
+  closest?: (selector: string) => unknown;
+  parentElement?: SelectionHost | null;
+};
+
+/** Elige el elemento que puede responder a closest, también si el evento cae en un nodo de texto. */
+export function selectionHostFromEventTarget(target: EventTarget | SelectionHost | null): SelectionHost | null {
+  if (target == null || typeof target !== "object") return null;
+  const node = target as SelectionHost;
+  if (typeof node.closest === "function") return node;
+  const parent = node.parentElement ?? null;
+  if (parent && typeof parent.closest === "function") return parent;
+  return null;
+}
+
+/**
+ * true si hay que cancelar selectstart.
+ * Con el joystick activo se bloquea todo menos los campos.
+ * En reposo solo el cromo (botones, pista, etiquetas): el diálogo y la ayuda se pueden copiar.
+ */
+export function shouldBlockTextSelection(host: SelectionHost | null, joystickActive: boolean): boolean {
+  if (host == null || typeof host.closest !== "function") return false;
+  if (host.closest(TEXT_SELECTION_EDITABLE)) return false;
+  if (joystickActive) return true;
+  return Boolean(host.closest(TEXT_SELECTION_CHROME));
+}
+
 /** true si el toque cae sobre UI u otro control, no sobre el lienzo de juego. */
 export function shouldIgnoreTouchAt(clientX: number, clientY: number, root: Document | ShadowRoot = document): boolean {
   const hit = root.elementFromPoint(clientX, clientY);
