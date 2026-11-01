@@ -58,7 +58,10 @@ import {
   approachVelocity,
   dampAngle,
   dampBlockedAxis,
+  facingYaw,
+  lookFacingYaw,
   lookRateFromDeflection,
+  moveWish,
   smoothLookInput,
   softenTowardLimit,
 } from "./locomotion";
@@ -609,19 +612,16 @@ export function startWorld(options: {
         yaw -= applyLook(lookSmoothX, lookSens, 0.11);
         pitch = clamp(pitch - applyLook(lookSmoothY, lookSens * 0.72, 0.08), pitchMin, pitchMax);
       }
-      const forwardX = Math.sin(yaw);
-      const forwardZ = -Math.cos(yaw);
-      const rightX = Math.cos(yaw);
-      const rightZ = Math.sin(yaw);
-      const wishX = (sample.right * rightX + sample.forward * forwardX) * WALK_SPEED;
-      const wishZ = (sample.right * rightZ + sample.forward * forwardZ) * WALK_SPEED;
+      const wish = moveWish(yaw, sample.forward, sample.right);
+      const wishX = wish.x * WALK_SPEED;
+      const wishZ = wish.z * WALK_SPEED;
       velX = approachVelocity(velX, wishX, dt);
       velZ = approachVelocity(velZ, wishZ, dt);
       const slide = moveWithSlide(player.position, velX * dt, velZ * dt, spots, playerLobbyBounds());
       velX = dampBlockedAxis(velX, slide.movedX, dt);
       velZ = dampBlockedAxis(velZ, slide.movedZ, dt);
       const moving = Math.hypot(velX, velZ) > 0.45;
-      const facing = moving ? Math.atan2(velX, -velZ) : yaw;
+      const facing = moving ? facingYaw(velX, velZ) : lookFacingYaw(yaw);
       player.rotation.y = dampAngle(player.rotation.y, facing, dt, moving ? 7.5 : 4.5);
     } else {
       velX = 0;
@@ -835,7 +835,7 @@ export function startWorld(options: {
     } else {
       yaw = 0;
     }
-    player.rotation.y = yaw;
+    player.rotation.y = lookFacingYaw(yaw);
     snapped = true;
   }
 
@@ -845,13 +845,13 @@ export function startWorld(options: {
     if (pose.kind === "top") {
       cameraMode = "top";
       player.position.set(0, 0, 1.7);
-      player.rotation.y = 0.15;
+      player.rotation.y = lookFacingYaw(0.15);
       fitOverview();
       return true;
     }
     cameraMode = "follow";
     player.position.set(pose.x, 0, pose.z);
-    player.rotation.y = pose.yaw;
+    player.rotation.y = lookFacingYaw(pose.yaw);
     yaw = pose.yaw;
     pitch = pose.pitch;
     snapped = true;
