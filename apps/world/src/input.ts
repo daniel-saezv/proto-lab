@@ -50,6 +50,7 @@ export function attachInput(options: {
 
   const onPointerDown = (event: PointerEvent) => {
     if (options.touch || options.isBlocked() || event.button !== 0) return;
+    onGesture();
     dragging = true;
     lastX = event.clientX;
     lastY = event.clientY;
