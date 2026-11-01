@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { ChalkSegment } from "./proposals-board-chalk";
 import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./proposals-board-metrics";
 import {
+  actionLabelOrigin,
   chalkMarkProgress,
+  combineActionMark,
   detailActionCue,
   detailActionRect,
   detailBackCue,
@@ -11,9 +13,11 @@ import {
   detailRegionsDisjoint,
   hitBoard,
   MARK_DRAW_MS,
+  measureGlyphBox,
   rowChalkCue,
   rowHitRect,
   strokeIsOpen,
+  type GlyphBox,
 } from "./proposals-board-detail";
 
 function bounds(segments: readonly ChalkSegment[]) {
@@ -74,41 +78,147 @@ describe("zonas de la pizarra", () => {
     const layout = computeRowLayouts(1)[0]!;
     layout.number = 7;
     const row = rowHitRect(layout);
-    const cue = rowChalkCue(layout, 180);
+    const rowInk = { x: 28, y: layout.y + 16, width: 180, height: 22 };
+    const cue = rowChalkCue(layout, rowInk);
     expect(strokeIsOpen(cue.chevron)).toBe(true);
     expectIrregularChalkCircle(cue.ring, row);
+    expect(ringClearance(cue.ring, rowInk)).toBeGreaterThanOrEqual(1.2);
     const mark = bounds(cue.chevron);
     expect(mark.x).toBeGreaterThanOrEqual(row.x);
     expect(mark.y).toBeGreaterThanOrEqual(row.y);
     expect(mark.x + mark.w).toBeLessThanOrEqual(row.x + row.w);
-    const again = rowChalkCue(layout, 180).ring;
+    const again = rowChalkCue(layout, rowInk).ring;
     expect(again).toEqual(cue.ring);
     const other = computeRowLayouts(2)[1]!;
     other.number = 8;
-    expect(rowChalkCue(other, 180).ring).not.toEqual(cue.ring);
+    const otherInk = { x: 28, y: other.y + 16, width: 180, height: 22 };
+    expect(rowChalkCue(other, otherInk).ring).not.toEqual(cue.ring);
     const ringBounds = pointBounds(samplesOf(cue.ring));
-    expect(ringBounds.y + ringBounds.h / 2).toBeLessThan(layout.y + layout.height * 0.62);
-    expect(ringBounds.y + ringBounds.h).toBeLessThanOrEqual(layout.trackY + 4);
+    expect(ringBounds.y + ringBounds.h / 2).toBeLessThan(layout.trackY);
+    expect(ringBounds.y + ringBounds.h).toBeLessThanOrEqual(layout.y + layout.height - 4);
 
     const back = detailBackRect();
-    const backRing = detailBackCue(150);
+    const backInk = { x: back.x + 36, y: back.y + back.h / 2 - 14, width: 150, height: 28 };
+    const backRing = detailBackCue(backInk);
     expectIrregularChalkCircle(backRing, back);
+    expect(ringClearance(backRing, backInk)).toBeGreaterThanOrEqual(1.2);
     const backLine = pointBounds(samplesOf(backRing));
     expect(backLine.w).toBeLessThan(back.w * 0.55);
     expect(backLine.h).toBeGreaterThan(24);
     expect(backLine.h).toBeLessThan(back.h * 0.6);
 
     const action = detailActionRect();
-    const actionCue = detailActionCue(220);
+    const actionInk = actionInkBox(220, 30);
+    const actionCue = detailActionCue(actionInk, 220);
     expect(strokeIsOpen(actionCue.chevron)).toBe(true);
     expectIrregularChalkCircle(actionCue.ring, action);
+    expect(ringClearance(actionCue.ring, actionInk)).toBeGreaterThanOrEqual(1.2);
     const actionLine = pointBounds(samplesOf(actionCue.ring));
     expect(actionLine.w).toBeLessThan(action.w * 0.55);
     expect(actionLine.h).toBeGreaterThan(24);
     expect(actionLine.h).toBeLessThan(action.h * 0.55);
     expect(actionCue.ring).not.toEqual(backRing);
   });
+
+  it("el círculo sale del ancho y del alto medidos y no cruza la tinta", () => {
+    const sizes = [
+      { x: 30, y: 40, width: 70, height: 16 },
+      { x: 48, y: 90, width: 180, height: 22 },
+      { x: 60, y: 150, width: 150, height: 28 },
+      { x: 80, y: 220, width: 280, height: 34 },
+      { x: 36, y: 300, width: 460, height: 18 },
+    ];
+    for (const ink of sizes) {
+      const ring = detailBackCue(ink);
+      const gap = ringClearance(ring, ink);
+      expect(gap).toBeGreaterThanOrEqual(1.2);
+      expect(gap).toBeLessThan(14);
+    }
+    const narrow = pointBounds(samplesOf(detailBackCue({ x: 40, y: 40, width: 90, height: 30 })));
+    const wide = pointBounds(samplesOf(detailBackCue({ x: 40, y: 40, width: 240, height: 30 })));
+    const short = pointBounds(samplesOf(detailBackCue({ x: 40, y: 40, width: 180, height: 16 })));
+    const tall = pointBounds(samplesOf(detailBackCue({ x: 40, y: 40, width: 180, height: 42 })));
+    expect(wide.w).toBeGreaterThan(narrow.w + 100);
+    expect(tall.h).toBeGreaterThan(short.h + 18);
+  });
+
+  it("mide la caja real del texto y, si falta, estima con el cuerpo", () => {
+    const context = {
+      font: "700 26px sans-serif",
+      measureText: () => ({
+        width: 100,
+        actualBoundingBoxLeft: 2,
+        actualBoundingBoxRight: 96,
+        actualBoundingBoxAscent: 19,
+        actualBoundingBoxDescent: 5,
+      }),
+    } as unknown as CanvasRenderingContext2D;
+    expect(measureGlyphBox(context, "Hola", 28, 100, "alphabetic")).toEqual({
+      x: 26,
+      y: 81,
+      width: 98,
+      height: 24,
+    });
+    const missing = {
+      font: "700 32px sans-serif",
+      measureText: () => ({ width: 80 }),
+    } as unknown as CanvasRenderingContext2D;
+    const estimated = measureGlyphBox(missing, "Tablón", 40, 80, "middle");
+    expect(estimated.x).toBe(40);
+    expect(estimated.width).toBe(80);
+    expect(estimated.height).toBe(32);
+    expect(estimated.y).toBe(80 - 16);
+  });
+
+  it("el círculo de la acción se traza al mostrarse y no aparece ya empezado", () => {
+    expect(combineActionMark(null, null)).toBeNull();
+    expect(combineActionMark(0, null)).toBeNull();
+    const mid = combineActionMark(chalkMarkProgress(MARK_DRAW_MS / 2, false), null);
+    expect(mid?.hot).toBe(false);
+    expect(mid?.progress).toBeGreaterThan(0.02);
+    expect(mid?.progress).toBeLessThan(1);
+    expect(combineActionMark(1, null)).toEqual({ progress: 1, hot: false });
+    expect(combineActionMark(1, 0.1)?.progress).toBe(1);
+    expect(combineActionMark(1, 0.1)?.hot).toBe(true);
+    expect(combineActionMark(chalkMarkProgress(0, true), null)).toEqual({ progress: 1, hot: false });
+  });
 });
+
+function actionInkBox(width: number, height: number): GlyphBox {
+  const origin = actionLabelOrigin(width);
+  return { x: origin.textX, y: origin.midY - height / 2, width, height };
+}
+
+function curveSamples(segments: readonly ChalkSegment[]) {
+  const points: { x: number; y: number }[] = [];
+  for (const part of segments) {
+    const qx = part.qx ?? part.x1;
+    const qy = part.qy ?? part.y1;
+    for (let i = 0; i <= 10; i += 1) {
+      const t = i / 10;
+      const u = 1 - t;
+      points.push({
+        x: u * u * part.x1 + 2 * u * t * qx + t * t * part.x2,
+        y: u * u * part.y1 + 2 * u * t * qy + t * t * part.y2,
+      });
+    }
+  }
+  return points;
+}
+
+function ringClearance(segments: readonly ChalkSegment[], ink: GlyphBox): number {
+  let min = Infinity;
+  for (const point of curveSamples(segments)) {
+    const dx = Math.max(ink.x - point.x, 0, point.x - (ink.x + ink.width));
+    const dy = Math.max(ink.y - point.y, 0, point.y - (ink.y + ink.height));
+    const outside = dx > 0 || dy > 0;
+    const gap = outside
+      ? Math.hypot(dx, dy)
+      : -Math.min(point.x - ink.x, ink.x + ink.width - point.x, point.y - ink.y, ink.y + ink.height - point.y);
+    min = Math.min(min, gap);
+  }
+  return min;
+}
 
 function samplesOf(segments: readonly ChalkSegment[]) {
   const points: { x: number; y: number }[] = [];

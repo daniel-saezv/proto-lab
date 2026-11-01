@@ -64,11 +64,28 @@ export type DetailPaintModel = {
   actionLabel: string | null;
 };
 
-/** Progreso 0–1 del trazo de énfasis. `null` en un control es el reposo, sin subrayado caliente. */
+/** Progreso 0–1 del trazo de énfasis. `null` en un control es el reposo, sin trazo caliente. */
 export type DetailEmphasis = {
   back: number | null;
   action: number | null;
+  /** Trazo del botón de acción al abrir el detalle. Sigue en 1 cuando ya se dibujó. */
+  actionDraw: number | null;
 };
+
+/**
+ * Cómo se pinta el círculo de la acción.
+ * Sin reloj ni foco no hay trazo: no aparece ya empezado.
+ * Si el foco llega a medias, el color pasa a ámbar y el progreso no vuelve a cero.
+ */
+export function combineActionMark(
+  draw: number | null,
+  hot: number | null,
+): { progress: number; hot: boolean } | null {
+  if (draw == null && hot == null) return null;
+  const progress = Math.max(draw ?? 0, hot ?? 0);
+  if (progress <= 0.02) return null;
+  return { progress, hot: hot != null };
+}
 
 export function detailFits(rect: BoardRect): boolean {
   return rect.x >= 0 && rect.y >= 0 && rect.x + rect.w <= WHITEBOARD_WIDTH && rect.y + rect.h <= WHITEBOARD_HEIGHT;
@@ -116,25 +133,98 @@ function hashUnit(seed: number, salt: number): number {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
 }
 
+/** Caja de tinta medida: origen del `fillText` menos el bearing, alto real del glifo. */
+export type GlyphBox = { x: number; y: number; width: number; height: number };
+
+export type GlyphBaseline = "alphabetic" | "middle";
+
+function fontPxOf(font: string): number {
+  const match = /(\d+(?:\.\d+)?)px/.exec(font);
+  const px = match ? Number(match[1]) : 26;
+  return Number.isFinite(px) && px > 0 ? px : 26;
+}
+
+function finiteMetric(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 /**
- * Óvalo de tiza alrededor de una caja de texto.
- * El radio, la inclinación y el grosor salen de la caja: el mismo elemento no tiembla entre fotogramas.
- * El trazo da algo más de una vuelta para que el final pase el inicio.
+ * Caja de tinta de un texto ya medido.
+ * `actualBoundingBox*` es relativo a la baseline activa (`alphabetic` o `middle`).
+ * Si el navegador no da esas medidas, se estima con el tamaño de la fuente.
  */
+export function measureGlyphBox(
+  context: CanvasRenderingContext2D,
+  text: string,
+  originX: number,
+  baselineY: number,
+  baseline: GlyphBaseline,
+): GlyphBox {
+  const metrics = context.measureText(text);
+  const left = metrics.actualBoundingBoxLeft;
+  const right = metrics.actualBoundingBoxRight;
+  const ascent = metrics.actualBoundingBoxAscent;
+  const descent = metrics.actualBoundingBoxDescent;
+  if (
+    finiteMetric(left) &&
+    finiteMetric(right) &&
+    finiteMetric(ascent) &&
+    finiteMetric(descent) &&
+    left + right > 0.5 &&
+    ascent + descent > 0.5
+  ) {
+    return {
+      x: originX - left,
+      y: baselineY - ascent,
+      width: left + right,
+      height: ascent + descent,
+    };
+  }
+  const width = Math.max(metrics.width, 1);
+  const fontPx = fontPxOf(context.font);
+  if (baseline === "middle") {
+    const half = fontPx * 0.5;
+    return { x: originX, y: baselineY - half, width, height: fontPx };
+  }
+  const ascentFb = fontPx * 0.78;
+  const descentFb = fontPx * 0.22;
+  return { x: originX, y: baselineY - ascentFb, width, height: ascentFb + descentFb };
+}
+
+/**
+ * Óvalo de tiza alrededor de la caja de tinta.
+ * El margen es en píxeles, no un porcentaje del radio: un título ancho no se come el trazo.
+ * La irregularidad empuja poco hacia dentro para rozar sin cruzar las letras.
+ * El mismo elemento no tiembla entre fotogramas. El trazo da algo más de una vuelta.
+ */
+/** Exponente para que las esquinas del texto queden dentro y el trazo no las corte. */
+function wrapExponent(halfW: number, halfH: number, pad: number): number {
+  const ax = halfW / (halfW + pad);
+  const by = halfH / (halfH + pad);
+  let n = 2;
+  while (n < 6.5 && ax ** n + by ** n > 0.72) n += 0.2;
+  return n;
+}
+
 export function chalkRingSegments(x: number, y: number, width: number, height: number): ChalkSegment[] {
   const seed = ringSeed(x, y, width, height);
-  const padX = 7 + hashUnit(seed, 1) * 3;
-  const padY = 4 + hashUnit(seed, 2) * 2.5;
-  const cx = x + width / 2;
-  const cy = y + height / 2;
-  const rx = width / 2 + padX;
-  const ry = Math.max(12, height / 2 + padY);
-  const tiltMag = Math.min(0.07, 5.2 / Math.max(rx, 1));
+  const boxW = Math.max(width, 1);
+  const boxH = Math.max(height, 1);
+  const pad = 8.2 + hashUnit(seed, 1) * 1.6;
+  const halfW = boxW / 2;
+  const halfH = boxH / 2;
+  const cx = x + halfW;
+  const cy = y + halfH;
+  const rx = halfW + pad;
+  const ry = halfH + pad;
+  const exponent = wrapExponent(halfW, halfH, pad) + (hashUnit(seed, 2) - 0.5) * 0.2;
+  const power = 2 / exponent;
+  const tiltMag = Math.min(0.035, 2.4 / Math.max(rx, 1));
   const tilt = (hashUnit(seed, 3) < 0.5 ? -1 : 1) * tiltMag * (0.72 + 0.28 * hashUnit(seed, 4));
   const overlap = 0.45 + hashUnit(seed, 5) * 0.38;
   const start = -Math.PI * 0.72 + (hashUnit(seed, 6) - 0.5) * 0.5;
-  const wobbleA = 0.028 + hashUnit(seed, 7) * 0.02;
-  const wobbleB = 0.016 + hashUnit(seed, 8) * 0.014;
+  const wobbleAmp = 0.85 + hashUnit(seed, 7) * 0.45;
+  const wobbleFine = 0.35 + hashUnit(seed, 8) * 0.2;
   const phase1 = hashUnit(seed, 9) * Math.PI * 2;
   const phase2 = hashUnit(seed, 10) * Math.PI * 2;
   const phaseW = hashUnit(seed, 11) * Math.PI * 2;
@@ -144,15 +234,19 @@ export function chalkRingSegments(x: number, y: number, width: number, height: n
   const sinT = Math.sin(tilt);
 
   const point = (theta: number, salt: number) => {
-    const wobble = 1 + wobbleA * Math.sin(2 * theta + phase1) + wobbleB * Math.sin(3 * theta + phase2);
-    const localX = Math.cos(theta) * rx * wobble;
-    const localY = Math.sin(theta) * ry * wobble;
-    const jitter = (hashUnit(seed, salt) - 0.5) * 1.6;
-    const jx = jitter * Math.cos(theta + 1.1);
-    const jy = jitter * Math.sin(theta + 0.6) * 0.55;
+    const ct = Math.cos(theta);
+    const st = Math.sin(theta);
+    let localX = Math.sign(ct) * Math.pow(Math.abs(ct), power) * rx;
+    let localY = Math.sign(st) * Math.pow(Math.abs(st), power) * ry;
+    const span = Math.hypot(localX, localY) || 1;
+    const radial = Math.sin(2 * theta + phase1) * wobbleAmp + Math.sin(3 * theta + phase2) * wobbleFine;
+    const jitter = (hashUnit(seed, salt) - 0.5) * 0.6;
+    const scale = (span + radial + jitter) / span;
+    localX *= scale;
+    localY *= scale;
     return {
-      x: cx + localX * cosT - localY * sinT + jx,
-      y: cy + localX * sinT + localY * cosT + jy,
+      x: cx + localX * cosT - localY * sinT,
+      y: cy + localX * sinT + localY * cosT,
     };
   };
 
@@ -186,37 +280,38 @@ export function strokeIsOpen(segments: readonly ChalkSegment[]): boolean {
   return Math.hypot(last.x2 - first.x1, last.y2 - first.y1) > 6;
 }
 
-export function rowChalkCue(layout: BoardRowLayout, titleWidth: number): { chevron: ChalkSegment[]; ring: ChalkSegment[] } {
-  const width = Math.max(84, Math.min(titleWidth, 300));
-  const textTop = layout.y + 12;
+export function rowChalkCue(layout: BoardRowLayout, ink: GlyphBox): { chevron: ChalkSegment[]; ring: ChalkSegment[] } {
   return {
     chevron: chalkChevronSegments(WHITEBOARD_WIDTH - 58, layout.y + 22, 7),
-    ring: chalkRingSegments(28, textTop, width, 28),
+    ring: chalkRingSegments(ink.x, ink.y, ink.width, ink.height),
   };
 }
 
-export function detailBackCue(labelWidth: number): ChalkSegment[] {
-  const back = detailBackRect();
-  const width = Math.max(96, Math.min(labelWidth, 240));
-  const font = 32;
-  const midY = back.y + back.h / 2;
-  return chalkRingSegments(back.x + 36, midY - font / 2, width, font);
+export function detailBackCue(ink: GlyphBox): ChalkSegment[] {
+  return chalkRingSegments(ink.x, ink.y, ink.width, ink.height);
 }
 
-export function detailActionCue(labelWidth: number): { ring: ChalkSegment[]; chevron: ChalkSegment[]; textX: number } {
+/** Origen del rótulo de la acción, centrado en su zona junto al chevron. */
+export function actionLabelOrigin(labelWidth: number): { textX: number; midY: number; chevronX: number } {
   const action = detailActionRect();
   const midY = action.y + action.h / 2;
-  const textW = Math.max(120, Math.min(labelWidth, action.w - 140));
+  const textW = Math.max(1, Math.min(labelWidth, action.w - 80));
   const chevronSize = 8;
   const gap = 16;
   const group = chevronSize + gap + textW;
   const left = action.x + (action.w - group) / 2;
-  const font = 36;
-  const textX = left + chevronSize + gap;
+  return { textX: left + chevronSize + gap, midY, chevronX: left };
+}
+
+export function detailActionCue(
+  ink: GlyphBox,
+  labelWidth = ink.width,
+): { ring: ChalkSegment[]; chevron: ChalkSegment[]; textX: number } {
+  const origin = actionLabelOrigin(labelWidth);
   return {
-    chevron: chalkChevronSegments(left, midY, chevronSize),
-    ring: chalkRingSegments(textX, midY - font / 2, textW, font),
-    textX,
+    chevron: chalkChevronSegments(origin.chevronX, origin.midY, 8),
+    ring: chalkRingSegments(ink.x, ink.y, ink.width, ink.height),
+    textX: origin.textX,
   };
 }
 
@@ -248,13 +343,14 @@ export function paintListAffordances(
   context.save();
   context.font = "700 26px sans-serif";
   context.textAlign = "left";
+  context.textBaseline = "alphabetic";
   const maxTitle = WHITEBOARD_WIDTH - 56 - 80;
   for (const layout of layouts) {
     if (layout.number <= 0) continue;
     const row = rows.find((item) => item.number === layout.number);
-    const title = row ? `#${row.number} · ${row.title}` : `#${layout.number}`;
-    const titleWidth = Math.min(context.measureText(title).width, maxTitle);
-    const cue = rowChalkCue(layout, titleWidth);
+    const title = truncate(context, row ? `#${row.number} · ${row.title}` : `#${layout.number}`, maxTitle);
+    const ink = measureGlyphBox(context, title, 28, layout.y + 34, "alphabetic");
+    const cue = rowChalkCue(layout, ink);
     const hot = markOf(layout.number);
     paintOpenCue(context, cue.chevron, 1, hot == null ? CUE : AMBER, 2.6);
     if (hot != null && hot > 0.02) paintOpenCue(context, cue.ring, hot, AMBER, 3.2);
@@ -340,10 +436,12 @@ export function paintDetailBoard(
   context.textAlign = "left";
   context.textBaseline = "middle";
   const backLabel = "← Tablón";
-  const backWidth = context.measureText(backLabel).width;
+  const backX = back.x + 36;
+  const backY = back.y + back.h / 2;
+  const backInk = measureGlyphBox(context, backLabel, backX, backY, "middle");
   context.fillStyle = emphasis.back == null ? CUE : INK_WARM;
-  context.fillText(backLabel, back.x + 36, back.y + back.h / 2);
-  paintEmphasisRing(context, detailBackCue(backWidth), emphasis.back);
+  context.fillText(backLabel, backX, backY);
+  paintEmphasisRing(context, detailBackCue(backInk), emphasis.back);
   context.textBaseline = "alphabetic";
   context.fillStyle = INK;
   context.font = "700 40px sans-serif";
@@ -360,12 +458,22 @@ export function paintDetailBoard(
     context.textAlign = "left";
     context.textBaseline = "middle";
     const labelWidth = context.measureText(model.actionLabel).width;
-    const cue = detailActionCue(labelWidth);
-    const midY = action.y + action.h / 2;
+    const origin = actionLabelOrigin(labelWidth);
+    const ink = measureGlyphBox(context, model.actionLabel, origin.textX, origin.midY, "middle");
+    const cue = detailActionCue(ink, labelWidth);
     paintOpenCue(context, cue.chevron, 1, emphasis.action == null ? CUE : AMBER, 2.8);
     context.fillStyle = emphasis.action == null ? CUE : INK_WARM;
-    context.fillText(model.actionLabel, cue.textX, midY);
-    paintEmphasisRing(context, cue.ring, emphasis.action);
+    context.fillText(model.actionLabel, cue.textX, origin.midY);
+    const actionMark = combineActionMark(emphasis.actionDraw, emphasis.action);
+    if (actionMark) {
+      paintOpenCue(
+        context,
+        cue.ring,
+        actionMark.progress,
+        actionMark.hot ? AMBER : CUE,
+        actionMark.hot ? 3.2 : 2.2,
+      );
+    }
   }
   context.restore();
 }

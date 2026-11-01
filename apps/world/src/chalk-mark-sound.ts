@@ -3,31 +3,24 @@ import { isMusicMuted } from "./ambience-music";
 /** Mínimo entre dos rasguños. Barrer varias filas no dispara uno por fila. */
 export const CHALK_MARK_GAP_MS = 400;
 
-export type ChalkScratchShape = {
-  durationSec: number;
-  frequencyHz: number;
-  q: number;
-  peak: number;
-};
+/** Un solo clip, mono y corto. `revision-audio` reescribe esta URL al construir. */
+export const CHALK_MARK_SRC = "/protos/audio/chalk.m4a";
 
-/** Ruido corto: el tono y la duración varían un poco; el pico se queda bajo. */
-export function chalkScratchShape(random: () => number): ChalkScratchShape {
-  return {
-    durationSec: 0.04 + random() * 0.045,
-    frequencyHz: 1500 + random() * 2100,
-    q: 0.55 + random() * 0.7,
-    peak: 0.055 + random() * 0.03,
-  };
-}
+/** Pico del archivo cerca de −3 dB: 0,2 lo deja de fondo, sin tapar la música. */
+export const CHALK_MARK_VOLUME = 0.2;
+
+/** Si el clip aún no está decodificado, se recuerda la petición este tiempo. */
+const CHALK_MARK_PENDING_MS = 900;
 
 export function shouldPlayChalkMark(input: {
   e2e: boolean;
   muted: boolean;
-  contextRunning: boolean;
+  ready: boolean;
+  playing: boolean;
   nowMs: number;
   lastPlayedMs: number;
 }): boolean {
-  if (input.e2e || input.muted || !input.contextRunning) return false;
+  if (input.e2e || input.muted || !input.ready || input.playing) return false;
   if (input.nowMs - input.lastPlayedMs < CHALK_MARK_GAP_MS) return false;
   return true;
 }
@@ -55,35 +48,68 @@ function audioContextCtor(): AudioCtor | null {
 }
 
 let context: AudioContext | null = null;
+let buffer: AudioBuffer | null = null;
+let loading: Promise<void> | null = null;
+let failed = false;
+let active: AudioBufferSourceNode | null = null;
 let lastPlayedMs = Number.NEGATIVE_INFINITY;
+let pendingUntilMs = Number.NEGATIVE_INFINITY;
 let gestureBound = false;
 
-function scratch(ctx: AudioContext, random: () => number): void {
-  const shape = chalkScratchShape(random);
-  const frames = Math.max(1, Math.floor(ctx.sampleRate * shape.durationSec));
-  const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < frames; i += 1) data[i] = random() * 2 - 1;
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-  const filter = ctx.createBiquadFilter();
-  filter.type = "bandpass";
-  filter.frequency.value = shape.frequencyHz;
-  filter.Q.value = shape.q;
-  const gain = ctx.createGain();
-  const now = ctx.currentTime;
-  const peak = shape.peak;
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(peak, now + 0.006);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + shape.durationSec);
-  source.connect(filter);
-  filter.connect(gain);
-  gain.connect(ctx.destination);
-  source.start(now);
-  source.stop(now + shape.durationSec + 0.02);
+function nowClock(): number {
+  if (typeof performance !== "undefined") return performance.now();
+  return Date.now();
 }
 
-/** Crea el contexto solo dentro de un gesto. Si sigue suspendido, aún no suena. */
+/** Descarga el clip la primera vez que hace falta. En `?e2e=1` no se pide. */
+function ensureBuffer(): void {
+  if (buffer || failed || loading || !context || pageIsE2e()) return;
+  const ctx = context;
+  loading = (async () => {
+    const response = await fetch(CHALK_MARK_SRC);
+    if (!response.ok) throw new Error("tiza");
+    const bytes = await response.arrayBuffer();
+    const decoded = await ctx.decodeAudioData(bytes.slice(0));
+    buffer = decoded;
+    flushPending();
+  })().catch(() => {
+    failed = true;
+    loading = null;
+  });
+}
+
+function rememberPending(nowMs: number): void {
+  if (active != null) return;
+  pendingUntilMs = Math.max(pendingUntilMs, nowMs + CHALK_MARK_PENDING_MS);
+}
+
+function flushPending(): void {
+  if (nowClock() <= pendingUntilMs) playChalkMark(nowClock());
+}
+
+function startScratch(nowMs: number): boolean {
+  if (!context || !buffer) return false;
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  const gain = context.createGain();
+  gain.gain.value = CHALK_MARK_VOLUME;
+  source.connect(gain);
+  gain.connect(context.destination);
+  source.onended = () => {
+    if (active === source) active = null;
+  };
+  active = source;
+  try {
+    source.start();
+  } catch {
+    active = null;
+    return false;
+  }
+  lastPlayedMs = nowMs;
+  return true;
+}
+
+/** Crea el contexto y empieza a bajar el clip solo dentro de un gesto. */
 function armChalkAudio(): void {
   if (pageIsE2e()) return;
   const Ctor = audioContextCtor();
@@ -95,10 +121,11 @@ function armChalkAudio(): void {
       return;
     }
   }
-  if (context.state === "suspended") void context.resume();
+  if (context.state === "suspended") void context.resume().then(() => flushPending());
+  ensureBuffer();
 }
 
-/** Escucha el primer gesto. En `?e2e=1` no se engancha. */
+/** Escucha el primer gesto. En `?e2e=1` no se engancha ni se descarga el clip. */
 export function ensureChalkMarkAudio(): void {
   if (gestureBound || typeof window === "undefined" || pageIsE2e()) return;
   gestureBound = true;
@@ -106,26 +133,33 @@ export function ensureChalkMarkAudio(): void {
   window.addEventListener("keydown", armChalkAudio, { capture: true });
 }
 
-/** Suena si el contexto ya corre, la música no está silenciada y pasó el intervalo. */
+/**
+ * Un rasguño de tiza grabada.
+ * Si ya hay uno sonando, no se apila otro. Si el clip aún no llegó, se recuerda la petición.
+ */
 export function playChalkMark(nowMs: number): boolean {
+  const e2e = pageIsE2e();
+  const muted = musicIsMuted();
+  if (e2e || muted) return false;
   const running = context != null && context.state === "running";
+  if (!running || !buffer) {
+    if (context) {
+      ensureBuffer();
+      rememberPending(nowMs);
+    }
+    return false;
+  }
   if (
     !shouldPlayChalkMark({
-      e2e: pageIsE2e(),
-      muted: musicIsMuted(),
-      contextRunning: running,
+      e2e,
+      muted,
+      ready: true,
+      playing: active != null,
       nowMs,
       lastPlayedMs,
     })
   ) {
     return false;
   }
-  if (!context) return false;
-  lastPlayedMs = nowMs;
-  try {
-    scratch(context, Math.random);
-  } catch {
-    return false;
-  }
-  return true;
+  return startScratch(nowMs);
 }

@@ -94,6 +94,8 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   const session = new BoardSession();
   let hover: BoardHit | null = null;
   const markStart = new Map<string, number>();
+  let actionDrawKey: number | null = null;
+  let actionDrawStart: number | null = null;
   let hotSignature = "";
   let knownSlugs = options.knownSlugs ?? [];
   let uiSignature = "";
@@ -223,8 +225,23 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     return chalkMarkProgress(nowMs - start, reducedMotion);
   }
 
+  function clearActionDraw() {
+    actionDrawKey = null;
+    actionDrawStart = null;
+  }
+
+  function syncActionDraw(nowMs: number, hasAction: boolean) {
+    if (!hasAction || session.selectedNumber == null) return;
+    if (actionDrawKey === session.selectedNumber && actionDrawStart != null) return;
+    actionDrawKey = session.selectedNumber;
+    actionDrawStart = nowMs;
+    playChalkMark(nowMs);
+  }
+
   function marksSettled(nowMs: number): boolean {
-    if (reducedMotion || markStart.size === 0) return true;
+    if (reducedMotion) return true;
+    if (actionDrawStart != null && nowMs - actionDrawStart < MARK_DRAW_MS) return false;
+    if (markStart.size === 0) return true;
     for (const start of markStart.values()) {
       if (nowMs - start < MARK_DRAW_MS) return false;
     }
@@ -235,12 +252,14 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     hover = null;
     markStart.clear();
     hotSignature = "";
+    clearActionDraw();
   }
 
   function detailEmphasis(nowMs: number): DetailEmphasis {
     return {
       back: markStart.has("back") ? markProgress("back", nowMs) : null,
       action: markStart.has("action") ? markProgress("action", nowMs) : null,
+      actionDraw: actionDrawStart == null ? null : chalkMarkProgress(nowMs - actionDrawStart, reducedMotion),
     };
   }
 
@@ -269,6 +288,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
     const action = boardNavAction(item, knownSlugs);
     const date = formatBoardDate(item.updatedAt);
     syncMarks(nowMs);
+    if (session.screen === "detail" && appearance.text > 0.35) syncActionDraw(nowMs, action != null);
     paintDetailBoard(
       ctx,
       {
@@ -291,6 +311,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
       detailAppearance(nowMs, { stroke: 1, text: 1 });
       return;
     }
+    clearActionDraw();
     fullRedraw(nowMs);
   }
 
