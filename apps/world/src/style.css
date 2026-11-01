@@ -56,7 +56,7 @@ button, input, textarea { font: inherit; color: inherit; }
   transform: translateX(-50%);
   z-index: 3;
   margin: 0;
-  max-width: calc(100% - 148px);
+  max-width: min(28rem, calc(100% - 96px));
   padding: 6px 12px;
   border-radius: 999px;
   background: rgba(10, 12, 24, 0.55);
@@ -69,24 +69,38 @@ button, input, textarea { font: inherit; color: inherit; }
   top: calc(12px + env(safe-area-inset-top));
   right: calc(12px + env(safe-area-inset-right));
   z-index: 8;
-  min-height: 40px;
-  padding: 0 12px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border-radius: 999px;
-  border: 2px solid rgba(255, 183, 3, 0.75);
-  background: rgba(10, 12, 24, 0.78);
-  color: var(--ink);
-  font-weight: 700;
-  font-size: 0.85rem;
+  border: 1px solid rgba(246, 241, 231, 0.28);
+  background: rgba(10, 12, 24, 0.45);
+  color: rgba(246, 241, 231, 0.92);
   cursor: pointer;
   touch-action: manipulation;
 }
+#mute-music .mute-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  pointer-events: none;
+}
+#mute-music .mute-icon--off { display: none; }
+#mute-music[aria-pressed="true"] .mute-icon--on { display: none; }
+#mute-music[aria-pressed="true"] .mute-icon--off { display: block; }
 #mute-music:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
+@media (hover: hover) {
+  #mute-music:hover { background: rgba(10, 12, 24, 0.72); }
+}
 #mute-music[aria-pressed="true"] {
-  border-color: rgba(246, 241, 231, 0.35);
-  color: rgba(246, 241, 231, 0.72);
+  border-color: rgba(246, 241, 231, 0.18);
+  background: rgba(10, 12, 24, 0.32);
+  color: rgba(246, 241, 231, 0.55);
 }
 
 #board-back {
@@ -166,6 +180,25 @@ body.reading-board #interact {
 }
 #touch-controls .nipple .front {
   box-shadow: 0 0 12px rgba(255, 183, 3, 0.35);
+}
+
+/* El cromo no se selecciona ni abre el menú de copiar de iOS. El diálogo,
+   la ayuda y los campos no entran aquí: siguen pudiendo copiarse. */
+.has-joystick :is(button, #hint, #labels, #touch-controls, .nameplate, .speech-bubble) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+body.joystick-dragging,
+body.joystick-dragging * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 @media (max-height: 500px) {

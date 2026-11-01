@@ -461,7 +461,8 @@ test("en el móvil el joystick dinámico aparece al tocar", async ({ browser }, 
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await expect(page.getByTestId("joystick")).toBeHidden();
-  await expect(page.getByTestId("hint")).toContainText("Toca a la izquierda");
+  await expect(page.getByTestId("hint")).toBeHidden();
+  await expect(page.locator("#shell > p.sr-only")).toContainText("izquierda");
   const viewport = page.viewportSize();
   expect(viewport).toBeTruthy();
   const x = Math.floor(viewport!.width * 0.22);
@@ -883,6 +884,93 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   await expect(page.locator("#game-selector")).toBeHidden();
 });
 
+test("en el iPhone el joystick no selecciona el texto de los botones", async ({ page }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "selección y callout táctiles en iOS");
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  const mute = page.getByTestId("mute-music");
+  const chrome = await mute.evaluate((el) => getComputedStyle(el).userSelect);
+  expect(chrome).toBe("none");
+  const cssHref = await page.locator('link[rel="stylesheet"]').first().getAttribute("href");
+  expect(cssHref).toBeTruthy();
+  const css = await (await page.request.get(new URL(cssHref!, page.url()).href)).text();
+  expect(css).toMatch(/-webkit-touch-callout:\s*none/);
+  expect(css).toMatch(/-webkit-touch-callout:\s*default/);
+
+  const viewport = page.viewportSize();
+  expect(viewport).toBeTruthy();
+  const x = Math.floor(viewport!.width * 0.22);
+  const y = Math.floor(viewport!.height * 0.72);
+  await page.locator("#touch-zone-move").dispatchEvent("pointerdown", {
+    clientX: x,
+    clientY: y,
+    button: 0,
+    buttons: 1,
+    pointerId: 1,
+    pointerType: "touch",
+    isPrimary: true,
+  });
+  await expect(page.getByTestId("touch-controls")).toHaveAttribute("data-active", "true");
+  await expect(page.locator("body")).toHaveClass(/joystick-dragging/);
+
+  const during = await page.evaluate(() => {
+    const button = document.querySelector("#mute-music");
+    const dialogue = document.querySelector("#dialogue");
+    if (!(button instanceof HTMLElement) || !(dialogue instanceof HTMLElement)) throw new Error("falta el cromo");
+    const buttonEvent = new Event("selectstart", { bubbles: true, cancelable: true });
+    button.dispatchEvent(buttonEvent);
+    const field = document.createElement("textarea");
+    field.className = "dialogue-input";
+    dialogue.append(field);
+    const fieldEvent = new Event("selectstart", { bubbles: true, cancelable: true });
+    field.dispatchEvent(fieldEvent);
+    const fieldSelect = getComputedStyle(field).userSelect;
+    field.remove();
+    return {
+      buttonBlocked: buttonEvent.defaultPrevented,
+      fieldBlocked: fieldEvent.defaultPrevented,
+      fieldSelect,
+      selected: window.getSelection()?.toString() ?? "",
+    };
+  });
+  expect(during.buttonBlocked).toBe(true);
+  expect(during.fieldBlocked).toBe(false);
+  expect(during.fieldSelect).toBe("text");
+  expect(during.selected).toBe("");
+
+  await page.locator("#touch-zone-move").dispatchEvent("pointerup", {
+    clientX: x,
+    clientY: y,
+    button: 0,
+    buttons: 0,
+    pointerId: 1,
+    pointerType: "touch",
+    isPrimary: true,
+  });
+  await expect(page.getByTestId("touch-controls")).not.toHaveAttribute("data-active", "true");
+  await expect(page.locator("body")).not.toHaveClass(/joystick-dragging/);
+
+  const idle = await page.evaluate(() => {
+    const button = document.querySelector("#mute-music");
+    const dialogue = document.querySelector("#dialogue");
+    if (!(button instanceof HTMLElement) || !(dialogue instanceof HTMLElement)) throw new Error("falta el cromo");
+    const text = document.createElement("p");
+    text.className = "dialogue-text";
+    text.textContent = "Se puede copiar";
+    dialogue.append(text);
+    const textEvent = new Event("selectstart", { bubbles: true, cancelable: true });
+    text.dispatchEvent(textEvent);
+    const buttonEvent = new Event("selectstart", { bubbles: true, cancelable: true });
+    button.dispatchEvent(buttonEvent);
+    const textSelect = getComputedStyle(text).userSelect;
+    text.remove();
+    return { textBlocked: textEvent.defaultPrevented, buttonBlocked: buttonEvent.defaultPrevented, textSelect };
+  });
+  expect(idle.textBlocked).toBe(false);
+  expect(idle.buttonBlocked).toBe(true);
+  expect(idle.textSelect).not.toBe("none");
+});
+
 test("en el iPhone la música del joystick no vuelve a idle tras unos segundos", async ({ page }, testInfo) => {
   skipUnlessWebKitIphone(testInfo, "gesto táctil iOS");
   await page.goto("/?e2e=1");
@@ -927,20 +1015,28 @@ async function dispatchTouchDrag(
   );
 }
 
-test("el botón de silenciar alterna y persiste", async ({ page }) => {
+test("el botón de silenciar alterna y persiste", async ({ page }, testInfo) => {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   const mute = page.getByTestId("mute-music");
   await expect(mute).toBeVisible();
   await expect(mute).toHaveAttribute("aria-pressed", "false");
-  await expect(mute).toHaveText("Silenciar");
+  await expect(mute).toHaveAttribute("aria-label", "Silenciar música");
+  await expect(page.getByRole("button", { name: "Silenciar música" })).toBeVisible();
+  await expect(mute.locator(".mute-icon--on")).toBeVisible();
+  await expect(mute.locator(".mute-icon--off")).toBeHidden();
+  if (testInfo.project.name === "webkit-iphone") await expect(page.getByTestId("hint")).toBeHidden();
+  else await expect(page.getByTestId("hint")).toContainText("WASD para caminar");
   await mute.click();
   await expect(mute).toHaveAttribute("aria-pressed", "true");
   await expect(mute).toHaveAttribute("aria-label", "Activar música");
+  await expect(mute.locator(".mute-icon--off")).toBeVisible();
+  await expect(mute.locator(".mute-icon--on")).toBeHidden();
   await page.reload();
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await expect(page.getByTestId("mute-music")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("mute-music")).toHaveText("Activar");
+  await expect(page.getByTestId("mute-music")).toHaveAttribute("aria-label", "Activar música");
+  await expect(page.getByTestId("mute-music").locator(".mute-icon--off")).toBeVisible();
 });
 
 test("en horizontal el botón de interacción queda en la mitad inferior", async ({ browser }, testInfo) => {

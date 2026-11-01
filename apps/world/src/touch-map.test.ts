@@ -4,6 +4,8 @@ import {
   TOUCH_LOOK_RATE_Y,
   lookRatesFromStickVector,
   movementFromStickVector,
+  selectionHostFromEventTarget,
+  shouldBlockTextSelection,
   shouldIgnoreTouchAt,
   touchScreenSide,
 } from "./touch-map";
@@ -44,6 +46,35 @@ describe("controles táctiles dinámicos", () => {
     const gentle = lookRatesFromStickVector(0, 0.5);
     expect(Math.abs(gentle.lookY)).toBeGreaterThan(0);
     expect(Math.abs(gentle.lookY)).toBeLessThan(TOUCH_LOOK_RATE_Y * 0.5);
+  });
+
+  it("no selecciona el cromo al usar el joystick y deja escribir en los campos", () => {
+    const button = {
+      closest(selector: string) {
+        return selector.includes("button") ? button : null;
+      },
+    };
+    const field = {
+      closest(selector: string) {
+        return selector.includes("textarea") || selector.includes("input") ? field : null;
+      },
+    };
+    const dialogue = {
+      closest(selector: string) {
+        return selector.includes("dialogue-text") ? dialogue : null;
+      },
+    };
+    const textInButton = { parentElement: button };
+
+    expect(shouldBlockTextSelection(button, true)).toBe(true);
+    expect(shouldBlockTextSelection(button, false)).toBe(true);
+    expect(shouldBlockTextSelection(selectionHostFromEventTarget(textInButton), true)).toBe(true);
+    expect(shouldBlockTextSelection(field, true)).toBe(false);
+    expect(shouldBlockTextSelection(field, false)).toBe(false);
+    expect(shouldBlockTextSelection(dialogue, false)).toBe(false);
+    expect(shouldBlockTextSelection(dialogue, true)).toBe(true);
+    expect(shouldBlockTextSelection(null, true)).toBe(false);
+    expect(selectionHostFromEventTarget(null)).toBeNull();
   });
 
   it("detecta UI interactiva bajo el toque", () => {

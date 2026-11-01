@@ -1,5 +1,11 @@
 import { create } from "nipplejs";
-import { lookRatesFromStickVector, movementFromStickVector, shouldIgnoreTouchAt } from "./touch-map";
+import {
+  lookRatesFromStickVector,
+  movementFromStickVector,
+  selectionHostFromEventTarget,
+  shouldBlockTextSelection,
+  shouldIgnoreTouchAt,
+} from "./touch-map";
 
 type NippleCollection = ReturnType<typeof create>;
 
@@ -47,7 +53,16 @@ export function attachTouchControls(options: {
     const root = options.zoneMove.closest("#touch-controls");
     if (visible) root?.setAttribute("data-active", "true");
     else root?.removeAttribute("data-active");
+    document.body.classList.toggle("joystick-dragging", activeSticks > 0);
   }
+
+  const onSelectStart = (event: Event) => {
+    const host = selectionHostFromEventTarget(event.target);
+    if (!shouldBlockTextSelection(host, activeSticks > 0)) return;
+    event.preventDefault();
+  };
+  const selectCapture: AddEventListenerOptions = { capture: true };
+  document.addEventListener("selectstart", onSelectStart, selectCapture);
 
   function bumpActive(delta: number) {
     activeSticks = Math.max(0, activeSticks + delta);
@@ -175,9 +190,11 @@ export function attachTouchControls(options: {
     dispose() {
       unbindMoveTap();
       unbindLookTap();
+      document.removeEventListener("selectstart", onSelectStart, selectCapture);
       resizeObserver.disconnect();
       moveCollection.destroy();
       lookCollection.destroy();
+      activeSticks = 0;
       setMarkerVisible(false);
     },
   };
