@@ -9,6 +9,18 @@ import {
 } from "./whiteboard-view";
 
 describe("encuadre de la pizarra", () => {
+  it("el plano del tablón llena el hueco interior del marco", () => {
+    const rail = 0.12;
+    const innerLeft = -6.28 + rail / 2;
+    const innerRight = -2.92 - rail / 2;
+    const innerBottom = 0.64 + rail / 2;
+    const innerTop = 2.48 - rail / 2;
+    expect(WHITEBOARD_FRAME.x - WHITEBOARD_FRAME.width / 2).toBeCloseTo(innerLeft, 5);
+    expect(WHITEBOARD_FRAME.x + WHITEBOARD_FRAME.width / 2).toBeCloseTo(innerRight, 5);
+    expect(WHITEBOARD_FRAME.y - WHITEBOARD_FRAME.height / 2).toBeCloseTo(innerBottom, 5);
+    expect(WHITEBOARD_FRAME.y + WHITEBOARD_FRAME.height / 2).toBeCloseTo(innerTop, 5);
+  });
+
   it("cabe en horizontal y en vertical, más lejos si la pantalla es estrecha", () => {
     const desktop = whiteboardCameraPose(1280 / 800, 58);
     const portrait = whiteboardCameraPose(390 / 844, 78);

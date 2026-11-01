@@ -1,10 +1,14 @@
-/** Plano del tablón en la pizarra (cara hacia +Z). Tiene que coincidir con la malla. */
+/**
+ * Plano del tablón (cara hacia +Z). Llena el hueco interior del marco de madera
+ * de `addChalkboard`: listones laterales en x = -6.28 y -2.92, largueros en
+ * y = 2.48 y 0.64, todos de grosor 0.12.
+ */
 export const WHITEBOARD_FRAME = {
   x: -4.6,
-  y: 1.55,
+  y: 1.56,
   z: -7.33,
-  width: 3.1,
-  height: 1.7,
+  width: 3.24,
+  height: 1.72,
 } as const;
 
 /** Transición al encuadre y de vuelta. Cero si el usuario pide menos movimiento. */
