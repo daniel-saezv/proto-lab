@@ -4,6 +4,7 @@ import catalogFile from "./generated/catalog.json";
 import { LAB_ROOT_HREF, type BoardNavAction, type BoardUiSnapshot } from "./proposals-board-actions";
 import { renderBoardControls } from "./proposals-board-a11y";
 import { createDialogue } from "./dialogue";
+import { loungeScript } from "./dialogue-script";
 import { createGameSelector } from "./game-selector";
 import { createInstallHelp, type DeferredInstallPrompt } from "./install-help";
 import { createOverlay } from "./overlay";
@@ -397,6 +398,10 @@ async function bootWorld() {
         };
       },
       onTalk: () => dialogue.open(),
+      onTalkNpc: (id) => {
+        const script = loungeScript(id);
+        if (script) dialogue.openScript(script);
+      },
       onOpenSelector: () => {
         const index = 0;
         selector.open(index);

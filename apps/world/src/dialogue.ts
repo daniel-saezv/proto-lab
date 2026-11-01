@@ -1,10 +1,19 @@
 import { INVENTOR_RESULT_OK, inventorSpeech, type DialoguePhase } from "./dialogue-speech";
+import { chooseScript, scriptNode, startScript, type DialogueScript, type ScriptCursor } from "./dialogue-script";
 import { LIMITS } from "./limits";
 import type { CatalogEntry, ProposalDraft, SubmitOutcome } from "./types";
+
+export const INVENTOR_NAME = "Inventor";
+
+export function dialogueSpeakerName(session: { kind: "inventor" } | { kind: "script"; name: string }): string {
+  return session.kind === "inventor" ? INVENTOR_NAME : session.name;
+}
 
 type Mode = "propuesta" | "iteracion";
 
 type Phase = DialoguePhase | { name: "done"; text: string; outcome: string };
+
+type SpeakerSession = { kind: "inventor" } | { kind: "script"; cursor: ScriptCursor };
 
 type Choice = { id: string; label: string; run: () => void };
 
@@ -29,6 +38,7 @@ export function createDialogue(options: {
 }) {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let phase: Phase = { name: "greet" };
+  let session: SpeakerSession = { kind: "inventor" };
   let draft: ProposalDraft = { kind: "propuesta", title: "", description: "" };
   let token = 0;
   let open = false;
@@ -38,11 +48,27 @@ export function createDialogue(options: {
   }
 
   function speech(): string {
+    if (session.kind === "script") return scriptNode(session.cursor).text;
     if (phase.name === "done") return phase.text;
     return inventorSpeech(phase, draft, options.prototypes);
   }
 
   function choices(): Choice[] {
+    if (session.kind === "script") {
+      const cursor = session.cursor;
+      return scriptNode(cursor).choices.map((choice) => ({
+        id: choice.id,
+        label: choice.label,
+        run: () => {
+          const next = chooseScript(cursor, choice.id);
+          if (next === "close") close();
+          else {
+            session = { kind: "script", cursor: next };
+            render();
+          }
+        },
+      }));
+    }
     if (phase.name === "greet") {
       return [
         { id: "choice-propose", label: "Quiero proponer un prototipo", run: () => { resetDraft("propuesta"); phase = { name: "title", mode: "propuesta" }; render(); } },
@@ -93,14 +119,17 @@ export function createDialogue(options: {
     options.root.replaceChildren();
     options.root.dataset.outcome = phase.name === "done" ? phase.outcome : "";
 
+    const speaker = session.kind === "script" ? session.cursor.script.speaker : { id: "inventor", name: INVENTOR_NAME };
+    options.root.dataset.speaker = speaker.id;
+
     const portrait = document.createElement("div");
-    portrait.className = "portrait";
+    portrait.className = speaker.id === "inventor" ? "portrait" : `portrait portrait--${speaker.id}`;
     portrait.setAttribute("aria-hidden", "true");
 
     const name = document.createElement("p");
     name.className = "dialogue-name";
     name.id = "dialogue-name";
-    name.textContent = "Inventor";
+    name.textContent = dialogueSpeakerName(session.kind === "script" ? { kind: "script", name: speaker.name } : { kind: "inventor" });
 
     const text = document.createElement("p");
     text.className = "dialogue-text";
@@ -236,13 +265,16 @@ export function createDialogue(options: {
     document.body.classList.remove("dialogue-open");
     options.root.hidden = true;
     options.root.replaceChildren();
+    delete options.root.dataset.speaker;
     phase = { name: "greet" };
+    session = { kind: "inventor" };
     options.onClose();
   }
 
   function show() {
     if (open) return;
     open = true;
+    session = { kind: "inventor" };
     phase = { name: "greet" };
     draft = { kind: "propuesta", title: "", description: "" };
     document.body.classList.add("dialogue-open");
@@ -255,6 +287,7 @@ export function createDialogue(options: {
     const entry = options.prototypes.find((item) => item.slug === slug);
     if (!entry) return;
     open = true;
+    session = { kind: "inventor" };
     resetDraft("iteracion", slug);
     phase = { name: "title", mode: "iteracion" };
     document.body.classList.add("dialogue-open");
@@ -263,8 +296,20 @@ export function createDialogue(options: {
     render();
   }
 
+  function openScript(script: DialogueScript) {
+    if (open) return;
+    open = true;
+    session = { kind: "script", cursor: startScript(script) };
+    phase = { name: "greet" };
+    document.body.classList.add("dialogue-open");
+    options.root.hidden = false;
+    options.onOpen();
+    render();
+  }
+
   return {
     open: show,
+    openScript,
     openIteration,
     close,
     isOpen: () => open,

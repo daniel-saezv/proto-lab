@@ -17,7 +17,7 @@ export const VIEWPOINTS: readonly Viewpoint[] = [
   { id: "spawn", label: "Aparición", kind: "follow", x: 0, z: 1.7, yaw: 0.15, pitch: 0.15 },
   { id: "inventor", label: "Inventor", kind: "follow", x: -1.5, z: -1.7, yaw: 0, pitch: 0.15 },
   { id: "arcade", label: "Arcade", kind: "follow", x: 0.6, z: 1.35, yaw: 0, pitch: 0.15 },
-  { id: "corner-lounge", label: "Rincón sofá", kind: "follow", x: -5, z: -2.8, yaw: -0.86, pitch: 0.22 },
+  { id: "corner-lounge", label: "Rincón sofá", kind: "follow", x: -4.7, z: -0.9, yaw: -0.66, pitch: 0.22 },
   { id: "corner-workshop", label: "Rincón taller", kind: "follow", x: 4.2, z: -3.2, yaw: 0.83, pitch: 0.22 },
   { id: "corner-pinball", label: "Rincón pinball", kind: "follow", x: -2.6, z: 3.5, yaw: -2.31, pitch: 0.22 },
   { id: "corner-fridge", label: "Rincón nevera", kind: "follow", x: 4.6, z: 3.4, yaw: 2.22, pitch: 0.22 },

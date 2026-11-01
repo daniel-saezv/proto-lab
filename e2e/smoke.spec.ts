@@ -682,6 +682,28 @@ test("en el iPhone se apunta tocando la parte baja y al soltar cae una bola", as
   await expect.poll(() => canvas.evaluate(() => window.__chispa?.ballCount() ?? 0)).toBeGreaterThan(before);
 });
 
+test("en el rincón se habla con Remolón y el Inventor sigue siendo él", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("remolon"));
+  await expect(page.getByTestId("interact")).toHaveText("Hablar con Remolón");
+  await page.getByTestId("interact").click();
+  await expect(page.locator("#dialogue-name")).toHaveText("Remolón");
+  await expect(page.getByTestId("dialogue")).toHaveAttribute("data-speaker", "remolon");
+  const line = page.getByTestId("dialogue-text");
+  await expect(line).toContainText("tele");
+  await expect(line).toContainText("a medias");
+  await expect(line).not.toContainText("máquina");
+  await page.getByTestId("choice-remolon-halves").click();
+  await expect(line).toContainText("Croquis");
+  await expect(line).not.toContainText("máquina");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  await openInventorDialogue(page);
+  await expect(page.locator("#dialogue-name")).toHaveText("Inventor");
+  await expect(page.getByTestId("dialogue-text")).toContainText("la máquina de este laboratorio");
+});
+
 test("el lobby monta decoración ambiental sin errores", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
