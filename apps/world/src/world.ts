@@ -122,6 +122,7 @@ type Spot = {
   radius: number;
   collider: number;
   label: string;
+  approach?: { x: number; z: number };
 };
 
 export function startWorld(options: {
@@ -137,6 +138,7 @@ export function startWorld(options: {
   onReady: () => void;
   onE2eReady?: () => void;
   onTalk: () => void;
+  onTalkNpc?: (id: string) => void;
   onOpenSelector: () => void;
   onTarget: (label: string | null) => void;
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
@@ -396,11 +398,24 @@ export function startWorld(options: {
       collider: item.collider,
       label: "",
     })),
+    ...ambient.npcs.map((npc) => ({
+      id: npc.id,
+      kind: "npc" as const,
+      x: npc.x,
+      z: npc.z,
+      radius: npc.radius,
+      collider: 0,
+      label: npc.label,
+      approach: npc.approach,
+    })),
   ];
+  const loungeIds = new Set(ambient.npcs.map((npc) => npc.id));
+  for (const plate of ambient.nameplates) nameplates.set(plate.id, plate.element);
 
   addRangeRing("inventor", LAYOUT.inventor.x, LAYOUT.inventor.z, PALETTE.amber);
   addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
   addRangeRing("chalkboard", LAYOUT.chalkboard.x, LAYOUT.chalkboard.z, 0x8fd8ff);
+  for (const npc of ambient.npcs) addRangeRing(npc.id, npc.x, npc.z, npc.color);
 
   let yaw = 0.15;
   let pitch = 0.15;
@@ -658,19 +673,24 @@ export function startWorld(options: {
     const spot = currentSpot();
     if (!spot || !inputEnabled) return;
     if (spot.kind === "npc" && spot.id === "inventor") options.onTalk();
-    if (spot.kind === "npc" && spot.id === "chalkboard") enterBoardView();
-    if (spot.kind === "machine" && spot.id === "arcade") options.onOpenSelector();
+    else if (spot.kind === "npc" && spot.id === "chalkboard") enterBoardView();
+    else if (spot.kind === "npc" && loungeIds.has(spot.id)) options.onTalkNpc?.(spot.id);
+    else if (spot.kind === "machine" && spot.id === "arcade") options.onOpenSelector();
   }
 
   function focus(id: string) {
     const spot = spots.find((item) => item.id === id && item.radius > 0);
     if (!spot) return;
     cameraMode = "follow";
-    player.position.x = spot.x;
-    player.position.z = spot.z + 1.7;
+    player.position.x = spot.approach?.x ?? spot.x;
+    player.position.z = spot.approach?.z ?? spot.z + 1.7;
     resolve(player.position);
-    yaw = 0;
-    player.rotation.y = 0;
+    if (spot.approach) {
+      yaw = Math.atan2(spot.x - player.position.x, -(spot.z - player.position.z));
+    } else {
+      yaw = 0;
+    }
+    player.rotation.y = yaw;
     snapped = true;
   }
 
@@ -793,7 +813,7 @@ export function startWorld(options: {
       return;
     }
     if (!hitId) return;
-    const spot = spots.find((item) => item.id === hitId);
+    const spot = spots.find((item) => item.id === hitId && item.radius > 0);
     if (!spot) return;
     const distance = Math.hypot(player.position.x - spot.x, player.position.z - spot.z);
     if (distance <= spot.radius) interact();
@@ -927,7 +947,7 @@ export function startWorld(options: {
       },
       visitSlacker: () => {
         cameraMode = "follow";
-        player.position.set(ambient.slacker.x + 0.9, 0, ambient.slacker.z + 1.4);
+        player.position.set(ambient.slacker.approach.x, 0, ambient.slacker.approach.z);
         resolve(player.position);
         snapped = true;
       },

@@ -1,3 +1,5 @@
+import { LOUNGE_FURNITURE, loungeCameraBlockers } from "./lounge-layout";
+
 export const PLAYER_RADIUS = 0.38;
 
 /**
@@ -54,7 +56,12 @@ export const LAYOUT = {
   bench: { x: 1.2, z: -3.4, collider: 0.52 },
   crates: { x: 8.55, z: 1.9, collider: 0.46 },
   plant: { x: -8.55, z: -6.15, collider: 0.28 },
-  couch: { x: -7.15, z: -4.65, collider: 0.62 },
+  couch: piece("couch"),
+  couchNorth: piece("couchNorth"),
+  couchSouth: piece("couchSouth"),
+  loungeTable: piece("loungeTable"),
+  tv: piece("tv"),
+  croquis: piece("croquis"),
   fridge: { x: 9.15, z: 5.5, collider: 0.42 },
   dog: { x: 8.15, z: 6.55, collider: 0.28 },
   desk: { x: 6.4, z: -6.85, collider: 0.55 },
@@ -62,7 +69,7 @@ export const LAYOUT = {
   pinball: { x: -4.85, z: 5.55, collider: 0.48 },
   arcade: { x: 0.6, z: -0.35, collider: 0.78 },
   chalkboard: { x: -4.6, z: -6.8, collider: 0.55 },
-  radio: { x: -6.15, z: -3.95, collider: 0.26 },
+  radio: { x: -5.85, z: -2.05, collider: 0.26 },
   plantPinball: { x: -7.7, z: 7.35, collider: 0.24 },
   plantRest: { x: 6.15, z: 8.15, collider: 0.24 },
 } as const;
@@ -148,6 +155,11 @@ export function lobbyStaticColliders(): ColliderSpot[] {
     "crates",
     "plant",
     "couch",
+    "couchNorth",
+    "couchSouth",
+    "loungeTable",
+    "tv",
+    "croquis",
     "fridge",
     "dog",
     "desk",
@@ -206,7 +218,6 @@ export function lobbyCameraBlockers(): CameraBlocker[] {
   const fridge = LAYOUT.fridge;
   const shelves = LAYOUT.shelves;
   const desk = LAYOUT.desk;
-  const couch = LAYOUT.couch;
   const pinball = LAYOUT.pinball;
   return [
     { minX: arcade.x - 0.85, maxX: arcade.x + 0.95, minY: 0, maxY: 2.05, minZ: arcade.z - 0.8, maxZ: arcade.z + 0.85 },
@@ -214,9 +225,15 @@ export function lobbyCameraBlockers(): CameraBlocker[] {
     { minX: fridge.x - 0.42, maxX: fridge.x + 0.42, minY: 0, maxY: 1.5, minZ: fridge.z - 0.36, maxZ: fridge.z + 0.36 },
     { minX: shelves.x - 0.22, maxX: shelves.x + 0.22, minY: 0, maxY: 1.5, minZ: shelves.z - 0.68, maxZ: shelves.z + 0.68 },
     { minX: desk.x - 0.75, maxX: desk.x + 0.75, minY: 0, maxY: 1.05, minZ: desk.z - 0.45, maxZ: desk.z + 0.45 },
-    { minX: couch.x - 0.85, maxX: couch.x + 0.85, minY: 0, maxY: 1.05, minZ: couch.z - 0.48, maxZ: couch.z + 0.48 },
+    ...loungeCameraBlockers(),
     { minX: pinball.x - 0.55, maxX: pinball.x + 0.55, minY: 0, maxY: 0.85, minZ: pinball.z - 0.42, maxZ: pinball.z + 0.42 },
   ];
+}
+
+function piece(id: (typeof LOUNGE_FURNITURE)[number]["id"]): { x: number; z: number; collider: number } {
+  const found = LOUNGE_FURNITURE.find((item) => item.id === id);
+  if (!found) throw new Error(`Mueble de rincón desconocido: ${id}`);
+  return { x: found.x, z: found.z, collider: found.collider };
 }
 
 /**
