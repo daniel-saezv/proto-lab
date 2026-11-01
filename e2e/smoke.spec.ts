@@ -691,11 +691,12 @@ test("en el rincón se habla con Remolón y el Inventor sigue siendo él", async
   await expect(page.locator("#dialogue-name")).toHaveText("Remolón");
   await expect(page.getByTestId("dialogue")).toHaveAttribute("data-speaker", "remolon");
   const line = page.getByTestId("dialogue-text");
-  await expect(line).toContainText("máquina");
-  await expect(line).not.toContainText("máquinas");
-  await page.getByTestId("choice-remolon-lab").click();
-  await expect(line).toContainText("punto de encuentro");
-  await expect(line).not.toContainText("máquinas");
+  await expect(line).toContainText("tele");
+  await expect(line).toContainText("a medias");
+  await expect(line).not.toContainText("máquina");
+  await page.getByTestId("choice-remolon-halves").click();
+  await expect(line).toContainText("Croquis");
+  await expect(line).not.toContainText("máquina");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await openInventorDialogue(page);

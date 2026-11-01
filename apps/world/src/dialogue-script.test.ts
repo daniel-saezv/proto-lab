@@ -19,12 +19,12 @@ describe("guion de diálogo", () => {
     const script = loungeScript("remolon");
     expect(script).toBeTruthy();
     const start = startScript(script!);
-    expect(scriptNode(start).text).toContain("Remolón");
-    const lab = chooseScript(start, "choice-remolon-lab");
-    expect(lab).not.toBe("close");
-    if (lab === "close") return;
-    expect(scriptNode(lab).text).toContain("punto de encuentro");
-    expect(chooseScript(lab, "choice-remolon-stay")).toBe("close");
+    expect(scriptNode(start).text).toContain("a medias");
+    const halves = chooseScript(start, "choice-remolon-halves");
+    expect(halves).not.toBe("close");
+    if (halves === "close") return;
+    expect(scriptNode(halves).text).toContain("Croquis");
+    expect(chooseScript(halves, "choice-remolon-stay")).toBe("close");
   });
 
   it("da a cada persona del rincón un guion con su nombre", () => {
@@ -44,20 +44,28 @@ describe("guion de diálogo", () => {
     }
   });
 
-  it("explica el laboratorio y una sola máquina, sin salir del papel", () => {
+  it("da a cada persona un tema distinto y reserva el laboratorio a Croquis", () => {
+    const themes: Record<string, RegExp[]> = {
+      remolon: [/tele/i, /a medias/],
+      brasa: [/prototipo/i, /Glotón/],
+      naipe: [/apuest/, /carta/i],
+      croquis: [/cómo nace una propuesta/i, /punto de encuentro/, /una sola máquina/i],
+    };
+    const onlyCroquis = [/punto de encuentro/, /potencial/, /creatividad/, /mundos, apps y juegos/, /máquina/i];
+    const labels = new Set<string>();
     for (const npc of LOUNGE_NPCS) {
       const script = loungeScript(npc.id)!;
       const text = joined(script);
-      expect(text, npc.id).toContain("punto de encuentro");
-      expect(text, npc.id).toContain("potencial");
-      expect(text, npc.id).toContain("creatividad");
-      expect(text, npc.id).toMatch(/amigos/);
-      expect(text, npc.id).toMatch(/colabor/);
-      expect(text, npc.id).toMatch(/mundos, apps y juegos/);
-      expect(text, npc.id).toContain("máquina");
-      expect(text, npc.id).not.toMatch(/máquinas/i);
-      expect(text, npc.id).not.toMatch(/maquinas/i);
+      for (const theme of themes[npc.id]!) expect(text, npc.id).toMatch(theme);
+      expect(text, npc.id).not.toMatch(/máquinas|maquinas/i);
       expect(text, npc.id).not.toMatch(/github|iframe|navegador|pull request|cursor/i);
+      if (npc.id === "croquis") {
+        expect(text).toMatch(/amigos/);
+        expect(text).toMatch(/colabor/);
+        expect(text).toContain("yo la dejo");
+      } else {
+        for (const phrase of onlyCroquis) expect(text, npc.id).not.toMatch(phrase);
+      }
       const seen = new Set<string>();
       const pending = [script.start];
       while (pending.length > 0) {
@@ -70,10 +78,12 @@ describe("guion de diálogo", () => {
         for (const choice of node!.choices) {
           expect(ids.has(choice.id), choice.id).toBe(false);
           ids.add(choice.id);
+          expect(labels.has(choice.label), choice.label).toBe(false);
+          labels.add(choice.label);
           if (choice.next) pending.push(choice.next);
         }
       }
-      expect([...seen].sort()).toEqual(Object.keys(script.nodes).sort());
+      expect([...seen].sort(), npc.id).toEqual(Object.keys(script.nodes).sort());
     }
   });
 });
