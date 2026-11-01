@@ -131,6 +131,14 @@ export function shouldQuietMediaForBufferHandoff(input: {
   return input.contextState === "running" && input.loopVoiceCount > 0;
 }
 
+/** Espejo de `data-playback` en el botón silenciar. */
+export function playbackUiState(input: { muted: boolean; sounded: boolean; armed: boolean }): string {
+  if (input.muted) return "muted";
+  if (input.sounded) return "playing";
+  if (input.armed) return "waiting";
+  return "idle";
+}
+
 export function playbackRejection(name: string): { retryOnNextGesture: boolean; skipTrack: boolean } {
   if (name === "NotAllowedError") return { retryOnNextGesture: true, skipTrack: false };
   if (name === "AbortError") return { retryOnNextGesture: false, skipTrack: false };
@@ -260,7 +268,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
   }
 
   function audible(): boolean {
-    return armed && wantsAudio();
+    return (armed || engaged) && wantsAudio();
   }
 
   function routed(): boolean {
@@ -605,8 +613,11 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
       engaged,
     });
     if (!decision.kick) return;
-    armed = true;
     startOutput();
+    if (engaged || outputLive()) {
+      armed = true;
+      paintPlayback();
+    }
   }
 
   function prime() {

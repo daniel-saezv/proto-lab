@@ -24,6 +24,7 @@ import {
   shouldShortCircuitStartOutput,
   shouldDeferBufferLoopUpgrade,
   shouldQuietMediaForBufferHandoff,
+  playbackUiState,
   toggleMusicMuted,
   writeBandEnergies,
 } from "./ambience-music";
@@ -156,6 +157,12 @@ describe("música ambiental", () => {
     expect(
       shouldQuietMediaForBufferHandoff({ contextState: "running", loopVoiceCount: 2 }),
     ).toBe(true);
+  });
+
+  it("idle antes del gesto; waiting solo tras desbloquear sin sonido aún", () => {
+    expect(playbackUiState({ muted: false, sounded: false, armed: false })).toBe("idle");
+    expect(playbackUiState({ muted: false, sounded: false, armed: true })).toBe("waiting");
+    expect(playbackUiState({ muted: false, sounded: true, armed: true })).toBe("playing");
   });
 
   it("desbloquea con inicio y fin de gesto, no con arrastre", () => {
