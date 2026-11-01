@@ -173,27 +173,29 @@ function drawDoubleUnderline(box: ChalkBox): ChalkSegment[] {
 function bracketSide(box: ChalkBox, seed: number, side: -1 | 1): ChalkSegment[] {
   const gap = 4.2;
   const reach = 7;
-  const x = side < 0 ? box.x - gap : box.x + box.width + gap;
+  const inner = side < 0 ? box.x - gap : box.x + box.width + gap;
+  const spine = inner + (side < 0 ? -reach : reach);
+  const away = side < 0 ? -1 : 1;
+  const toward = -away;
   const top = box.y - 2.4;
   const bot = box.y + box.height + 2.4;
-  const away = side < 0 ? -1 : 1;
   const cap = (y: number): Point[] => [
-    { x: x + away * reach, y },
-    { x: x + away * reach * 0.45, y: y + side * 0.2 },
-    { x, y },
+    { x: spine, y },
+    { x: spine + toward * reach * 0.45, y },
+    { x: inner, y },
   ];
   const vertical: Point[] = [];
   const steps = 4;
   for (let i = 0; i <= steps; i += 1) {
     const t = i / steps;
-    const wave = Math.sin(t * Math.PI + hashUnit(seed, 5)) * 0.35;
-    vertical.push({ x: x + away * wave, y: top + (bot - top) * t });
+    const wave = Math.abs(Math.sin(t * Math.PI + hashUnit(seed, 5))) * 0.35;
+    vertical.push({ x: spine + away * wave, y: top + (bot - top) * t });
   }
   const outward = (mid: Point, bow: number) => ({ x: mid.x + away * bow, y: mid.y });
   return [
-    ...quadsOutward(cap(top), seed, outward),
+    ...quadsOutward([...cap(top)].reverse(), seed, outward),
     ...quadsOutward(vertical, seed + 3, outward),
-    ...quadsOutward(cap(bot).slice().reverse(), seed + 5, outward),
+    ...quadsOutward(cap(bot), seed + 5, outward),
   ];
 }
 

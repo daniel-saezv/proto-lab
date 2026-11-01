@@ -227,6 +227,8 @@ describe("zonas de la pizarra", () => {
     const brackets = samplesOf(drawChalkMark("brackets", ink));
     expect(brackets.some((point) => point.x < ink.x)).toBe(true);
     expect(brackets.some((point) => point.x > ink.x + ink.width)).toBe(true);
+    expectBracketOpensOntoText(brackets, ink, "left");
+    expectBracketOpensOntoText(brackets, ink, "right");
     expect(drawChalkMark("underline", ink)).not.toEqual(drawChalkMark("oval", ink));
     expect(drawChalkMark("double", ink).length).toBeGreaterThan(drawChalkMark("underline", ink).length);
 
@@ -256,6 +258,25 @@ describe("zonas de la pizarra", () => {
     expect(combineActionMark(chalkMarkProgress(0, true), null)).toEqual({ progress: 1, hot: false });
   });
 });
+
+/** El lomo queda fuera y los brazos cortos apuntan al texto, arriba y abajo. */
+function expectBracketOpensOntoText(
+  points: readonly { x: number; y: number }[],
+  ink: GlyphBox,
+  side: "left" | "right",
+) {
+  const sidePoints = points.filter((point) => (side === "left" ? point.x < ink.x : point.x > ink.x + ink.width));
+  expect(sidePoints.length).toBeGreaterThan(4);
+  const near = (point: { x: number }) => (side === "left" ? point.x : -point.x);
+  const closest = sidePoints.reduce((best, point) => (near(point) > near(best) ? point : best));
+  const farthest = sidePoints.reduce((best, point) => (near(point) < near(best) ? point : best));
+  const midY = ink.y + ink.height / 2;
+  expect(Math.abs(closest.y - midY)).toBeGreaterThan(ink.height * 0.35);
+  expect(Math.abs(farthest.y - midY)).toBeLessThan(Math.abs(closest.y - midY));
+  const inner = sidePoints.filter((point) => near(point) > (near(closest) + near(farthest)) / 2);
+  expect(inner.some((point) => point.y < ink.y)).toBe(true);
+  expect(inner.some((point) => point.y > ink.y + ink.height)).toBe(true);
+}
 
 function actionInkBox(width: number, height: number): GlyphBox {
   const origin = actionLabelOrigin(width);
