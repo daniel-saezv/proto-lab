@@ -12,6 +12,7 @@ import {
 } from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
+import type { DialogueCue } from "./dialogue-cues";
 import {
   LOUNGE_FURNITURE,
   LOUNGE_NPCS,
@@ -51,6 +52,15 @@ export type LoungeNpcSpot = {
   approach: { x: number; z: number };
 };
 
+type LoungeAct = {
+  cue: DialogueCue | null;
+  pulse: number;
+};
+
+function kickOf(act: LoungeAct): number {
+  return act.pulse > 0 ? act.pulse / 0.45 : 0;
+}
+
 export type LoungeGroup = {
   colliders: AmbientCollider[];
   slacker: { x: number; z: number; radius: number; approach: { x: number; z: number } };
@@ -58,6 +68,8 @@ export type LoungeGroup = {
   nameplates: { id: string; element: HTMLElement }[];
   bubble: HTMLElement;
   tick: (time: number, dt: number, beatMid: number) => void;
+  setDialogueCue: (cue: DialogueCue | null) => void;
+  pulseDialogue: () => void;
 };
 
 export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup {
@@ -77,10 +89,11 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
   addCouch(parent, SOUTH_COUCH.x, SOUTH_COUCH.z, SOUTH_COUCH.yaw, naipe.id, f);
   addTable(parent, f);
   const tv = addTelevision(parent, f);
-  const slacker = addSlacker(parent, remolon, f);
-  const pipe = addPiper(parent, brasa, f);
-  const cards = addDealer(parent, naipe, f);
-  const sketch = addSketcher(parent, croquis, f);
+  const act: LoungeAct = { cue: null, pulse: 0 };
+  const slacker = addSlacker(parent, remolon, f, act);
+  const pipe = addPiper(parent, brasa, f, act);
+  const cards = addDealer(parent, naipe, f, act);
+  const sketch = addSketcher(parent, croquis, f, act);
 
   const nameplates = [slacker.plate, pipe.plate, cards.plate, sketch.plate];
 
@@ -109,11 +122,18 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
     nameplates,
     bubble: slacker.bubble,
     tick(time, dt, beatMid) {
+      if (act.pulse > 0) act.pulse = Math.max(0, act.pulse - dt);
       slacker.tick(time);
       pipe.tick(time);
       cards.tick(time);
       sketch.tick(time);
       tv.tick(time, dt, beatMid);
+    },
+    setDialogueCue(cue) {
+      act.cue = cue;
+    },
+    pulseDialogue() {
+      act.pulse = 0.45;
     },
   };
 }
@@ -191,7 +211,7 @@ function addTelevision(parent: Group, f: AmbientFactories): { tick: (time: numbe
   };
 }
 
-function addSlacker(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
+function addSlacker(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: LoungeAct): {
   bubble: HTMLElement;
   plate: { id: string; element: HTMLElement };
   tick: (time: number) => void;
@@ -235,8 +255,10 @@ function addSlacker(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
     bubble: bubbleAnchor,
     plate: addNameplate(body, npc),
     tick(time) {
-      const chew = Math.sin(time * 1.4);
-      arm.rotation.x = -0.2 + (chew > 0.6 ? 0.35 : 0.05);
+      const speed = act.cue === "slouch" ? 1.8 : 1;
+      const chew = Math.sin(time * 1.4 * speed);
+      const kick = kickOf(act) * Math.sin(time * 16) * 0.18;
+      arm.rotation.x = -0.2 + (chew > 0.6 ? 0.35 : 0.05) + kick;
       const emberPulse = 0.75 + Math.sin(time * 5.2) * 0.25;
       emberMat.color.setScalar(emberPulse);
       emberMat.opacity = 0.85 + Math.sin(time * 6) * 0.15;
@@ -252,7 +274,7 @@ function addSlacker(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
   };
 }
 
-function addPiper(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
+function addPiper(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: LoungeAct): {
   plate: { id: string; element: HTMLElement };
   tick: (time: number) => void;
 } {
@@ -296,20 +318,24 @@ function addPiper(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
   return {
     plate: addNameplate(body, npc),
     tick(time) {
-      emberMat.opacity = 0.55 + Math.sin(time * 3.1) * 0.2;
+      const smoking = act.cue === "smoke";
+      const pace = smoking ? 2.4 : 1;
+      arm.rotation.x = kickOf(act) * Math.sin(time * 16) * 0.22;
+      emberMat.opacity = 0.55 + Math.sin(time * 3.1 * pace) * 0.2;
       for (let i = 0; i < smokes.length; i++) {
         const puff = smokes[i]!;
-        const phase = (time * 0.28 + i * 1.15) % 2.3;
+        const phase = (time * 0.28 * pace + i * 1.15) % 2.3;
         puff.position.y = 0.12 + phase * 0.26;
         puff.position.x = Math.sin(time * 0.55 + i) * 0.025;
-        puff.scale.setScalar(0.45 + phase * 0.16);
-        (puff.material as MeshBasicMaterial).opacity = Math.max(0, 0.28 - phase * 0.12);
+        puff.scale.setScalar(0.45 + phase * (smoking ? 0.28 : 0.16));
+        const peak = smoking ? 0.55 : 0.28;
+        (puff.material as MeshBasicMaterial).opacity = Math.max(0, peak - phase * 0.12);
       }
     },
   };
 }
 
-function addDealer(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
+function addDealer(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: LoungeAct): {
   plate: { id: string; element: HTMLElement };
   tick: (time: number) => void;
 } {
@@ -338,15 +364,18 @@ function addDealer(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
   return {
     plate: addNameplate(body, npc),
     tick(time) {
-      const wave = Math.sin(time * 2.4);
-      shuffle.position.y = 0.05 + Math.max(0, wave) * 0.06;
-      shuffle.rotation.z = wave * 0.35;
-      hands.rotation.x = Math.sin(time * 1.3) * 0.06;
+      const dealing = act.cue === "shuffle";
+      const speed = dealing ? 2.7 : 1;
+      const wave = Math.sin(time * 2.4 * speed);
+      shuffle.position.y = 0.05 + Math.max(0, wave) * (dealing ? 0.11 : 0.06);
+      shuffle.rotation.z = wave * (dealing ? 0.55 : 0.35);
+      hands.rotation.x = Math.sin(time * 1.3 * speed) * 0.06;
+      hands.rotation.z = kickOf(act) * Math.sin(time * 18) * 0.4;
     },
   };
 }
 
-function addSketcher(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
+function addSketcher(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: LoungeAct): {
   plate: { id: string; element: HTMLElement };
   tick: (time: number) => void;
 } {
@@ -369,8 +398,10 @@ function addSketcher(parent: Group, npc: LoungeNpc, f: AmbientFactories): {
   return {
     plate: addNameplate(body, npc),
     tick(time) {
-      hand.rotation.z = Math.sin(time * 2.6) * 0.22;
-      hand.position.x = 0.08 + Math.sin(time * 1.4) * 0.02;
+      const speed = act.cue === "sketch" ? 2.3 : 1;
+      const kick = kickOf(act);
+      hand.rotation.z = Math.sin(time * 2.6 * speed) * (0.22 + kick * 0.2);
+      hand.position.x = 0.08 + Math.sin(time * 1.4 * speed) * (0.02 + kick * 0.03);
     },
   };
 }

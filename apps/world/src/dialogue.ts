@@ -1,5 +1,8 @@
+import type { DialogueCue } from "./dialogue-cues";
+import { lineRuns, type EmphasisKind, type LineRun } from "./dialogue-emphasis";
 import { INVENTOR_RESULT_OK, inventorSpeech, type DialoguePhase } from "./dialogue-speech";
 import { chooseScript, scriptNode, startScript, type DialogueScript, type ScriptCursor } from "./dialogue-script";
+import { typeDelayMs } from "./dialogue-type";
 import { LIMITS } from "./limits";
 import type { CatalogEntry, ProposalDraft, SubmitOutcome } from "./types";
 
@@ -35,6 +38,10 @@ export function createDialogue(options: {
   onShowInstallHelp?: () => void;
   onOpen: () => void;
   onClose: () => void;
+  /** Encuadre del hablante. `null` al cerrar. */
+  onFocus?: (focus: { speakerId: string; cue: DialogueCue | null } | null) => void;
+  /** Un énfasis acaba de revelarse: gesto corto del personaje. */
+  onEmphasis?: () => void;
 }) {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let phase: Phase = { name: "greet" };
@@ -42,6 +49,47 @@ export function createDialogue(options: {
   let draft: ProposalDraft = { kind: "propuesta", title: "", description: "" };
   let token = 0;
   let open = false;
+  let typingFrame = 0;
+  let emphTimer = 0;
+  let skipTyping: (() => void) | null = null;
+  const calm = options.instant || reduced;
+  if (calm) options.root.classList.add("dialogue-still");
+
+  function stopTyping() {
+    if (typingFrame !== 0) cancelAnimationFrame(typingFrame);
+    typingFrame = 0;
+    skipTyping = null;
+  }
+
+  function flashEmphasis() {
+    if (calm) return;
+    delete options.root.dataset.emph;
+    void options.root.offsetWidth;
+    options.root.dataset.emph = "1";
+    window.clearTimeout(emphTimer);
+    emphTimer = window.setTimeout(() => {
+      delete options.root.dataset.emph;
+    }, 460);
+    options.onEmphasis?.();
+  }
+
+  options.root.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Node) || !options.root.contains(target)) return;
+    if (target instanceof Element && target.closest("button, input, textarea")) return;
+    skipTyping?.();
+  });
+
+  function bumpBubble() {
+    options.root.classList.remove("dialogue-arrive");
+    void options.root.offsetWidth;
+    options.root.classList.add("dialogue-arrive");
+  }
+
+  function activeCue(): DialogueCue | null {
+    if (session.kind === "script") return scriptNode(session.cursor).cue ?? null;
+    return null;
+  }
 
   function resetDraft(kind: Mode, slug?: string) {
     draft = { kind, title: "", description: "", slug };
@@ -116,6 +164,9 @@ export function createDialogue(options: {
 
   function render(notice?: string) {
     const my = ++token;
+    stopTyping();
+    window.clearTimeout(emphTimer);
+    delete options.root.dataset.emph;
     options.root.replaceChildren();
     options.root.dataset.outcome = phase.name === "done" ? phase.outcome : "";
 
@@ -136,44 +187,110 @@ export function createDialogue(options: {
     text.dataset.testid = "dialogue-text";
     text.setAttribute("aria-live", "polite");
     const full = notice ? `${notice}\n\n${speech()}` : speech();
+    const { plain, runs } = lineRuns(full);
+    const line = mountLine(text, plain, runs);
 
     const head = document.createElement("div");
     head.className = "dialogue-head";
     head.append(portrait, name);
     options.root.append(head, text);
 
+    const cue = activeCue();
+    if (cue) options.root.dataset.cue = cue;
+    else delete options.root.dataset.cue;
+    options.onFocus?.({ speakerId: speaker.id, cue });
+
     const finish = () => {
       if (my !== token) return;
+      text.dataset.typing = "0";
+      line.caret.remove();
       if (phase.name === "title" || phase.name === "body") showInput(my);
       else showChoices(my);
     };
 
-    if (options.instant || reduced) {
-      text.textContent = full;
+    const reveal = (count: number, previous: number): EmphasisKind | null => {
+      let crossed: EmphasisKind | null = null;
+      for (const view of line.views) {
+        const start = view.run.start;
+        const end = view.run.end;
+        const slice = plain.slice(start, Math.min(end, Math.max(start, count)));
+        if (view.el.textContent !== slice) view.el.textContent = slice;
+        if (view.run.kind && previous < end && count >= end) {
+          view.el.classList.add("is-on");
+          crossed = view.run.kind;
+        }
+      }
+      return crossed;
+    };
+
+    if (calm) {
+      reveal(plain.length, 0);
+      for (const view of line.views) {
+        if (view.run.kind) view.el.classList.add("is-on");
+      }
       finish();
       return;
     }
 
-    let index = 0;
+    text.dataset.typing = "1";
+    let shown = 0;
+    let previous = 0;
+    let carry = 0;
+    let last = performance.now();
     let finished = false;
-    const step = () => {
-      if (my !== token || finished) return;
-      index += 1;
-      text.textContent = full.slice(0, index);
-      if (index >= full.length) {
-        finished = true;
-        finish();
-      } else {
-        window.setTimeout(step, 14);
-      }
-    };
-    text.addEventListener("click", () => {
+    const complete = (skipped: boolean) => {
       if (finished || my !== token) return;
       finished = true;
-      text.textContent = full;
+      stopTyping();
+      const kind = reveal(plain.length, previous);
+      if (skipped && (kind || runs.some((run) => run.kind))) flashEmphasis();
+      else if (kind) flashEmphasis();
       finish();
-    });
-    step();
+    };
+    skipTyping = () => complete(true);
+    const step = (now: number) => {
+      if (my !== token || finished) return;
+      const budget = Math.min(50, now - last);
+      last = now;
+      carry += budget;
+      let guard = 0;
+      while (shown < plain.length && carry >= typeDelayMs(plain, shown) && guard < 6) {
+        carry -= typeDelayMs(plain, shown);
+        shown += 1;
+        guard += 1;
+      }
+      const kind = reveal(shown, previous);
+      previous = shown;
+      if (kind) flashEmphasis();
+      if (shown >= plain.length) {
+        complete(false);
+        return;
+      }
+      typingFrame = requestAnimationFrame(step);
+    };
+    typingFrame = requestAnimationFrame(step);
+  }
+
+  function mountLine(text: HTMLElement, plain: string, runs: LineRun[]) {
+    const sr = document.createElement("span");
+    sr.className = "sr-only";
+    sr.textContent = plain;
+    const visual = document.createElement("span");
+    visual.className = "dlg-visual";
+    visual.setAttribute("aria-hidden", "true");
+    const views: Array<{ el: HTMLElement; run: LineRun }> = [];
+    for (const run of runs) {
+      const el = document.createElement("span");
+      el.className = run.kind ? `dlg-em dlg-em--${run.kind}` : "dlg-run";
+      visual.append(el);
+      views.push({ el, run });
+    }
+    const caret = document.createElement("span");
+    caret.className = "dlg-caret";
+    caret.setAttribute("aria-hidden", "true");
+    visual.append(caret);
+    text.append(sr, visual);
+    return { views, caret };
   }
 
   function showChoices(my: number) {
@@ -262,12 +379,19 @@ export function createDialogue(options: {
     if (!open) return;
     open = false;
     token += 1;
+    stopTyping();
+    window.clearTimeout(emphTimer);
     document.body.classList.remove("dialogue-open");
     options.root.hidden = true;
     options.root.replaceChildren();
+    options.root.classList.remove("dialogue-arrive");
     delete options.root.dataset.speaker;
+    delete options.root.dataset.cue;
+    delete options.root.dataset.emph;
+    delete options.root.dataset.outcome;
     phase = { name: "greet" };
     session = { kind: "inventor" };
+    options.onFocus?.(null);
     options.onClose();
   }
 
@@ -280,6 +404,7 @@ export function createDialogue(options: {
     document.body.classList.add("dialogue-open");
     options.root.hidden = false;
     options.onOpen();
+    bumpBubble();
     render();
   }
 
@@ -293,6 +418,7 @@ export function createDialogue(options: {
     document.body.classList.add("dialogue-open");
     options.root.hidden = false;
     options.onOpen();
+    bumpBubble();
     render();
   }
 
@@ -304,6 +430,7 @@ export function createDialogue(options: {
     document.body.classList.add("dialogue-open");
     options.root.hidden = false;
     options.onOpen();
+    bumpBubble();
     render();
   }
 

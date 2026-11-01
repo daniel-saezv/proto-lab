@@ -35,6 +35,8 @@ import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer
 import { attachInput } from "./input";
 import { getMusicEnergy } from "./ambience-music";
 import { addAmbient } from "./ambient";
+import { dialogueCameraPose, dialogueSubject, dialogueTransitionSeconds } from "./dialogue-camera";
+import type { DialogueCue } from "./dialogue-cues";
 import { drawTitleCard } from "./title-card";
 import {
   TOUCH_LOOK_FOLLOW,
@@ -109,6 +111,11 @@ export type WorldHandle = {
   exitWhiteboard: () => void;
   handleBoardKey: (key: string) => boolean;
   clearBoardSelection: () => boolean;
+  /** Encuadre al hablante. `null` devuelve la cámara de paseo. */
+  setDialogueFocus: (focus: { speakerId: string; cue: DialogueCue | null } | null) => void;
+  isDialogueFraming: () => boolean;
+  /** Gesto corto al revelar un énfasis. */
+  pulseDialogue: () => void;
   /** Pausa el bucle, el análisis de audio y el resto del trabajo por frame. */
   setSuspended: (suspended: boolean) => void;
   dispose: () => void;
@@ -145,6 +152,8 @@ export function startWorld(options: {
   onBoardView?: (open: boolean) => void;
   onBoardUi?: (ui: BoardUiSnapshot) => void;
   onBoardAction?: (action: BoardNavAction) => void;
+  /** `true` mientras la cámara entra o vuelve del diálogo. */
+  onDialogueFrame?: (open: boolean) => void;
   onGesture?: () => void;
   /** `false` deja cada malla suelta para medir renderer.info. */
   batch?: boolean;
@@ -450,6 +459,16 @@ export function startWorld(options: {
   const boardLookFrom = new Vector3();
   const boardLookTo = new Vector3();
   const boardLook = new Vector3();
+  let dialoguePhase: "idle" | "enter" | "hold" | "leave" = "idle";
+  let dialogueElapsed = 0;
+  let dialogueSpeaker = "";
+  let dialogueFlourish = 0;
+  const dialogueFrom = new Vector3();
+  const dialogueTo = new Vector3();
+  const dialogueLookFrom = new Vector3();
+  const dialogueLookTo = new Vector3();
+  const dialogueLook = new Vector3();
+  const calmDialogue = reduced || e2eRender;
 
   let handlePrimaryTap: (clientX: number, clientY: number) => void = () => {};
 
@@ -469,16 +488,20 @@ export function startWorld(options: {
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
     labelRenderer.setSize(width, height);
-    if (boardPhase === "idle" || cameraMode === "top") return;
-    const framed = whiteboardCameraPose(camera.aspect, camera.fov);
-    boardLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
-    if (boardPhase === "leave") return;
-    boardTo.set(framed.x, framed.y, framed.z);
-    if (boardPhase === "hold") {
-      camera.position.copy(boardTo);
-      boardLook.copy(boardLookTo);
-      camera.lookAt(boardLook);
+    if (boardPhase !== "idle") {
+      if (cameraMode === "top") return;
+      const framed = whiteboardCameraPose(camera.aspect, camera.fov);
+      boardLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
+      if (boardPhase === "leave") return;
+      boardTo.set(framed.x, framed.y, framed.z);
+      if (boardPhase === "hold") {
+        camera.position.copy(boardTo);
+        boardLook.copy(boardLookTo);
+        camera.lookAt(boardLook);
+      }
+      return;
     }
+    if (dialoguePhase !== "idle") syncDialogueTarget();
   }
   const observer = new ResizeObserver(resize);
   observer.observe(options.viewport);
@@ -511,11 +534,12 @@ export function startWorld(options: {
     const dt = Math.min((now - lastFrame) / 1000, 0.05);
     lastFrame = now;
     frame += dt;
+    if (dialogueFlourish > 0) dialogueFlourish = Math.max(0, dialogueFlourish - dt);
     const sample = input.read();
     input.resetLook();
     const readingBoard = boardPhase === "enter" || boardPhase === "hold";
     if (readingBoard && Math.hypot(sample.forward, sample.right) > 0.08) beginLeaveBoard();
-    if (inputEnabled && boardPhase === "idle") {
+    if (inputEnabled && boardPhase === "idle" && dialoguePhase === "idle") {
       const lookSens = coarse ? 0.0042 : 0.00315;
       if (options.touchControls) {
         // El stick es una velocidad, no un delta de píxeles. Se sigue en rad/s
@@ -571,7 +595,10 @@ export function startWorld(options: {
       if (!e2eRender) {
         inventor.position.y = Math.sin(frame * 2) * 0.04;
         const arm = inventor.userData.arm as Object3D | undefined;
-        if (arm) arm.rotation.x = Math.sin(frame * 1.6) * 0.25;
+        if (arm) {
+          const flourish = dialogueFlourish > 0 ? Math.sin(frame * 14) * 0.4 * (dialogueFlourish / 0.45) : 0;
+          arm.rotation.x = Math.sin(frame * 1.6) * 0.25 + flourish;
+        }
       }
       const pulse = (0.82 + Math.sin(frame * 3) * 0.18) * (1 + mid * 0.08);
       for (const material of pulses) {
@@ -599,6 +626,8 @@ export function startWorld(options: {
     const activeCamera = cameraMode === "top" ? overviewCamera : camera;
     if (boardPhase !== "idle") {
       stepBoardCamera(dt);
+    } else if (dialoguePhase !== "idle") {
+      stepDialogueCamera(dt);
     } else if (cameraMode === "top") {
       fitOverview();
     } else {
@@ -671,7 +700,7 @@ export function startWorld(options: {
 
   function interact() {
     const spot = currentSpot();
-    if (!spot || !inputEnabled) return;
+    if (!spot || !inputEnabled || dialoguePhase !== "idle") return;
     if (spot.kind === "npc" && spot.id === "inventor") options.onTalk();
     else if (spot.kind === "npc" && spot.id === "chalkboard") enterBoardView();
     else if (spot.kind === "npc" && loungeIds.has(spot.id)) options.onTalkNpc?.(spot.id);
@@ -826,6 +855,12 @@ export function startWorld(options: {
 
   function enterBoardView() {
     if (boardPhase !== "idle" || cameraMode === "top") return;
+    if (dialoguePhase === "enter" || dialoguePhase === "hold") return;
+    if (dialoguePhase === "leave") {
+      dialoguePhase = "idle";
+      dialogueSpeaker = "";
+      options.onDialogueFrame?.(false);
+    }
     boardFrom.copy(camera.position);
     boardLookFrom.set(player.position.x, 1.15, player.position.z);
     boardLook.copy(boardLookFrom);
@@ -877,6 +912,97 @@ export function startWorld(options: {
       snapped = true;
       publishBoardView(false);
     }
+  }
+
+  function syncDialogueTarget() {
+    const subject = dialogueSubject(dialogueSpeaker);
+    if (!subject) return;
+    const framed = dialogueCameraPose(subject, camera.aspect, camera.fov);
+    dialogueLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
+    if (dialoguePhase === "leave") return;
+    dialogueTo.set(framed.x, framed.y, framed.z);
+    if (dialoguePhase === "hold") {
+      camera.position.copy(dialogueTo);
+      dialogueLook.copy(dialogueLookTo);
+      camera.lookAt(dialogueLook);
+    }
+  }
+
+  function beginEnterDialogue(id: string) {
+    if (boardPhase !== "idle") return;
+    const subject = dialogueSubject(id);
+    if (!subject) return;
+    const wasIdle = dialoguePhase === "idle";
+    dialogueFrom.copy(camera.position);
+    if (wasIdle) dialogueLookFrom.set(player.position.x, 1.15, player.position.z);
+    else dialogueLookFrom.copy(dialogueLook);
+    dialogueLook.copy(dialogueLookFrom);
+    const framed = dialogueCameraPose(subject, camera.aspect, camera.fov);
+    dialogueTo.set(framed.x, framed.y, framed.z);
+    dialogueLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
+    dialogueElapsed = 0;
+    dialoguePhase = "enter";
+    dialogueSpeaker = id;
+    velX = 0;
+    velZ = 0;
+    player.visible = false;
+    if (dialogueTransitionSeconds(calmDialogue) <= 0) stepDialogueCamera(0);
+    if (wasIdle) options.onDialogueFrame?.(true);
+  }
+
+  function beginLeaveDialogue() {
+    if (dialoguePhase === "idle" || dialoguePhase === "leave") return;
+    dialogueFrom.copy(camera.position);
+    dialogueLookFrom.copy(dialogueLook);
+    const pose = resolveCameraArm({
+      playerX: player.position.x,
+      playerZ: player.position.z,
+      yaw,
+      pitch,
+      distance: cameraDistance(),
+    });
+    dialogueTo.set(pose.x, pose.y, pose.z);
+    dialogueLookTo.set(player.position.x, 1.15, player.position.z);
+    dialogueElapsed = 0;
+    dialoguePhase = "leave";
+    dialogueSpeaker = "";
+    if (boardPhase === "idle") player.visible = true;
+    if (dialogueTransitionSeconds(calmDialogue) <= 0) stepDialogueCamera(0);
+  }
+
+  function stepDialogueCamera(dt: number) {
+    const duration = dialogueTransitionSeconds(calmDialogue);
+    dialogueElapsed += dt;
+    const u = duration <= 0 ? 1 : smoothstep01(dialogueElapsed / duration);
+    dialogueLook.lerpVectors(dialogueLookFrom, dialogueLookTo, u);
+    camera.position.lerpVectors(dialogueFrom, dialogueTo, u);
+    camera.lookAt(dialogueLook);
+    if (u < 1) return;
+    if (dialoguePhase === "enter") dialoguePhase = "hold";
+    if (dialoguePhase === "leave") {
+      dialoguePhase = "idle";
+      dialogueSpeaker = "";
+      snapped = true;
+      if (boardPhase === "idle") player.visible = true;
+      options.onDialogueFrame?.(false);
+    }
+  }
+
+  function setDialogueFocus(focus: { speakerId: string; cue: DialogueCue | null } | null) {
+    if (!focus) {
+      ambient.setDialogueCue(null);
+      beginLeaveDialogue();
+      return;
+    }
+    ambient.setDialogueCue(focus.cue);
+    if ((dialoguePhase === "enter" || dialoguePhase === "hold") && dialogueSpeaker === focus.speakerId) return;
+    beginEnterDialogue(focus.speakerId);
+  }
+
+  function pulseDialogue() {
+    if (calmDialogue) return;
+    dialogueFlourish = 0.45;
+    ambient.pulseDialogue();
   }
 
   for (const material of pulses) material.userData.live = true;
@@ -1033,6 +1159,11 @@ export function startWorld(options: {
       if (boardPhase !== "hold") return false;
       return lobbyWhiteboard.clearSelection();
     },
+    setDialogueFocus,
+    isDialogueFraming() {
+      return dialoguePhase !== "idle";
+    },
+    pulseDialogue,
     setSuspended,
     dispose() {
       running = false;
