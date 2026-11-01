@@ -54,7 +54,7 @@ export type CameraBlocker = {
 export const LAYOUT = {
   inventor: { x: -1.5, z: -3.4, collider: 0.42 },
   bench: { x: 1.2, z: -3.4, collider: 0.52 },
-  crates: { x: 8.55, z: 1.9, collider: 0.46 },
+  crates: { x: 9.2, z: 5.44, collider: 0.4 },
   plant: { x: -8.55, z: -6.15, collider: 0.28 },
   couch: piece("couch"),
   couchNorth: piece("couchNorth"),
@@ -62,8 +62,8 @@ export const LAYOUT = {
   loungeTable: piece("loungeTable"),
   tv: piece("tv"),
   croquis: piece("croquis"),
-  fridge: { x: 9.15, z: 5.5, collider: 0.42 },
-  dog: { x: 8.15, z: 6.55, collider: 0.28 },
+  fridge: { x: 9.12, z: 6.2, collider: 0.42 },
+  dog: { x: 8.02, z: 6.15, collider: 0.26 },
   desk: { x: 6.4, z: -6.85, collider: 0.55 },
   shelves: { x: 9.32, z: -5.15, collider: 0.42 },
   pinball: { x: -4.85, z: 5.55, collider: 0.48 },
@@ -71,7 +71,7 @@ export const LAYOUT = {
   chalkboard: { x: -4.6, z: -6.8, collider: 0.55 },
   radio: { x: -5.85, z: -2.05, collider: 0.26 },
   plantPinball: { x: -7.7, z: 7.35, collider: 0.24 },
-  plantRest: { x: 6.15, z: 8.15, collider: 0.24 },
+  plantRest: { x: 8.58, z: 7.28, collider: 0.24 },
 } as const;
 
 export function resolvePosition(

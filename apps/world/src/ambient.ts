@@ -20,6 +20,7 @@ import { addFridgeCorner, addStoryCorners, tickCornerReactions } from "./ambient
 import { addLoungeGroup, type LoungeNpcSpot } from "./ambient-lounge";
 import type { DialogueCue } from "./dialogue-cues";
 import { LAYOUT } from "./navigation";
+import { PANTRY_POSTER, pantryPosterZ } from "./scene-lights";
 
 const PALETTE = {
   posterA: 0xff6b9d,
@@ -137,7 +138,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
 
 function addPosters(scene: Scene, f: AmbientFactories) {
   addPoster(scene, f, -9.38, 1.7, -6.7, PALETTE.posterB, "ZEN", Math.PI / 2);
-  addPoster(scene, f, 9.38, 1.65, 0.4, PALETTE.posterA, "ARCADE", -Math.PI / 2);
+  addPoster(scene, f, PANTRY_POSTER.x, PANTRY_POSTER.y, pantryPosterZ(), PALETTE.posterA, "ARCADE", -Math.PI / 2);
 }
 
 function addPoster(

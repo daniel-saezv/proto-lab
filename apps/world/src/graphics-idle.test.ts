@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blinkOpen, breathScale, idlePhase, rigSway, windowPaintSlot } from "./graphics-idle";
+import { FLOOR_LAMPS } from "./scene-lights";
 import { floorShade, floorUv, wallShade } from "./vertex-ao";
 
 describe("idle gráfico", () => {
@@ -49,11 +50,13 @@ describe("oclusión de vértices", () => {
     expect(wallShade(3, 3)).toBeCloseTo(1);
   });
 
-  it("cae la lámpara apagada del rincón suroeste dentro del suelo", () => {
-    const uv = floorUv(-8.35, 7.7);
-    expect(uv.u).toBeGreaterThan(0.05);
-    expect(uv.u).toBeLessThan(0.15);
-    expect(uv.v).toBeGreaterThan(0.2);
-    expect(uv.v).toBeLessThan(0.35);
+  it("las lámparas de pie caen dentro del suelo del lightmap", () => {
+    for (const lamp of FLOOR_LAMPS) {
+      const uv = floorUv(lamp.x, lamp.z);
+      expect(uv.u, lamp.id).toBeGreaterThan(0);
+      expect(uv.u, lamp.id).toBeLessThan(1);
+      expect(uv.v, lamp.id).toBeGreaterThan(0);
+      expect(uv.v, lamp.id).toBeLessThan(1);
+    }
   });
 });

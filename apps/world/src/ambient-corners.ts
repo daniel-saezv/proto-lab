@@ -20,6 +20,16 @@ import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { blinkOpen, breathScale, windowPaintSlot } from "./graphics-idle";
 import { fuseMeshes } from "./mesh-fuse";
 import { CEILING_UNDERSIDE, LAYOUT } from "./navigation";
+import {
+  FLOOR_GLOW,
+  FLOOR_LAMPS,
+  FLOOR_SHADE,
+  FLOOR_SHADE_Y,
+  LAMP_METAL,
+  PANTRY_RUG_COLOR,
+  addLampHead,
+  pantryRug,
+} from "./scene-lights";
 
 const PAL = {
   desk: 0x6d4b32,
@@ -35,7 +45,6 @@ const PAL = {
   leaf: 0x2f7d4a,
   pot: 0xc46b3a,
   fan: 0x465270,
-  rugAccent: 0x3c4a68,
   cat: 0xe07a3d,
   dog: 0x8d6e4a,
   radio: 0x6d4b32,
@@ -224,44 +233,42 @@ function addPottedPlant(f: AmbientFactories, x: number, z: number, scale: number
 }
 
 function addAccentRug(f: AmbientFactories) {
-  const rug = new Mesh(f.geo(new PlaneGeometry(2.2, 1.4)), f.mat(PAL.rugAccent));
+  const rugPlace = pantryRug();
+  const rug = new Mesh(f.geo(new PlaneGeometry(rugPlace.width, rugPlace.depth)), f.mat(PANTRY_RUG_COLOR));
   rug.rotation.x = -Math.PI / 2;
-  rug.position.set(7.15, 0.008, 4.55);
+  rug.position.set(rugPlace.x, 0.008, rugPlace.z);
   rug.receiveShadow = f.shadows;
   f.scene.add(rug);
 }
 
 function addWarmLamps(f: AmbientFactories, lamps: PointLight[]) {
-  // Sin puntual: el suelo lleva su charco en el lightmap. La bombilla sigue.
-  addFloorLamp(f, -8.35, 7.7, 0.5, 0.6, false);
-  const east = addFloorLamp(f, 8.55, -2.15, 0.5, 2.1, true);
-  if (east) lamps.push(east);
+  // El charco va en el lightmap. La pantalla no añade otra PointLight.
+  void lamps;
+  for (const lamp of FLOOR_LAMPS) addFloorLamp(f, lamp.x, lamp.z);
 }
 
-function addFloorLamp(
-  f: AmbientFactories,
-  x: number,
-  z: number,
-  intensityScale: number,
-  phase: number,
-  lit: boolean,
-): PointLight | null {
-  f.box(f.scene, 0.06, 0.05, 0.06, x, 0.025, z, 0x8d97a8, false);
-  const pole = new Mesh(f.geo(new CylinderGeometry(0.03, 0.03, 1.1, 8)), f.mat(0x8d97a8));
-  pole.position.set(x, 0.58, z);
+function addFloorLamp(f: AmbientFactories, x: number, z: number) {
+  const mouth = FLOOR_SHADE_Y - FLOOR_SHADE.height / 2;
+  const poleHeight = mouth - 0.04;
+  const base = new Mesh(f.geo(new CylinderGeometry(0.15, 0.18, 0.04, 8)), f.mat(LAMP_METAL));
+  base.position.set(x, 0.02, z);
+  base.castShadow = f.shadows;
+  f.scene.add(base);
+  const pole = new Mesh(f.geo(new CylinderGeometry(0.016, 0.02, poleHeight, 6)), f.mat(LAMP_METAL));
+  pole.position.set(x, 0.04 + poleHeight / 2, z);
+  pole.castShadow = f.shadows;
   f.scene.add(pole);
-  const bulbMat = new MeshBasicMaterial({ color: PAL.wrapper });
-  f.materials.push(bulbMat);
-  const bulb = new Mesh(f.geo(new SphereGeometry(0.11, 10, 8)), bulbMat);
-  bulb.position.set(x, 1.18, z);
-  f.scene.add(bulb);
-  if (!lit) return null;
-  const light = new PointLight(PAL.wrapper, 4.2 * intensityScale, 4.2, 2);
-  light.position.set(x, 1.15, z);
-  light.userData.phase = phase;
-  light.userData.base = 4.2 * intensityScale;
-  f.scene.add(light);
-  return light;
+  addLampHead(
+    { parent: f.scene, geo: f.geo, mat: f.mat, materials: f.materials, shadows: f.shadows },
+    {
+      x,
+      z,
+      shadeY: FLOOR_SHADE_Y,
+      shade: FLOOR_SHADE,
+      glow: FLOOR_GLOW,
+      lit: true,
+    },
+  );
 }
 
 function addCeilingFan(f: AmbientFactories, fan: Group) {
@@ -389,21 +396,21 @@ function paintScreen(
 function addCatOnCrates(f: AmbientFactories): { head: Mesh; eyes: Object3D; tail: Object3D } {
   const x = LAYOUT.crates.x;
   const z = LAYOUT.crates.z;
-  const y = 0.62;
-  f.box(f.scene, 0.55, 0.55, 0.55, x - 0.05, 0.28, z - 0.1, 0x8d5a34);
-  f.box(f.scene, 0.4, 0.4, 0.4, x + 0.28, 0.62, z + 0.12, 0x8d5a34);
-  f.box(f.scene, 0.28, 0.18, 0.38, x, y, z, PAL.cat);
+  f.box(f.scene, 0.56, 0.4, 0.5, x, 0.2, z, 0x8d5a34);
+  f.box(f.scene, 0.48, 0.34, 0.42, x, 0.57, z, 0x734826);
+  const y = 0.84;
+  f.box(f.scene, 0.28, 0.16, 0.32, x, y, z, PAL.cat);
 
   const pivot = new Group();
-  pivot.position.set(x + 0.18, y + 0.08, z);
+  pivot.position.set(x - 0.14, y + 0.05, z);
   f.scene.add(pivot);
-  const skull = new Mesh(f.geo(new SphereGeometry(0.14, 10, 8)), f.mat(PAL.cat));
-  const earGeo = f.geo(new BoxGeometry(0.04, 0.09, 0.028));
+  const skull = new Mesh(f.geo(new SphereGeometry(0.13, 10, 8)), f.mat(PAL.cat));
+  const earGeo = f.geo(new BoxGeometry(0.04, 0.08, 0.026));
   const earL = new Mesh(earGeo, f.mat(PAL.cat));
-  earL.position.set(-0.05, 0.11, 0.01);
+  earL.position.set(-0.045, 0.1, 0.01);
   earL.rotation.z = 0.45;
   const earR = new Mesh(earGeo, f.mat(PAL.cat));
-  earR.position.set(0.05, 0.11, 0.01);
+  earR.position.set(0.045, 0.1, 0.01);
   earR.rotation.z = -0.45;
   pivot.add(skull, earL, earR);
   const head = fuseMeshes([skull, earL, earR]);
@@ -411,12 +418,12 @@ function addCatOnCrates(f: AmbientFactories): { head: Mesh; eyes: Object3D; tail
   head.userData.noBatch = true;
   head.castShadow = f.shadows;
 
-  const eyeGeo = f.geo(new BoxGeometry(0.032, 0.026, 0.016));
+  const eyeGeo = f.geo(new BoxGeometry(0.03, 0.024, 0.014));
   const eyeMat = f.mat(0x1a1a22);
   const eyeL = new Mesh(eyeGeo, eyeMat);
-  eyeL.position.set(-0.04, 0.02, 0.12);
+  eyeL.position.set(-0.038, 0.02, 0.11);
   const eyeR = new Mesh(eyeGeo, eyeMat);
-  eyeR.position.set(0.04, 0.02, 0.12);
+  eyeR.position.set(0.038, 0.02, 0.11);
   head.add(eyeL, eyeR);
   const eyes = fuseMeshes([eyeL, eyeR]);
   f.geo(eyes.geometry);
@@ -425,9 +432,9 @@ function addCatOnCrates(f: AmbientFactories): { head: Mesh; eyes: Object3D; tail
 
   const tail = new Group();
   tail.userData.noBatch = true;
-  tail.position.set(x - 0.16, y + 0.02, z);
-  const seg = new Mesh(f.geo(new BoxGeometry(0.18, 0.04, 0.04)), f.mat(PAL.cat));
-  seg.position.x = -0.08;
+  tail.position.set(x + 0.1, y - 0.02, z);
+  const seg = new Mesh(f.geo(new BoxGeometry(0.16, 0.04, 0.04)), f.mat(PAL.cat));
+  seg.position.x = 0.06;
   tail.add(seg);
   f.scene.add(tail);
   return { head, eyes, tail };
@@ -487,7 +494,7 @@ export function tickCornerReactions(
   beatBass = 0,
   beatMid = 0,
 ) {
-  const catX = LAYOUT.crates.x + 0.18;
+  const catX = LAYOUT.crates.x - 0.14;
   const catZ = LAYOUT.crates.z;
   const nearCat = Math.hypot(player.x - catX, player.z - catZ) < 2.4;
   if (nearCat) {
