@@ -186,12 +186,15 @@ export function pickPreviewDeployment(
   branch: string,
   commitSha: string,
 ): PagesDeployment | null {
-  const matches = deployments.filter((item) => {
+  const ofBranch = deployments.filter((item) => {
     const meta = deploymentMeta(item);
-    return previewBranchOk(item, branch, meta?.branch) && sameCommit(meta?.commit_hash, commitSha) && stageReady(item, true);
+    return previewBranchOk(item, branch, meta?.branch) && stageReady(item, true);
   });
-  matches.sort((a, b) => ((a.created_on ?? "") < (b.created_on ?? "") ? 1 : -1));
-  return matches[0] ?? null;
+  ofBranch.sort((a, b) => ((a.created_on ?? "") < (b.created_on ?? "") ? 1 : -1));
+  const latest = ofBranch[0];
+  if (!latest) return null;
+  if (!sameCommit(deploymentMeta(latest)?.commit_hash, commitSha)) return null;
+  return latest;
 }
 
 export function pickProductionDeployment(
@@ -208,13 +211,12 @@ export function pickProductionDeployment(
 
 export function publicPreviewUrl(deployment: PagesDeployment | null, branch?: string): string | null {
   if (!deployment) return null;
+  const slug = branch ? branchAliasSlug(branch) : "";
+  if (slug) return `https://${slug}${PREVIEW_HOST_SUFFIX}`;
   const hosts = (deployment.aliases ?? [])
     .map((alias) => previewHostname(alias))
     .filter((host): host is string => host != null);
-  const slug = branch ? branchAliasSlug(branch) : "";
-  const preferred = slug ? hosts.find((host) => host === `${slug}${PREVIEW_HOST_SUFFIX}`) : undefined;
-  const fromUrl = previewHostname(deployment.url);
-  const chosen = preferred ?? hosts[0] ?? fromUrl;
+  const chosen = hosts[0] ?? previewHostname(deployment.url);
   if (!chosen) return null;
   return `https://${chosen}`;
 }

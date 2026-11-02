@@ -12,18 +12,18 @@ export const LABEL_EN_CURSO = "en-curso";
  * Clave KV del tablón. El namespace `PROPOSALS` es el mismo en producción y en
  * las previews: la rama entra en la clave para que una preview no reescriba
  * el valor que sirve producción (ni el de otra preview).
- * `v6` no se lee con las claves `v5` de antes, que eran compartidas.
+ * `v7` no reutiliza un `previewUrl` calculado con otra PR (v6).
  */
 export function statusCacheKey(branch?: string | null): string {
   const raw = typeof branch === "string" ? branch.trim() : "";
-  if (raw === "main") return "proposal-status:v6:production";
-  if (raw.length === 0) return "proposal-status:v6:local";
+  if (raw === "main") return "proposal-status:v7:production";
+  if (raw.length === 0) return "proposal-status:v7:local";
   const safe = raw
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
-  return `proposal-status:v6:preview:${safe || "rama"}`;
+  return `proposal-status:v7:preview:${safe || "rama"}`;
 }
 
 /** Sin rama de Pages (tests y local). Producción y cada preview usan otra clave. */

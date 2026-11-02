@@ -24,7 +24,7 @@ import {
   truncateTitle,
 } from "./status/format";
 import { boardDegradedByErrors } from "./status/graphql";
-import { prFromBodyMention, pickLinkedPullRequest } from "./status/issue-pr";
+import { closesIssue, prFromBodyMention, pickLinkedPullRequest } from "./status/issue-pr";
 import { filenamesFromPullFilePage } from "./status/pull-files";
 import { resolvePhase } from "./status/phases";
 import { buildProposalStatus } from "./status/aggregate";
@@ -92,14 +92,23 @@ function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-function openPull(input: { sha: string; branch?: string; suites: unknown[]; files?: string[] | null }) {
+function openPull(input: {
+  sha: string;
+  branch?: string;
+  suites: unknown[];
+  files?: string[] | null;
+  number?: number;
+  body?: string;
+  updatedAt?: string;
+}) {
+  const number = input.number ?? 61;
   const branch = input.branch ?? "cursor/permite-divertirse-1617";
   return {
-    number: 61,
-    body: "Closes #60",
+    number,
+    body: input.body ?? "Closes #60",
     state: "OPEN" as const,
-    url: "https://github.com/daniel-saezv/proto-lab/pull/61",
-    updatedAt: "2026-11-01T16:01:48Z",
+    url: `https://github.com/daniel-saezv/proto-lab/pull/${number}`,
+    updatedAt: input.updatedAt ?? "2026-11-01T16:01:48Z",
     mergedAt: null,
     headRefName: branch,
     headRefOid: input.sha,
@@ -285,6 +294,52 @@ describe("issue → PR", () => {
     expect(prFromBodyMention(4, pulls)?.number).toBe(12);
   });
 
+  it("una mención posterior no sustituye a la PR que cierra la issue", () => {
+    expect(closesIssue("Closes #60", 60)).toBe(true);
+    expect(closesIssue("Refs #60", 60)).toBe(false);
+    const linked = pickLinkedPullRequest(
+      60,
+      [
+        {
+          event: "cross-referenced",
+          created_at: "2026-11-01T16:00:50Z",
+          source: { issue: { pull_request: { html_url: "https://github.com/daniel-saezv/proto-lab/pull/61" } } },
+        },
+        {
+          event: "cross-referenced",
+          created_at: "2026-11-02T06:00:20Z",
+          source: { issue: { pull_request: { html_url: "https://github.com/daniel-saezv/proto-lab/pull/63" } } },
+        },
+      ],
+      [
+        {
+          number: 61,
+          updated_at: "2026-11-01T16:01:48Z",
+          headSha: "f10ee90143541f2b3ed596897292303eeb886442",
+          mergeCommitSha: null,
+          branch: "cursor/permite-divertirse-1617",
+          merged: false,
+          state: "open",
+          body: "Closes #60",
+          paths: ["protos/divertirse/index.html"],
+        },
+        {
+          number: 63,
+          updated_at: "2026-11-02T06:31:07Z",
+          headSha: "17fae1e79dda633f18df9245768d35085f2a8e1b",
+          mergeCommitSha: null,
+          branch: "cursor/pizarra-preview-lista-0fcf",
+          merged: false,
+          state: "open",
+          body: "Refs #60",
+          paths: ["functions/_lib/status/aggregate.ts"],
+        },
+      ],
+    );
+    expect(linked?.number).toBe(61);
+    expect(linked?.branch).toBe("cursor/permite-divertirse-1617");
+  });
+
   it("prefiere la timeline cross-referenced", () => {
     const linked = pickLinkedPullRequest(
       4,
@@ -302,9 +357,9 @@ describe("issue → PR", () => {
 
 describe("caché KV", () => {
   it("separa producción, cada preview y local", () => {
-    expect(statusCacheKey("main")).toBe("proposal-status:v6:production");
+    expect(statusCacheKey("main")).toBe("proposal-status:v7:production");
     expect(statusCacheKey("cursor/pizarra-preview-lista-0fcf")).toBe(
-      "proposal-status:v6:preview:cursor-pizarra-preview-lista-0fcf",
+      "proposal-status:v7:preview:cursor-pizarra-preview-lista-0fcf",
     );
     expect(statusCacheKey(undefined)).toBe(STATUS_CACHE_KEY);
     expect(statusCacheKey("main")).not.toBe(statusCacheKey("cursor/permite-divertirse-1617"));
@@ -408,7 +463,50 @@ describe("CI y preview", () => {
       sha,
     );
     expect(bySlug?.id).toBe("slug");
-    expect(publicPreviewUrl(bySlug, branch)).toBe("https://54a01ddd.proto-lab-3k6.pages.dev");
+    expect(publicPreviewUrl(bySlug, branch)).toBe("https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev");
+  });
+
+  it("no usa el alias de rama si el último despliegue de esa rama es otro commit", () => {
+    const branch = "cursor/permite-divertirse-1617";
+    const sha = "f10ee90143541f2b3ed596897292303eeb886442";
+    const picked = pickPreviewDeployment(
+      [
+        {
+          id: "head",
+          url: "https://54a01ddd.proto-lab-3k6.pages.dev",
+          deployment_trigger: { metadata: { branch, commit_hash: sha } },
+          latest_stage: { status: "success" },
+          aliases: ["https://cursor-pizarra-preview-lista.proto-lab-3k6.pages.dev"],
+          created_on: "2026-11-01T16:00:59Z",
+        },
+        {
+          id: "posterior",
+          url: "https://bbbbbbbb.proto-lab-3k6.pages.dev",
+          deployment_trigger: { metadata: { branch, commit_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
+          latest_stage: { status: "success" },
+          aliases: ["https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev"],
+          created_on: "2026-11-02T20:00:00Z",
+        },
+      ],
+      branch,
+      sha,
+    );
+    expect(picked).toBeNull();
+  });
+
+  it("el alias sale de la rama de la PR aunque el despliegue liste otro host primero", () => {
+    const branch = "cursor/permite-divertirse-1617";
+    const sha = "f10ee90143541f2b3ed596897292303eeb886442";
+    const dep = {
+      id: "54a01ddd",
+      url: "https://54a01ddd.proto-lab-3k6.pages.dev",
+      deployment_trigger: { metadata: { branch, commit_hash: sha } },
+      latest_stage: { status: "success" },
+      aliases: ["https://cursor-pizarra-preview-lista.proto-lab-3k6.pages.dev"],
+      created_on: "2026-11-01T16:00:59Z",
+    };
+    expect(pickPreviewDeployment([dep], branch, sha)?.id).toBe("54a01ddd");
+    expect(publicPreviewUrl(dep, branch)).toBe("https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev");
   });
 
   it("reconoce el despliegue de producción por la metadata anidada", () => {
@@ -662,6 +760,104 @@ describe("buildProposalStatus con mocks", () => {
     expect(result.items[0]?.previewUrl).toBe("https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev/protos/divertirse/");
     expect(JSON.stringify(result)).not.toContain(cfToken);
     expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it("la #60 abre la preview de la PR #61 y no la de la rama donde corre la pizarra", async () => {
+    const appBranch = "cursor/permite-divertirse-1617";
+    const appSha = "f10ee90143541f2b3ed596897292303eeb886442";
+    const boardBranch = "cursor/pizarra-preview-lista-0fcf";
+    const boardSha = "17fae1e79dda633f18df9245768d35085f2a8e1b";
+    const ciSuite = {
+      status: "COMPLETED",
+      conclusion: "SUCCESS",
+      app: { slug: "github-actions" },
+      workflowRun: { workflow: { name: "CI", resourcePath: "/daniel-saezv/proto-lab/actions/workflows/ci.yml" } },
+    };
+    const pull61 = openPull({ sha: appSha, branch: appBranch, files: null, suites: [ciSuite], body: "Closes #60" });
+    const pull63 = openPull({
+      number: 63,
+      sha: boardSha,
+      branch: boardBranch,
+      files: null,
+      suites: [ciSuite],
+      body: "Refs #60",
+      updatedAt: "2026-11-02T06:31:07Z",
+    });
+    const issue = gqlIssue({
+      number: 60,
+      title: "[propuesta] Permite divertirse",
+      updatedAt: "2026-11-02T06:31:07Z",
+      labels: ["propuesta", "aprobado", "en-curso"],
+      timeline: [
+        { __typename: "LabeledEvent", createdAt: "2026-11-01T15:27:29Z", actor: { login: "daniel-saezv" }, label: { name: "aprobado" } },
+        { __typename: "CrossReferencedEvent", createdAt: "2026-11-01T16:00:50Z", source: { __typename: "PullRequest", ...pull61 } },
+        { __typename: "CrossReferencedEvent", createdAt: "2026-11-02T06:00:20Z", source: { __typename: "PullRequest", ...pull63 } },
+      ],
+    });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "https://api.github.com/graphql") {
+        return boardResponse([issue], [], [pull61, pull63], [
+          { type: "FORBIDDEN", path: ["repository", "pullRequests", "nodes", 0, "files"], message: "Resource not accessible by personal access token" },
+        ]);
+      }
+      if (url.includes("/pulls/61/files")) {
+        return new Response(JSON.stringify([{ filename: "protos/divertirse/index.html", status: "added" }]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/pulls/63/files")) {
+        return new Response(JSON.stringify([{ filename: "functions/_lib/status/aggregate.ts", status: "modified" }]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("env=preview")) {
+        return jsonResponse({
+          result: [
+            {
+              id: "board",
+              url: "https://482f9fab.proto-lab-3k6.pages.dev",
+              created_on: "2026-11-02T06:32:00Z",
+              latest_stage: { status: "success" },
+              aliases: ["https://cursor-pizarra-preview-lista.proto-lab-3k6.pages.dev"],
+              deployment_trigger: { metadata: { branch: boardBranch, commit_hash: boardSha } },
+            },
+            {
+              id: "54a01ddd",
+              url: "https://54a01ddd.proto-lab-3k6.pages.dev",
+              created_on: "2026-11-01T16:00:59Z",
+              latest_stage: { status: "success" },
+              aliases: ["https://cursor-pizarra-preview-lista.proto-lab-3k6.pages.dev"],
+              deployment_trigger: { metadata: { branch: appBranch, commit_hash: appSha } },
+            },
+          ],
+          result_info: { total_pages: 1 },
+        });
+      }
+      if (url.includes("env=production")) return jsonResponse({ result: [], result_info: { total_pages: 1 } });
+      return new Response("no", { status: 500 });
+    });
+    const result = await buildProposalStatus(
+      {
+        GITHUB_STATUS_TOKEN: TOKEN,
+        CF_PAGES_READ_TOKEN: "cf_pages_read_test",
+        CF_ACCOUNT_ID: "acc",
+        CF_PAGES_PROJECT: "proto-lab",
+        CF_PAGES_BRANCH: boardBranch,
+      },
+      { fetchImpl },
+    );
+    const appUrl = "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev/protos/divertirse/";
+    expect(result.items[0]?.number).toBe(60);
+    expect(result.items[0]?.phase).toBe("preview_lista");
+    expect(result.items[0]?.slug).toBe("divertirse");
+    expect(result.items[0]?.previewUrl).toBe(appUrl);
+    expect(result.items[0]?.previewUrl).not.toContain("cursor-pizarra-preview-lista");
+    const called = fetchImpl.mock.calls.map((call) => String(call[0]));
+    expect(called.some((url) => url.includes("/pulls/61/files"))).toBe(true);
+    expect(called.some((url) => url.includes("/pulls/63/files"))).toBe(false);
   });
 
   it("con files de GraphQL prohibido lista la PR por REST y abre /protos/divertirse/", async () => {

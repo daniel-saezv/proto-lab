@@ -1,4 +1,4 @@
-import { issueMentionsPattern } from "./format";
+import { issueMentionsPattern, slugsFromProtoPaths } from "./format";
 
 export type PullRequestRef = {
   number: number;
@@ -29,6 +29,36 @@ export type PullCandidate = {
   paths?: readonly string[];
 };
 
+/** GitHub cierra la issue con close/fix/resolve. `Refs #N` solo la menciona. */
+export function closesIssue(body: string, issueNumber: number): boolean {
+  return new RegExp(
+    `(?:^|[\\s(])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s*:?\\s*#${issueNumber}(?!\\d)`,
+    "i",
+  ).test(body);
+}
+
+function isSubstantive(pr: PullCandidate, issueNumber: number): boolean {
+  return closesIssue(pr.body, issueNumber) || slugsFromProtoPaths(pr.paths ?? []).length > 0;
+}
+
+function newest(candidates: readonly PullCandidate[]): PullCandidate | null {
+  if (candidates.length === 0) return null;
+  const sorted = [...candidates].sort((a, b) =>
+    a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : b.number - a.number,
+  );
+  return sorted[0] ?? null;
+}
+
+/**
+ * Si hay una PR que cierra la issue o toca `protos/<slug>/`, manda esa
+ * (la más reciente entre ellas). Una PR posterior que solo dice `Refs #N`
+ * no sustituye a la de la aplicación.
+ */
+export function pickBestLinkedPull(issueNumber: number, candidates: readonly PullCandidate[]): PullCandidate | null {
+  const substantive = candidates.filter((pr) => isSubstantive(pr, issueNumber));
+  return newest(substantive.length > 0 ? substantive : candidates);
+}
+
 function prNumberFromUrl(url: string | null | undefined): number | null {
   if (!url) return null;
   const match = /\/pull\/(\d+)(?:$|[?#])/.exec(url);
@@ -37,29 +67,38 @@ function prNumberFromUrl(url: string | null | undefined): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
-export function prFromTimeline(events: readonly TimelineCrossRef[], known: Map<number, PullCandidate>): PullRequestRef | null {
-  const refs: { number: number; at: string }[] = [];
+function candidatesFromTimeline(events: readonly TimelineCrossRef[], known: Map<number, PullCandidate>): PullCandidate[] {
+  const seen = new Set<number>();
+  const list: PullCandidate[] = [];
   for (const item of events) {
     if (item.event !== "cross-referenced") continue;
     const url = item.source?.issue?.pull_request?.html_url;
     const number = prNumberFromUrl(url ?? undefined);
-    if (number == null) continue;
-    refs.push({ number, at: item.created_at ?? "" });
+    if (number == null || seen.has(number)) continue;
+    const pr = known.get(number);
+    if (!pr) continue;
+    seen.add(number);
+    list.push(pr);
   }
-  refs.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  for (const ref of refs) {
-    const pr = known.get(ref.number);
-    if (pr) return toRef(pr);
-  }
-  return null;
+  return list;
+}
+
+export function prFromTimeline(
+  events: readonly TimelineCrossRef[],
+  known: Map<number, PullCandidate>,
+  issueNumber: number,
+): PullRequestRef | null {
+  const best = pickBestLinkedPull(issueNumber, candidatesFromTimeline(events, known));
+  return best ? toRef(best) : null;
 }
 
 export function prFromBodyMention(issueNumber: number, pulls: readonly PullCandidate[]): PullRequestRef | null {
   const pattern = issueMentionsPattern(issueNumber);
-  const matches = pulls.filter((pr) => pattern.test(pr.body));
-  matches.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
-  const first = matches[0];
-  return first ? toRef(first) : null;
+  const best = pickBestLinkedPull(
+    issueNumber,
+    pulls.filter((pr) => pattern.test(pr.body)),
+  );
+  return best ? toRef(best) : null;
 }
 
 export function pickLinkedPullRequest(
@@ -68,7 +107,7 @@ export function pickLinkedPullRequest(
   pulls: readonly PullCandidate[],
 ): PullRequestRef | null {
   const map = new Map(pulls.map((pr) => [pr.number, pr]));
-  return prFromTimeline(timeline, map) ?? prFromBodyMention(issueNumber, pulls);
+  return prFromTimeline(timeline, map, issueNumber) ?? prFromBodyMention(issueNumber, pulls);
 }
 
 function toRef(pr: PullCandidate): PullRequestRef {
