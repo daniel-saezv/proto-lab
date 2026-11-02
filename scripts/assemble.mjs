@@ -1,6 +1,8 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertServedApp } from "./app-budget.mjs";
+import { resolveProtoOutput, STATIC_SKIP } from "./proto-publish.mjs";
 import { isShellPath, renderServiceWorker } from "./sw.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -13,21 +15,30 @@ cpSync(worldDist, out, { recursive: true });
 
 const protosDir = join(root, "protos");
 for (const slug of readdirSync(protosDir)) {
-  const dist = join(protosDir, slug, "dist");
-  if (!statSync(dist, { throwIfNoEntry: false })?.isDirectory()) {
-    throw new Error(`Falta el build de protos/${slug}. Ejecuta pnpm build.`);
+  const protoDir = join(protosDir, slug);
+  if (!statSync(protoDir).isDirectory()) continue;
+  const output = resolveProtoOutput(protoDir);
+  const target = join(out, "protos", slug);
+  if (output.kind === "build") {
+    cpSync(output.dir, target, { recursive: true });
+  } else {
+    mkdirSync(target, { recursive: true });
+    for (const name of readdirSync(protoDir)) {
+      if (STATIC_SKIP.has(name) || name.startsWith(".")) continue;
+      cpSync(join(protoDir, name), join(target, name), { recursive: true });
+    }
   }
-  cpSync(dist, join(out, "protos", slug), { recursive: true });
-  const manifestPath = join(protosDir, slug, "proto.json");
+  const manifestPath = join(protoDir, "proto.json");
   if (existsSync(manifestPath)) {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
     if (manifest.preview) {
-      const previewFile = join(protosDir, slug, manifest.preview);
+      const previewFile = join(protoDir, manifest.preview);
       if (existsSync(previewFile)) {
-        cpSync(previewFile, join(out, "protos", slug, manifest.preview));
+        cpSync(previewFile, join(target, manifest.preview));
       }
     }
   }
+  assertServedApp(target, `protos/${slug}`);
 }
 
 const shell = [];

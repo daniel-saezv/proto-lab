@@ -16,6 +16,8 @@ interface Window {
     openPrototype?: (slug: string) => void;
     renderFrame?: () => number;
     renderSuspended?: () => boolean;
+    visibleApps?: () => string[];
+    playerPose?: () => { x: number; z: number; yaw: number };
     rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
     batchStats?: () => {
       meshesBefore: number;

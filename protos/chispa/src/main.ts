@@ -83,6 +83,12 @@ class Synth {
     if (this.ctx.state === "suspended") void this.ctx.resume();
   }
 
+  close(): void {
+    const ctx = this.ctx;
+    this.ctx = null;
+    void ctx?.close();
+  }
+
   blip(freq: number, duration = 0.12, gain = 0.07, type: OscillatorType = "sine"): void {
     if (!this.ctx || this.ctx.state !== "running") return;
     const now = this.ctx.currentTime;
@@ -245,6 +251,10 @@ class PlayScene extends Phaser.Scene {
       this.matter.world.off("collisionstart", this.onCollide);
       this.unbindPointer();
       this.unbindKeys();
+      this.synth.close();
+    });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => notifyLabReady());
     });
 
     const hello = this.add
@@ -987,6 +997,25 @@ const hud: Hud = {
   },
 };
 
+let readySent = false;
+let stopped = false;
+
+function notifyLabReady(): void {
+  if (readySent || window.parent === window) return;
+  readySent = true;
+  window.parent.postMessage({ source: "proto-lab", type: "ready" }, "*");
+}
+
+function loseCanvas(canvas: HTMLCanvasElement | undefined): void {
+  if (!canvas) return;
+  const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+  gl?.getExtension("WEBGL_lose_context")?.loseContext();
+}
+
+if (window.parent !== window) {
+  window.parent.postMessage({ source: "proto-lab", type: "alive" }, "*");
+}
+
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: stage,
@@ -1019,10 +1048,19 @@ const game = new Phaser.Game({
   },
 });
 
-void game;
+window.__protoLabApp = {
+  stop() {
+    if (stopped) return;
+    stopped = true;
+    loseCanvas(game.canvas);
+    game.destroy(true);
+  },
+};
+window.addEventListener("pagehide", () => window.__protoLabApp?.stop());
 
 declare global {
   interface Window {
+    __protoLabApp?: { stop(): void };
     __chispa?: {
       drop: (x?: number) => void;
       spawnPair: (tier: number) => void;

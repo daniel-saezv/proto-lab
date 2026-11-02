@@ -1,16 +1,14 @@
-# Cabeceras de seguridad de la app. El documento blob de un prototipo hereda
-# esta CSP y solo puede restringirla: script-src y style-src llevan
-# 'unsafe-inline' para que el cargador pueda incrustar el JS y el CSS.
-# La CSP del prototipo (meta) sigue en el HTML incrustado; no se toca aquí.
-# frame-ancestors es 'self', no 'none': Safari aplica la política heredada al
-# blob y con 'none' se niega a montar el iframe. X-Frame-Options: DENY sigue
-# en la respuesta HTTP del laboratorio.
+# Cabeceras de seguridad de la app. Las aplicaciones se abren en un iframe
+# del mismo origen (`/protos/<slug>/`): frame-src es 'self'. frame-ancestors
+# sigue en 'self' para que solo este sitio pueda enmarcarlas.
+# X-Frame-Options: DENY cubre el laboratorio. En `/protos/*` se suelta:
+# DENY impediría el iframe aunque la CSP lo permita.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=()
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; child-src 'self' blob:; frame-src blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; manifest-src 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; child-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; manifest-src 'self'
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
@@ -34,9 +32,11 @@
   Cache-Control: no-cache
 
 # HTML y el resto de /protos/ se revalidan. El JS/CSS con hash va aparte.
+# Sin X-Frame-Options: el laboratorio enmarca estas páginas.
 /protos/*
   Cache-Control: no-cache
   Access-Control-Allow-Origin: *
+  ! X-Frame-Options
 
 # Un solo splat por regla (límite de Pages). :slug es un segmento.
 # Hay que soltar el no-cache heredado para que no se concatene.

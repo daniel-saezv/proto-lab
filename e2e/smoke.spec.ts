@@ -377,7 +377,9 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
   await expect(page.getByTestId("selector-title")).not.toContainText("Laboratorio de assets");
   await playFromSelector(page, isMobile);
   const frame = page.frameLocator("iframe");
-  await expect(page.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(page.locator("iframe")).not.toHaveAttribute("sandbox", /.+/);
+  await expect(page.locator("iframe")).toHaveAttribute("src", /\/protos\/chispa\//);
+  await expect(page.getByTestId("prototype-player")).toHaveAttribute("data-prototype-ready", "1");
   await expect(frame.getByTestId("game-title")).toHaveText("Pozo de bolas");
   await expect(frame.locator("canvas")).toBeVisible();
   await page.getByTestId("close-prototype").click();
@@ -521,7 +523,8 @@ test("detrás de Access el prototipo arranca y Volver responde al tacto", async 
   await openChispa(page, true);
   const frame = page.frameLocator("iframe");
   await expect(frame.locator("canvas")).toBeVisible();
-  await expect(page.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(page.locator("iframe")).not.toHaveAttribute("sandbox", /.+/);
+  await expect(page.getByTestId("prototype-player")).toHaveAttribute("data-prototype-ready", "1");
   const back = page.getByTestId("close-prototype");
   await expect(back).toBeVisible();
   const hit = await back.evaluate((element) => {
@@ -1104,7 +1107,11 @@ test("CSP, audio y el JS con hash del prototipo no se pisan", async ({ page }) =
   const home = await page.request.get("/");
   expect(home.ok()).toBeTruthy();
   const csp = home.headers()["content-security-policy"] ?? "";
-  expect(csp).toContain("frame-src blob:");
+  expect(csp).toContain("frame-src 'self'");
+  const protoPage = await page.request.get("/protos/chispa/");
+  expect(protoPage.ok()).toBeTruthy();
+  expect(protoPage.headers()["x-frame-options"] ?? "").toBe("");
+  expect(protoPage.headers()["content-security-policy"] ?? "").toContain("frame-ancestors 'self'");
   expect(csp).toContain("frame-ancestors 'self'");
   expect(csp).toContain("media-src 'self'");
   expect(home.headers()["x-content-type-options"]).toBe("nosniff");

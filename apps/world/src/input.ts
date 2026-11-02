@@ -4,6 +4,7 @@ import { attachTouchControls, type TouchControlsHandle } from "./touch-controls"
 export type InputHandle = {
   read: () => { forward: number; right: number; lookX: number; lookY: number };
   resetLook: () => void;
+  rebind: (canvas: HTMLElement) => void;
   dispose: () => void;
 };
 
@@ -48,13 +49,14 @@ export function attachInput(options: {
     dragging = false;
   };
 
+  let canvas = options.canvas;
   const onPointerDown = (event: PointerEvent) => {
     if (options.touch || options.isBlocked() || event.button !== 0) return;
     onGesture();
     dragging = true;
     lastX = event.clientX;
     lastY = event.clientY;
-    options.canvas.setPointerCapture?.(event.pointerId);
+    canvas.setPointerCapture?.(event.pointerId);
   };
   const onPointerMove = (event: PointerEvent) => {
     if (options.touch || !dragging || options.isBlocked()) return;
@@ -75,11 +77,21 @@ export function attachInput(options: {
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", onBlur);
   const gestureCapture: AddEventListenerOptions = { capture: true };
-  options.canvas.addEventListener("pointerdown", onPointerDown);
-  options.canvas.addEventListener("pointermove", onPointerMove);
-  options.canvas.addEventListener("pointerup", onPointerUp);
-  options.canvas.addEventListener("pointercancel", onPointerUp);
-  options.canvas.addEventListener("touchend", onGesture, gestureCapture);
+  const bindCanvas = () => {
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
+    canvas.addEventListener("touchend", onGesture, gestureCapture);
+  };
+  const unbindCanvas = () => {
+    canvas.removeEventListener("pointerdown", onPointerDown);
+    canvas.removeEventListener("pointermove", onPointerMove);
+    canvas.removeEventListener("pointerup", onPointerUp);
+    canvas.removeEventListener("pointercancel", onPointerUp);
+    canvas.removeEventListener("touchend", onGesture, gestureCapture);
+  };
+  bindCanvas();
 
   return {
     read() {
@@ -112,16 +124,17 @@ export function attachInput(options: {
       lookX = 0;
       lookY = 0;
     },
+    rebind(next: HTMLElement) {
+      unbindCanvas();
+      canvas = next;
+      bindCanvas();
+    },
     dispose() {
       touchControls?.dispose();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
-      options.canvas.removeEventListener("pointerdown", onPointerDown);
-      options.canvas.removeEventListener("pointermove", onPointerMove);
-      options.canvas.removeEventListener("pointerup", onPointerUp);
-      options.canvas.removeEventListener("pointercancel", onPointerUp);
-      options.canvas.removeEventListener("touchend", onGesture, gestureCapture);
+      unbindCanvas();
     },
   };
 }

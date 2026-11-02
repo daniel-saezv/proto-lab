@@ -23,7 +23,8 @@ describe("cabeceras de Pages", () => {
   it("deja la CSP de la app sin pisar la del prototipo y cachea solo lo que tiene hash", () => {
     const home = headersForPath(rules, "/");
     const csp = home.get("content-security-policy")?.value ?? "";
-    expect(csp).toContain("frame-src blob:");
+    expect(csp).toContain("frame-src 'self'");
+    expect(csp).not.toContain("frame-src blob:");
     expect(csp).toContain("frame-ancestors 'self'");
     expect(csp).not.toContain("frame-ancestors 'none'");
     expect(csp).toContain("script-src 'self' 'unsafe-inline'");
@@ -40,6 +41,9 @@ describe("cabeceras de Pages", () => {
     expect(cacheOf("/assets/index-Abcd1234.js")).toBe("public, max-age=31536000, immutable");
     expect(cacheOf("/protos/chispa/index.html")).toMatch(/no-cache/);
     expect(cacheOf("/protos/chispa/")).toMatch(/no-cache/);
+    expect(headersForPath(rules, "/protos/chispa/").has("x-frame-options")).toBe(false);
+    expect(headersForPath(rules, "/protos/chispa/index.html").has("x-frame-options")).toBe(false);
+    expect(headersForPath(rules, "/protos/chispa/assets/index-Abcd1234.js").has("x-frame-options")).toBe(false);
     expect(cacheOf("/protos/chispa/assets/index-Abcd1234.js")).toBe("public, max-age=31536000, immutable");
     expect(cacheOf("/protos/audio/luanda.m4a")).toBe("public, max-age=31536000, immutable");
     expect(cacheOf("/protos/audio/luanda.abc12345.m4a")).toBe("public, max-age=31536000, immutable");
@@ -70,7 +74,7 @@ describe("cabeceras de Pages", () => {
     });
     expect(forced["cache-control"]).toBe("public, max-age=31536000, immutable");
     expect(forced["content-type"]).toMatch(/javascript/);
-    expect(forced["content-security-policy"]).toContain("frame-src blob:");
+    expect(forced["content-security-policy"]).toContain("frame-src 'self'");
     expect(forced["content-security-policy"]).toContain("frame-ancestors 'self'");
 
     const html = await respond((res) => {

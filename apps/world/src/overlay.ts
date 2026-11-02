@@ -1,14 +1,15 @@
-import { fetchPrototypeDocument } from "./prototype-document";
+import { advanceBoot, bootFailureMessage, iframeAllow, type BootPhase } from "./prototype-boot";
+import { assertPrototypePage } from "./prototype-document";
 import { createPrototypeAssetHost } from "./prototype-assets-host";
 import type { CatalogEntry } from "./types";
-
-const FAIL = "No he podido abrir el prototipo. Pulsa Volver para volver al laboratorio.";
 
 type FullscreenHost = HTMLElement & { webkitRequestFullscreen?: () => void };
 type FullscreenDoc = Document & {
   webkitFullscreenElement?: Element | null;
   webkitExitFullscreen?: () => void;
 };
+
+type AppWindow = Window & { __protoLabApp?: { stop?: () => void } };
 
 function nativeFullscreenElement(): Element | null {
   const doc = document as FullscreenDoc;
@@ -27,15 +28,9 @@ export function createOverlay(
   let generation = 0;
   let opened = false;
   let frame: HTMLIFrameElement | null = null;
-  let objectUrl: string | null = null;
-  let aliveTimer = 0;
+  let readyTimer = 0;
+  let boot: BootPhase = "opening";
   let assetHost: ReturnType<typeof createPrototypeAssetHost> | null = null;
-
-  function revoke() {
-    if (!objectUrl) return;
-    URL.revokeObjectURL(objectUrl);
-    objectUrl = null;
-  }
 
   function setPseudo(on: boolean) {
     root.classList.toggle("is-pseudo-fullscreen", on);
@@ -96,15 +91,57 @@ export function createOverlay(
   document.addEventListener("fullscreenchange", onFullscreenChange);
   document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
-  function close() {
-    if (!opened) return;
-    opened = false;
-    generation += 1;
-    window.clearTimeout(aliveTimer);
+  function callStop(current: HTMLIFrameElement) {
+    try {
+      const app = current.contentWindow as AppWindow | null;
+      app?.__protoLabApp?.stop?.();
+    } catch {
+      // El documento ya no es del mismo origen.
+    }
+  }
+
+  function blankFrame(current: HTMLIFrameElement): Promise<void> {
+    callStop(current);
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(resolve, 500);
+      const done = () => {
+        window.clearTimeout(timer);
+        resolve();
+      };
+      current.addEventListener("load", done, { once: true });
+      try {
+        current.src = "about:blank";
+      } catch {
+        done();
+      }
+    });
+  }
+
+  async function discardFrame() {
+    const current = frame;
     frame = null;
     assetHost = null;
-    revoke();
+    if (!current) return;
+    current.style.visibility = "hidden";
+    await blankFrame(current);
+    current.remove();
+  }
+
+  function clearBootMarks() {
+    delete root.dataset.prototypeReady;
+    delete root.dataset.prototypeAlive;
+    boot = "opening";
+  }
+
+  async function close() {
+    if (!opened) return;
+    opened = false;
+    const mine = ++generation;
+    window.clearTimeout(readyTimer);
     exitFullscreenModes();
+    await discardFrame();
+    if (mine !== generation) return;
+    clearBootMarks();
     document.body.classList.remove("prototype-open");
     root.querySelector(".prototype-chrome")?.remove();
     root.replaceChildren();
@@ -113,15 +150,37 @@ export function createOverlay(
     onClose();
   }
 
-  function showFailure(banner: HTMLElement, message: string) {
-    window.clearTimeout(aliveTimer);
-    frame?.remove();
-    frame = null;
-    assetHost = null;
-    revoke();
+  async function showFailure(banner: HTMLElement, message: string) {
+    const mine = ++generation;
+    window.clearTimeout(readyTimer);
+    await discardFrame();
+    if (mine !== generation || !banner.isConnected) return;
     banner.hidden = false;
     banner.dataset.testid = "prototype-error";
     banner.textContent = message;
+  }
+
+  function markReady(status: HTMLElement | null) {
+    window.clearTimeout(readyTimer);
+    boot = "ready";
+    root.dataset.prototypeReady = "1";
+    status?.remove();
+  }
+
+  function attachFrameGuards(next: HTMLIFrameElement) {
+    try {
+      next.contentWindow?.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          void close();
+        },
+        true,
+      );
+    } catch {
+      // Si el documento no es del mismo origen, el plazo de ready lo retira.
+    }
   }
 
   function onMessage(event: MessageEvent) {
@@ -132,11 +191,25 @@ export function createOverlay(
       void assetHost?.onMessage(event, frame);
       return;
     }
-    const banner = document.querySelector<HTMLElement>(".prototype-banner");
-    if (!banner) return;
-    if (data.type === "close") close();
-    if (data.type === "alive") window.clearTimeout(aliveTimer);
-    if (data.type === "error") showFailure(banner, `El prototipo se ha detenido: ${data.message ?? "error"}. Pulsa Volver.`);
+    if (data.type === "close") {
+      void close();
+      return;
+    }
+    if (data.type === "alive") {
+      boot = advanceBoot(boot, "alive");
+      if (boot === "alive") root.dataset.prototypeAlive = "1";
+      return;
+    }
+    if (data.type === "ready") {
+      const status = root.querySelector<HTMLElement>(".prototype-status");
+      markReady(status);
+      return;
+    }
+    if (data.type === "error") {
+      const banner = root.querySelector<HTMLElement>(".prototype-banner");
+      if (!banner) return;
+      void showFailure(banner, `La aplicación se ha detenido: ${data.message ?? "error"}. Pulsa Volver para volver al laboratorio.`);
+    }
   }
   window.addEventListener("message", onMessage);
 
@@ -145,8 +218,9 @@ export function createOverlay(
     const mine = generation;
     opened = true;
     frame = null;
-    window.clearTimeout(aliveTimer);
-    revoke();
+    assetHost = null;
+    window.clearTimeout(readyTimer);
+    clearBootMarks();
     exitFullscreenModes();
     document.body.classList.add("prototype-open");
     root.querySelector(".prototype-chrome")?.remove();
@@ -165,7 +239,7 @@ export function createOverlay(
     back.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      close();
+      void close();
     });
 
     const title = document.createElement("h1");
@@ -205,34 +279,43 @@ export function createOverlay(
     const status = document.createElement("p");
     status.className = "prototype-status";
     status.dataset.testid = "prototype-status";
-    status.textContent = "Abriendo el prototipo…";
+    status.textContent = "Abriendo la aplicación…";
     slot.append(status);
     root.append(header, slot);
 
     hooks?.onOpenEntry?.(entry);
 
-    assetHost = createPrototypeAssetHost({ slug: entry.slug, allowedPaths: entry.assets });
-
-    void fetchPrototypeDocument(entry.href)
-      .then((html) => {
+    const deadline = entry.readyMs > 0 ? entry.readyMs : 8000;
+    void assertPrototypePage(entry.href, { pageOrigin: location.origin })
+      .then(() => {
         if (mine !== generation) return;
         const next = document.createElement("iframe");
         next.title = entry.title;
-        next.setAttribute("sandbox", "allow-scripts");
-        next.referrerPolicy = "no-referrer";
-        objectUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+        const allow = iframeAllow(entry.permissions ?? []);
+        if (allow) next.allow = allow;
+        next.addEventListener("load", () => {
+          if (mine !== generation || frame !== next) return;
+          let href = "";
+          try {
+            href = next.contentWindow?.location.href ?? "";
+          } catch {
+            href = "";
+          }
+          if (href === "about:blank") return;
+          attachFrameGuards(next);
+        });
+        assetHost = createPrototypeAssetHost({ slug: entry.slug, allowedPaths: entry.assets });
         frame = next;
-        next.src = objectUrl;
-        status.remove();
         slot.append(next);
-        aliveTimer = window.setTimeout(() => {
-          if (mine !== generation) return;
-          showFailure(banner, FAIL);
-        }, 8000);
+        next.src = entry.href;
+        readyTimer = window.setTimeout(() => {
+          if (mine !== generation || boot === "ready") return;
+          void showFailure(banner, bootFailureMessage(boot));
+        }, deadline);
       })
       .catch(() => {
         if (mine !== generation) return;
-        showFailure(banner, FAIL);
+        void showFailure(banner, bootFailureMessage("opening"));
       });
   }
 

@@ -6,12 +6,17 @@
   "date": "2026-10-31",
   "tags": ["test", "puente"],
   "cover": null,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "history": [
     {
       "version": "1.0.0",
       "date": "2026-10-31",
       "note": "Comprueba blob URLs del puente en canvas, WebGL y Web Audio."
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-11-02",
+      "note": "El cliente del puente vive en la aplicación. Avisa ready y stop() suelta los blob y WebGL."
     }
   ],
   "assets": ["media/pixel.png", "media/beep.wav"],
