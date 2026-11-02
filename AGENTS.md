@@ -152,7 +152,7 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: valida el JWT `Cf-
 
 **Respuesta JSON:** `{ ok: true, partial?: boolean, items: [{ number, title, kind, slug?, phase, updatedAt, previewUrl? }] }`. Título escapado y truncado (80 caracteres). `previewUrl` solo en `preview_lista` (subdominio `*.proto-lab-3k6.pages.dev`) o en `publicada` (producción). **No** se exponen emails, cuerpos, ramas, logs, mensajes de commit ni enlaces a GitHub.
 
-**Caché:** KV `PROPOSALS`, clave `proposal-status:v3:all`. Una lectura buena se sirve **120 s** y se guarda 24 h para poder repetirla si GitHub falla; un fallo o un `partial` no se escriben. Crear una propuesta borra la clave. Sin binding, sin caché. Las claves públicas de Access se cachean una hora (memoria del isolate y Cache API).
+**Caché:** KV `PROPOSALS`, clave `proposal-status:v4:all`. Una lectura buena se sirve **120 s** y se guarda 24 h para poder repetirla si GitHub falla; un fallo o un `partial` no se escriben. Crear una propuesta borra la clave. Sin binding, sin caché. Las claves públicas de Access se cachean una hora (memoria del isolate y Cache API).
 
 **UI:** en el laboratorio 3D, la **pizarra** pinta el tablón en la escena (estado vía `GET /api/proposals/status`). Sin WebGL, el fallback HTML muestra el mismo tablón en un canvas 2D. Textos con `textContent`; la preview abre en pestaña nueva con `rel=noopener noreferrer`.
 

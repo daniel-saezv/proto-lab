@@ -80,7 +80,7 @@ function buildDeploySnapshot(
   let previewUrl: string | null = null;
   if (pr && pr.state === "open") {
     const dep = pickPreviewDeployment(deployments, pr.branch, pr.headSha);
-    previewUrl = publicPreviewUrl(dep);
+    previewUrl = publicPreviewUrl(dep, pr.branch);
     previewReady = Boolean(previewUrl);
   }
   let productionReady = false;

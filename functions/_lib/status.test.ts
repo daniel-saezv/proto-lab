@@ -18,7 +18,7 @@ import { prFromBodyMention, pickLinkedPullRequest } from "./status/issue-pr";
 import { resolvePhase } from "./status/phases";
 import { buildProposalStatus } from "./status/aggregate";
 import { boardClosedSinceIso, BOARD_VISIBLE_MS, isIssueVisibleOnBoard } from "./status/board-visibility";
-import { ciSnapshotFromRun, pickPreviewDeployment, publicPreviewUrl } from "./status/github";
+import { ciSnapshotFromRun, pickPreviewDeployment, pickProductionDeployment, publicPreviewUrl } from "./status/github";
 
 const EMAIL = "amigo@example.com";
 const TOKEN = "ghs_status_test";
@@ -75,6 +75,39 @@ function gqlIssue(input: {
     labels: { nodes: (input.labels ?? ["propuesta"]).map((name) => ({ name })) },
     timelineItems: { nodes: input.timeline ?? [] },
   };
+}
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+}
+
+function openPull(input: { sha: string; branch?: string; suites: unknown[] }) {
+  const branch = input.branch ?? "cursor/permite-divertirse-1617";
+  return {
+    number: 61,
+    body: "Closes #60",
+    state: "OPEN" as const,
+    url: "https://github.com/daniel-saezv/proto-lab/pull/61",
+    updatedAt: "2026-11-01T16:01:48Z",
+    mergedAt: null,
+    headRefName: branch,
+    headRefOid: input.sha,
+    mergeCommit: null,
+    headRef: { target: { oid: input.sha, checkSuites: { nodes: input.suites } } },
+  };
+}
+
+function issue60(pull: ReturnType<typeof openPull>) {
+  return gqlIssue({
+    number: 60,
+    title: "[propuesta] Permite divertirse",
+    updatedAt: "2026-11-01T16:02:00Z",
+    labels: ["propuesta", "aprobado", "en-curso"],
+    timeline: [
+      { __typename: "LabeledEvent", createdAt: "2026-11-01T15:27:29Z", actor: { login: "daniel-saezv" }, label: { name: "aprobado" } },
+      { __typename: "CrossReferencedEvent", createdAt: "2026-11-01T16:00:50Z", source: { __typename: "PullRequest", ...pull } },
+    ],
+  });
 }
 
 function boardResponse(open: unknown[], closed: unknown[] = [], pulls: unknown[] = [], errors?: unknown[]) {
@@ -281,6 +314,71 @@ describe("CI y preview", () => {
     );
     expect(publicPreviewUrl(dep)).toBe("https://abc.proto-lab-3k6.pages.dev");
   });
+
+  it("empareja la preview de Pages por deployment_trigger.metadata y el alias cortado", () => {
+    const branch = "cursor/permite-divertirse-1617";
+    const sha = "f10ee90143541f2b3ed596897292303eeb886442";
+    const preview = {
+      id: "54a01ddd",
+      url: "https://54a01ddd.proto-lab-3k6.pages.dev",
+      deployment_trigger: { metadata: { branch, commit_hash: sha } },
+      latest_stage: { name: "deploy", status: "success" },
+      aliases: [
+        "https://54a01ddd.proto-lab-3k6.pages.dev",
+        "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev",
+      ],
+      created_on: "2026-11-01T16:00:59Z",
+    };
+    const picked = pickPreviewDeployment(
+      [
+        {
+          id: "viejo",
+          url: "https://aaaaaaaa.proto-lab-3k6.pages.dev",
+          deployment_trigger: { metadata: { branch, commit_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
+          latest_stage: { status: "success" },
+          aliases: ["https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev"],
+          created_on: "2026-10-01T00:00:00Z",
+        },
+        preview,
+      ],
+      branch,
+      sha,
+    );
+    expect(picked?.id).toBe("54a01ddd");
+    expect(publicPreviewUrl(picked, branch)).toBe("https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev");
+
+    const bySlug = pickPreviewDeployment(
+      [
+        {
+          id: "slug",
+          url: "https://54a01ddd.proto-lab-3k6.pages.dev",
+          deployment_trigger: { metadata: { branch: "cursor-permite-divertirse-16", commit_hash: sha } },
+          latest_stage: { status: "success" },
+          aliases: ["https://54a01ddd.proto-lab-3k6.pages.dev"],
+        },
+      ],
+      branch,
+      sha,
+    );
+    expect(bySlug?.id).toBe("slug");
+    expect(publicPreviewUrl(bySlug, branch)).toBe("https://54a01ddd.proto-lab-3k6.pages.dev");
+  });
+
+  it("reconoce el despliegue de producción por la metadata anidada", () => {
+    const sha = "abc123abc123abc123abc123abc123abc123abcd";
+    const dep = pickProductionDeployment(
+      [
+        {
+          id: "prod",
+          url: "https://proto-lab-3k6.pages.dev",
+          deployment_trigger: { metadata: { branch: "main", commit_hash: sha } },
+          latest_stage: { status: "success" },
+        },
+      ],
+      sha,
+    );
+    expect(dep?.id).toBe("prod");
+  });
 });
 
 describe("visibilidad del tablón", () => {
@@ -431,6 +529,90 @@ describe("buildProposalStatus con mocks", () => {
     expect(result.items.map((item) => item.number)).toEqual([10]);
     expect(result.partial).toBe(false);
     expect(kv.store.has(STATUS_CACHE_KEY)).toBe(true);
+  });
+
+  it("con el check suite de Actions en el head pasa a ci_correcta aunque falte workflowRun", async () => {
+    const sha = "f10ee90143541f2b3ed596897292303eeb886442";
+    const pull = openPull({
+      sha,
+      suites: [
+        { status: "QUEUED", conclusion: null, app: { slug: "cursor" }, workflowRun: null },
+        { status: "COMPLETED", conclusion: "SUCCESS", app: { slug: "cloudflare-workers-and-pages" }, workflowRun: null },
+        { status: "COMPLETED", conclusion: "SUCCESS", app: { slug: "github-actions" }, workflowRun: null },
+      ],
+    });
+    const fetchImpl = vi.fn(async () => boardResponse([issue60(pull)], [], [pull]));
+    const result = await buildProposalStatus({ GITHUB_STATUS_TOKEN: TOKEN }, { fetchImpl });
+    expect(result.items[0]?.phase).toBe("ci_correcta");
+    expect(result.items[0]?.previewUrl).toBeUndefined();
+  });
+
+  it("un check suite de Cloudflare en verde no cuenta como la CI", async () => {
+    const pull = openPull({
+      sha: "f10ee90143541f2b3ed596897292303eeb886442",
+      suites: [{ status: "COMPLETED", conclusion: "SUCCESS", app: { slug: "cloudflare-workers-and-pages" }, workflowRun: null }],
+    });
+    const fetchImpl = vi.fn(async () => boardResponse([issue60(pull)], [], [pull]));
+    const result = await buildProposalStatus({ GITHUB_STATUS_TOKEN: TOKEN }, { fetchImpl });
+    expect(result.items[0]?.phase).toBe("pr_abierto");
+  });
+
+  it("con CI verde y la preview desplegada llega a preview_lista", async () => {
+    const branch = "cursor/permite-divertirse-1617";
+    const sha = "f10ee90143541f2b3ed596897292303eeb886442";
+    const pull = openPull({
+      sha,
+      branch,
+      suites: [
+        {
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          app: { slug: "github-actions" },
+          workflowRun: { workflow: { name: "CI", resourcePath: "/daniel-saezv/proto-lab/actions/workflows/ci.yml" } },
+        },
+      ],
+    });
+    const deployment = {
+      id: "54a01ddd",
+      url: "https://54a01ddd.proto-lab-3k6.pages.dev",
+      environment: "preview",
+      created_on: "2026-11-01T16:00:59Z",
+      latest_stage: { name: "deploy", status: "success" },
+      aliases: ["https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev"],
+      deployment_trigger: { metadata: { branch, commit_hash: sha } },
+    };
+    const cfToken = "cf_pages_read_test";
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "https://api.github.com/graphql") return boardResponse([issue60(pull)], [], [pull]);
+      if (url.includes("env=preview") && url.includes("page=1")) {
+        return jsonResponse({
+          result: [
+            {
+              id: "otra",
+              url: "https://bbbbbbbb.proto-lab-3k6.pages.dev",
+              deployment_trigger: { metadata: { branch: "cursor/otra", commit_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
+              latest_stage: { status: "success" },
+            },
+          ],
+          result_info: { total_pages: 2 },
+        });
+      }
+      if (url.includes("env=preview") && url.includes("page=2")) {
+        return jsonResponse({ result: [deployment], result_info: { total_pages: 2 } });
+      }
+      if (url.includes("env=production")) return jsonResponse({ result: [], result_info: { total_pages: 1 } });
+      return new Response("no", { status: 500 });
+    });
+    const result = await buildProposalStatus(
+      { GITHUB_STATUS_TOKEN: TOKEN, CF_PAGES_READ_TOKEN: cfToken, CF_ACCOUNT_ID: "acc", CF_PAGES_PROJECT: "proto-lab" },
+      { fetchImpl },
+    );
+    expect(result.partial).toBe(false);
+    expect(result.items[0]?.phase).toBe("preview_lista");
+    expect(result.items[0]?.previewUrl).toBe("https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev");
+    expect(JSON.stringify(result)).not.toContain(cfToken);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
   it("marca partial si GraphQL devuelve errores y no lo cachea", async () => {

@@ -1,5 +1,5 @@
 import { CI_WORKFLOW_FILE, REPO_NAME, REPO_OWNER } from "./constants";
-import type { GitHubFetch, GitHubIssue, GitHubPull, WorkflowRun } from "./github";
+import { ciSnapshotFromRun, type GitHubFetch, type GitHubIssue, type GitHubPull, type WorkflowRun } from "./github";
 import { readTextLimited } from "../read-limited";
 
 const GRAPHQL_URL = "https://api.github.com/graphql";
@@ -73,14 +73,15 @@ fragment PrBits on PullRequest {
   headRefName
   headRefOid
   mergeCommit { oid }
-  commits(last: 1) {
-    nodes {
-      commit {
-        oid
-        checkSuites(first: 8) {
+  headRef {
+    target {
+      oid
+      ... on Commit {
+        checkSuites(first: 20) {
           nodes {
             status
             conclusion
+            app { slug }
             workflowRun { workflow { name resourcePath } }
           }
         }
@@ -102,7 +103,13 @@ export type ProposalBoard = {
 type GqlCheckSuite = {
   status?: string | null;
   conclusion?: string | null;
+  app?: { slug?: string | null } | null;
   workflowRun?: { workflow?: { name?: string | null; resourcePath?: string | null } | null } | null;
+};
+
+type GqlCommitChecks = {
+  oid?: string | null;
+  checkSuites?: { nodes?: (GqlCheckSuite | null)[] | null } | null;
 };
 
 type GqlPull = {
@@ -115,9 +122,8 @@ type GqlPull = {
   headRefName?: string | null;
   headRefOid?: string | null;
   mergeCommit?: { oid?: string | null } | null;
-  commits?: {
-    nodes?: ({ commit?: { oid?: string | null; checkSuites?: { nodes?: (GqlCheckSuite | null)[] | null } | null } | null } | null)[] | null;
-  } | null;
+  headRef?: { target?: GqlCommitChecks | null } | null;
+  commits?: { nodes?: ({ commit?: GqlCommitChecks | null } | null)[] | null } | null;
 };
 
 type GqlTimelineNode = {
@@ -164,20 +170,56 @@ function mapConclusion(conclusion: string | null | undefined): string | null {
   return null;
 }
 
+function suitesOnCommit(commit: GqlCommitChecks | null | undefined, sha: string): GqlCheckSuite[] {
+  if (!commit) return [];
+  if (commit.oid && commit.oid !== sha) return [];
+  return (commit.checkSuites?.nodes ?? []).filter((suite): suite is GqlCheckSuite => suite != null && Boolean(suite.status));
+}
+
+/** Check suites del head. `headRef` es el commit de la rama; `commits` cubre respuestas antiguas. */
+function suitesForHead(pull: GqlPull, sha: string): GqlCheckSuite[] {
+  const head = suitesOnCommit(pull.headRef?.target, sha);
+  if (head.length > 0) return head;
+  const fromList: GqlCheckSuite[] = [];
+  for (const node of pull.commits?.nodes ?? []) fromList.push(...suitesOnCommit(node?.commit, sha));
+  return fromList;
+}
+
+function isCiWorkflow(suite: GqlCheckSuite): boolean {
+  const path = suite.workflowRun?.workflow?.resourcePath ?? "";
+  return path.endsWith(`/workflows/${CI_WORKFLOW_FILE}`);
+}
+
+function toRun(suite: GqlCheckSuite, sha: string): WorkflowRun {
+  return { status: mapStatus(suite.status ?? ""), conclusion: mapConclusion(suite.conclusion), head_sha: sha };
+}
+
+function rollupRuns(suites: readonly GqlCheckSuite[], sha: string): WorkflowRun | null {
+  let running = false;
+  let failure = false;
+  let success = false;
+  for (const suite of suites) {
+    const state = ciSnapshotFromRun(toRun(suite, sha)).state;
+    if (state === "running") running = true;
+    else if (state === "failure") failure = true;
+    else if (state === "success") success = true;
+  }
+  if (running) return { status: "in_progress", conclusion: null, head_sha: sha };
+  if (failure) return { status: "completed", conclusion: "failure", head_sha: sha };
+  if (success) return { status: "completed", conclusion: "success", head_sha: sha };
+  return null;
+}
+
 function ciFromPull(pull: GqlPull): WorkflowRun | null {
   const sha = typeof pull.headRefOid === "string" ? pull.headRefOid : "";
   if (!sha) return null;
-  const suites = pull.commits?.nodes ?? [];
-  for (const node of suites) {
-    const checks = node?.commit?.checkSuites?.nodes ?? [];
-    for (const suite of checks) {
-      if (!suite?.status) continue;
-      const path = suite.workflowRun?.workflow?.resourcePath ?? "";
-      if (!path.endsWith(`/workflows/${CI_WORKFLOW_FILE}`)) continue;
-      return { status: mapStatus(suite.status), conclusion: mapConclusion(suite.conclusion), head_sha: sha };
-    }
-  }
-  return null;
+  const suites = suitesForHead(pull, sha);
+  const ciSuites = suites.filter(isCiWorkflow);
+  if (ciSuites.length > 0) return rollupRuns(ciSuites, sha);
+  const sawWorkflow = suites.some((suite) => (suite.workflowRun?.workflow?.resourcePath ?? "").length > 0);
+  if (sawWorkflow) return null;
+  const actions = suites.filter((suite) => suite.app?.slug === "github-actions");
+  return rollupRuns(actions, sha);
 }
 
 function mapPull(node: GqlPull | null | undefined): GitHubPull | null {
