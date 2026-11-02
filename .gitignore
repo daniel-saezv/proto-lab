@@ -2,6 +2,7 @@ node_modules
 dist
 apps/*/dist
 protos/*/dist
+templates/*/dist
 apps/world/src/generated/*
 !apps/world/src/generated/.gitkeep
 functions/_lib/slugs.json
