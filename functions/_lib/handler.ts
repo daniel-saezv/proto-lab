@@ -19,6 +19,8 @@ export type ProposalEnv = {
   GITHUB_TOKEN?: string;
   ALLOW_DEV_AUTH?: string;
   CF_ACCESS_AUD?: string;
+  /** Rama de Pages. La propuesta solo invalida la caché de ese entorno. */
+  CF_PAGES_BRANCH?: string;
   PROPOSALS?: KvLike;
 };
 
@@ -161,7 +163,7 @@ export async function handleProposal(request: Request, env: ProposalEnv, options
     } catch {
       // La issue ya existe. Un fallo al contar no debe hacer creer al amigo que no se envió.
     }
-    await deleteStatusCache(env.PROPOSALS);
+    await deleteStatusCache(env.PROPOSALS, env.CF_PAGES_BRANCH);
   }
 
   return json(201, { ok: true, issueUrl: created.issueUrl, issueNumber: created.issueNumber });

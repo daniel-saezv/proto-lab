@@ -9,17 +9,36 @@ export function issueKind(labels: readonly string[]): "propuesta" | "iteracion" 
   return labels.includes(LABEL_ITERACION) ? "iteracion" : "propuesta";
 }
 
-export function extractSlug(title: string, body: string, labels: readonly string[]): string | null {
-  const iterTitle = /^\[iteración\]\s+([a-z0-9]+(?:-[a-z0-9]+)*)\s*:/i.exec(title);
-  if (iterTitle?.[1]) return iterTitle[1].toLowerCase();
-  const bodySlug = /Prototipo:\s*`([a-z0-9]+(?:-[a-z0-9]+)*)`/i.exec(body);
-  if (bodySlug?.[1] && bodySlug[1] !== "nuevo") return bodySlug[1].toLowerCase();
-  for (const label of labels) {
-    if (label !== LABEL_PROPUESTA && label !== LABEL_ITERACION && label !== "aprobado" && label !== "en-curso") {
-      if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(label)) return label;
-    }
+const PROTO_DIR = /^protos\/([a-z0-9]+(?:-[a-z0-9]+)*)\//;
+
+/** Carpetas `protos/<slug>/` tocadas por la PR. Una sola es la aplicación de esa preview. */
+export function slugsFromProtoPaths(paths: readonly string[]): string[] {
+  const slugs = new Set<string>();
+  for (const path of paths) {
+    const match = PROTO_DIR.exec(path);
+    if (match?.[1]) slugs.add(match[1]);
   }
-  return null;
+  return [...slugs].sort();
+}
+
+/** Slug de la aplicación: la única carpeta `protos/<slug>/` del diff. Si no hay una sola, null. */
+export function resolveAppSlug(paths: readonly string[]): string | null {
+  const fromPaths = slugsFromProtoPaths(paths);
+  return fromPaths.length === 1 ? (fromPaths[0] ?? null) : null;
+}
+
+/** Raíz de la preview, o esa raíz más `/protos/<slug>/` cuando la aplicación está identificada. */
+export function previewAppUrl(root: string, slug: string | null): string {
+  if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return root;
+  try {
+    const url = new URL(root);
+    url.pathname = `/protos/${slug}/`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return root;
+  }
 }
 
 export function escapeDisplayText(input: string): string {

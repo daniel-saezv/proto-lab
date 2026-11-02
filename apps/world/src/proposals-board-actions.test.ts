@@ -38,6 +38,37 @@ describe("acciones del tablón", () => {
     expect(pagesPreviewUrl(undefined)).toBeNull();
   });
 
+  it("en preview lista abre la aplicación dentro de la preview", () => {
+    const href = "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev/protos/divertirse/";
+    expect(
+      boardNavAction(
+        item({ number: 60, title: "Permite divertirse", phase: "preview_lista", slug: "divertirse", previewUrl: href }),
+        [],
+      ),
+    ).toEqual({ kind: "preview", label: "Probar la preview", href });
+  });
+
+  it("conserva la ruta que manda el tablón y no la inventa si la URL es la raíz", () => {
+    const withApp = "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev/protos/divertirse/";
+    expect(pagesPreviewUrl(withApp)).toBe(withApp);
+    expect(
+      boardNavAction(
+        item({
+          number: 60,
+          title: "Permite divertirse",
+          phase: "preview_lista",
+          slug: "divertirse",
+          previewUrl: "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev",
+        }),
+        ["divertirse"],
+      ),
+    ).toEqual({
+      kind: "preview",
+      label: "Probar la preview",
+      href: "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev/",
+    });
+  });
+
   it("en preview lista abre la URL de la preview", () => {
     expect(
       boardNavAction(

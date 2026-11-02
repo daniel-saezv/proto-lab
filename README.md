@@ -72,7 +72,7 @@ La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/pr
 
 En Pages, el secreto `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en este repositorio) y el binding KV `PROPOSALS` (límite de 5 propuestas por email y día UTC, y caché del tablón 120 s) ya están configurados en producción y en preview.
 
-Para el tablón (`GET /api/proposals/status`) hace falta además el secreto **`GITHUB_STATUS_TOKEN`** (fine-grained aparte, solo lectura: Issues, Pull requests y Actions en este repo), opcionalmente **`CF_PAGES_READ_TOKEN`** (API token con permiso Cloudflare Pages Read) y las variables **`CF_ACCOUNT_ID`** y **`CF_PAGES_PROJECT`** (`proto-lab`). Sin el token de Cloudflare el endpoint sigue respondiendo, pero no puede marcar preview por despliegue.
+Para el tablón (`GET /api/proposals/status`) hace falta además el secreto **`GITHUB_STATUS_TOKEN`** (fine-grained aparte, solo lectura: Issues, Pull requests, Actions y Contents en este repo), opcionalmente **`CF_PAGES_READ_TOKEN`** (API token con permiso Cloudflare Pages Read) y las variables **`CF_ACCOUNT_ID`** y **`CF_PAGES_PROJECT`** (`proto-lab`). Contents permite leer `files` en GraphQL. Sin el token de Cloudflare el endpoint sigue respondiendo, pero no puede marcar preview por despliegue.
 
 En el laboratorio 3D, la **pizarra** muestra en vivo el estado de las propuestas (mismo origen que `GET /api/proposals/status`). Sin WebGL, el fallback HTML incluye una versión plana del tablón. Los pull requests de propuestas deben citar su issue en el cuerpo (`Closes #N`).
 

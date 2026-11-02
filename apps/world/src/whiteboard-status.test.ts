@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { boardDoodleIds } from "./proposals-board-chalk";
+import { boardDoodleIds, boardDoodleProgress, DOODLE_DRAW_MS } from "./proposals-board-chalk";
 import { BOARD_MOTION_MS } from "./proposals-board-session";
 import type { ProposalStatusItem } from "./proposals-status-api";
 
@@ -272,6 +272,40 @@ describe("trazos de énfasis al cambiar de pantalla", () => {
     random.mockReturnValue(0.99);
     board.setInteractive(true);
     expect(boardDoodleIds().join("+")).toBe("caracol+barco");
+
+    board.dispose();
+  });
+
+  it("al abrir traza los dibujos y al salir la escena conserva esa pareja terminada", () => {
+    installCanvas();
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    now = 1_000;
+    const board = createWhiteboardStatus({
+      reducedMotion: false,
+      knownSlugs: ["chispa"],
+    });
+    board.setItems(items, false);
+    now = 2_000;
+    board.tick(now);
+    expect(board.getPhase()).toBe("live");
+    expect(boardDoodleProgress()).toBe(1);
+
+    now = 3_000;
+    board.setInteractive(true);
+    expect(boardDoodleIds().join("+")).toBe("caracol+barco");
+    expect(boardDoodleProgress()).toBe(0);
+
+    now = 3_000 + DOODLE_DRAW_MS / 2;
+    board.tick(now);
+    expect(boardDoodleProgress()).toBeGreaterThan(0.2);
+    expect(boardDoodleProgress()).toBeLessThan(1);
+
+    board.setInteractive(false);
+    expect(board.getUi().interactive).toBe(false);
+    expect(board.getUi().screen).toBe("list");
+    expect(boardDoodleIds().join("+")).toBe("caracol+barco");
+    expect(boardDoodleProgress()).toBe(1);
 
     board.dispose();
   });

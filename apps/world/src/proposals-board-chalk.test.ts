@@ -1,15 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   BOARD_SLATE,
+  DOODLE_DRAW_MS,
+  beginBoardDoodleDraw,
   boardDoodleIds,
+  boardDoodleProgress,
   doodleSegments,
   loadingSkeletonProgress,
+  noteBoardDoodleTime,
+  paintCueChalk,
   paintWhiteboardFrame,
   quadSeg,
   revealComplete,
   revealRowProgress,
   rerollBoardDoodles,
   seg,
+  settleBoardDoodles,
   skeletonGrandTotalLength,
   titleChalkSwash,
   type BoardDoodleId,
@@ -19,6 +25,10 @@ import { WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH } from "./proposals-board-metrics";
 import { paintWhiteboard } from "./proposals-board-paint";
 
 describe("proposals-board-chalk", () => {
+  afterEach(() => {
+    settleBoardDoodles();
+  });
+
   it("el esqueleto tiene longitud total", () => {
     expect(skeletonGrandTotalLength()).toBeGreaterThan(100);
   });
@@ -48,6 +58,7 @@ describe("proposals-board-chalk", () => {
       const parts = doodleSegments(id);
       expect(parts.length).toBeGreaterThan(4);
       expect(parts.length).toBeLessThanOrEqual(22);
+      expect(parts.filter((part) => part.qx != null).length).toBeGreaterThanOrEqual(3);
       for (const part of parts) {
         expect(part.len).toBeLessThan(180);
         const band = doodleBand(id);
@@ -73,6 +84,39 @@ describe("proposals-board-chalk", () => {
     expect(fillStyle()).toBe(BOARD_SLATE);
     expect(calls.filter((call) => call.op === "strokeRect")).toHaveLength(0);
     expect(calls.filter((call) => call.op === "quadraticCurveTo" || call.op === "lineTo").length).toBeGreaterThan(8);
+  });
+
+  it("al abrir, la pareja se traza y al salir queda terminada", () => {
+    rerollBoardDoodles(() => 0.99);
+    expect(boardDoodleIds()).toEqual(["caracol", "barco"]);
+    beginBoardDoodleDraw(1_000, true);
+    expect(boardDoodleProgress()).toBe(1);
+    beginBoardDoodleDraw(1_000, false);
+    expect(boardDoodleProgress()).toBe(0);
+    expect(noteBoardDoodleTime(1_000 + DOODLE_DRAW_MS / 2)).toBeGreaterThan(0.2);
+    expect(boardDoodleProgress()).toBeLessThan(1);
+    expect(noteBoardDoodleTime(1_000 + DOODLE_DRAW_MS)).toBe(1);
+    expect(boardDoodleIds()).toEqual(["caracol", "barco"]);
+    beginBoardDoodleDraw(4_000, false);
+    noteBoardDoodleTime(4_200);
+    settleBoardDoodles();
+    expect(boardDoodleProgress()).toBe(1);
+    expect(boardDoodleIds()).toEqual(["caracol", "barco"]);
+  });
+
+  it("el trazo de un clic gana cuerpo de tiza sin adelantar el avance", () => {
+    const seen = cueRecorder();
+    const parts = [seg(10, 10, 40, 10), seg(40, 10, 40, 28)];
+    paintCueChalk(seen.context, parts, 0, "#ffb703", 3);
+    expect(seen.strokes).toBe(0);
+    paintCueChalk(seen.context, parts, 1, "#ffb703", 3);
+    expect(seen.strokes).toBeGreaterThan(1);
+    expect(Math.max(...seen.widths)).toBeGreaterThan(3);
+    expect(Math.max(...seen.widths)).toBeLessThan(3.6);
+    expect(seen.dashes.some((dash) => dash.length > 0)).toBe(true);
+    expect(seen.dashes.at(-1)).toEqual([]);
+    expect(parts[0]?.x1).toBe(10);
+    expect(parts[1]?.y2).toBe(28);
   });
 
   it("el subrayado de Tablón es un gesto corto bajo el título", () => {
@@ -134,6 +178,44 @@ function segmentBand(part: ChalkSegment): "header" | "footer" | "row" {
   if (ys.every((y) => y >= 4 && y <= 68)) return "header";
   if (ys.every((y) => y >= 512 && y <= 536)) return "footer";
   return "row";
+}
+
+function cueRecorder() {
+  const widths: number[] = [];
+  const dashes: number[][] = [];
+  let strokes = 0;
+  let dash: number[] = [];
+  const state: Record<string, unknown> = { globalAlpha: 1, lineWidth: 1, shadowBlur: 0, shadowColor: "#000" };
+  const context = new Proxy(state, {
+    get(target, prop) {
+      if (prop === "setLineDash") {
+        return (next: number[]) => {
+          dash = [...next];
+          dashes.push(dash);
+        };
+      }
+      if (typeof prop !== "string") return undefined;
+      if (prop in target && typeof target[prop] !== "function") return target[prop];
+      return () => {
+        if (prop === "stroke") {
+          strokes += 1;
+          widths.push(Number(target.lineWidth));
+        }
+      };
+    },
+    set(target, prop, value) {
+      target[prop as string] = value;
+      return true;
+    },
+  });
+  return {
+    context: context as unknown as CanvasRenderingContext2D,
+    get strokes() {
+      return strokes;
+    },
+    widths,
+    dashes,
+  };
 }
 
 function recordingContext() {

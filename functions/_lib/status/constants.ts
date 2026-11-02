@@ -8,8 +8,26 @@ export const REPO_NAME = "proto-lab";
 export const LABEL_APROBADO = "aprobado";
 export const LABEL_EN_CURSO = "en-curso";
 
-/** Prefijo de claves KV para la respuesta del tablón (distinto del rate limit). */
-export const STATUS_CACHE_KEY = "proposal-status:v3:all";
+/**
+ * Clave KV del tablón. El namespace `PROPOSALS` es el mismo en producción y en
+ * las previews: la rama entra en la clave para que una preview no reescriba
+ * el valor que sirve producción (ni el de otra preview).
+ * `v7` no reutiliza un `previewUrl` calculado con otra PR (v6).
+ */
+export function statusCacheKey(branch?: string | null): string {
+  const raw = typeof branch === "string" ? branch.trim() : "";
+  if (raw === "main") return "proposal-status:v7:production";
+  if (raw.length === 0) return "proposal-status:v7:local";
+  const safe = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `proposal-status:v7:preview:${safe || "rama"}`;
+}
+
+/** Sin rama de Pages (tests y local). Producción y cada preview usan otra clave. */
+export const STATUS_CACHE_KEY = statusCacheKey();
 
 /** Ventana en la que una respuesta buena se sirve sin volver a GitHub. */
 export const STATUS_CACHE_TTL_SECONDS = 120;

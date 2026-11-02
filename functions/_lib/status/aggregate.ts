@@ -2,7 +2,8 @@ import { aprobadoByOwner, type TimelineEvent } from "./aprobado";
 import { cacheFreshness, readStatusCache, writeStatusCache, type KvLike, type StatusCachePayload } from "./cache";
 import { PRODUCTION_HOST, STATUS_TITLE_MAX, type ProposalPhase } from "./constants";
 import {
-  extractSlug,
+  previewAppUrl,
+  resolveAppSlug,
   hasPropuestaLabel,
   isUserProposalIssue,
   issueKind,
@@ -47,6 +48,8 @@ export type StatusEnv = {
   CF_PAGES_READ_TOKEN?: string;
   CF_ACCOUNT_ID?: string;
   CF_PAGES_PROJECT?: string;
+  /** Rama de Pages. Separa la caché KV de producción y de cada preview. */
+  CF_PAGES_BRANCH?: string;
   PROPOSALS?: KvLike;
 };
 
@@ -65,6 +68,7 @@ function toPullCandidates(pulls: readonly GitHubPull[]): PullCandidate[] {
     merged: Boolean(pr.merged_at),
     state: pr.state,
     body: pr.body ?? "",
+    paths: pr.paths,
   }));
 }
 
@@ -80,7 +84,7 @@ function buildDeploySnapshot(
   let previewUrl: string | null = null;
   if (pr && pr.state === "open") {
     const dep = pickPreviewDeployment(deployments, pr.branch, pr.headSha);
-    previewUrl = publicPreviewUrl(dep);
+    previewUrl = publicPreviewUrl(dep, pr.branch);
     previewReady = Boolean(previewUrl);
   }
   let productionReady = false;
@@ -94,7 +98,8 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? new Date();
   const nowMs = now.getTime();
-  const cached = await readStatusCache(env.PROPOSALS);
+  const branch = env.CF_PAGES_BRANCH;
+  const cached = await readStatusCache(env.PROPOSALS, branch);
   const freshness = cached ? cacheFreshness(cached, nowMs) : "invalid";
   if (cached && freshness === "fresh") {
     return { ok: true, partial: cached.partial, items: cached.items as StatusItem[] };
@@ -167,17 +172,19 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
       deploy,
     });
 
+    const slug = resolveAppSlug(pull?.paths ?? []);
+
     const item: StatusItem = {
       number: issue.number,
       title: truncateTitle(stripIssueTitlePrefix(issue.title), STATUS_TITLE_MAX),
       kind: issueKind(labelNames),
-      slug: extractSlug(issue.title, issue.body ?? "", labelNames),
+      slug,
       phase,
       updatedAt: issue.updated_at,
     };
 
     const preview = previewUrlForPhase(phase, deploy);
-    if (preview) item.previewUrl = preview;
+    if (preview) item.previewUrl = previewAppUrl(preview, slug);
     else if (phase === "publicada") item.previewUrl = `https://${PRODUCTION_HOST}`;
 
     items.push(item);
@@ -196,7 +203,7 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
       partial,
       items,
     };
-    await writeStatusCache(env.PROPOSALS, payload);
+    await writeStatusCache(env.PROPOSALS, payload, branch);
   }
 
   return { ok: true, partial, items };

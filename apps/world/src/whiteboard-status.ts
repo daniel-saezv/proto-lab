@@ -11,12 +11,16 @@ import {
 } from "./proposals-board-actions";
 import {
   ANIM_FRAME_MS,
+  beginBoardDoodleDraw,
+  boardDoodlesSettled,
+  noteBoardDoodleTime,
   paintRetryChalk,
   paintSkeletonBoard,
   paintWhiteboardFrame,
   rerollBoardDoodles,
   revealComplete,
   revealRowProgress,
+  settleBoardDoodles,
 } from "./proposals-board-chalk";
 import {
   chalkMarkProgress,
@@ -338,6 +342,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   }
 
   function fullRedraw(nowMs: number) {
+    noteBoardDoodleTime(nowMs);
     layouts = paintWhiteboard(ctx, listModel(nowMs));
     paintAffordances(nowMs);
     paintRetryIfNeeded(nowMs);
@@ -345,6 +350,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   }
 
   function detailAppearance(nowMs: number, appearance: ChalkAppearance) {
+    noteBoardDoodleTime(nowMs);
     const item = selectedItem();
     if (!item) {
       fullRedraw(nowMs);
@@ -385,6 +391,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   }
 
   function paintMotion(nowMs: number) {
+    noteBoardDoodleTime(nowMs);
     const sample = session.motionSample(nowMs, reducedMotion);
     if (sample.stage === "settled") {
       session.settle(nowMs, reducedMotion);
@@ -421,12 +428,14 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
   }
 
   function paintLoadingFrame(nowMs: number) {
+    noteBoardDoodleTime(nowMs);
     paintSkeletonBoard(ctx, nowMs, reducedMotion, receivedData);
     paintRetryIfNeeded(nowMs);
     texture.needsUpdate = true;
   }
 
   function paintRevealFrame(nowMs: number) {
+    noteBoardDoodleTime(nowMs);
     paintRows.length = 0;
     paintRows.push(...buildPaintRows(nowMs));
     const rowCount = paintRows.length;
@@ -609,12 +618,18 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
       }
     },
     setInteractive(on: boolean) {
-      if (!on) resetMarks();
+      if (!on) {
+        resetMarks();
+        settleBoardDoodles();
+      }
       const entering = on && !session.interactive;
       const changed = session.setInteractive(on, rowNumbers());
-      if (entering) rerollBoardDoodles();
-      if (!changed) return;
-      if (phase === "live" || phase === "empty") repaint(performance.now());
+      if (entering) {
+        rerollBoardDoodles();
+        beginBoardDoodleDraw(performance.now(), reducedMotion);
+      }
+      if (!changed && !entering) return;
+      if (!on || phase === "live" || phase === "empty") repaint(performance.now());
       publishUi();
     },
     pointerAt,
@@ -689,6 +704,14 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
         return;
       }
 
+      if (session.interactive && !boardDoodlesSettled()) {
+        if (nowMs - lastAnimDraw < ANIM_FRAME_MS) return;
+        lastAnimDraw = nowMs;
+        pulseT = (nowMs / 1000) % 1;
+        repaint(nowMs);
+        return;
+      }
+
       if (session.screen === "detail") return;
       if (reducedMotion || phase !== "live") return;
       paintRows.length = 0;
@@ -712,6 +735,7 @@ export function createWhiteboardStatus(options: WhiteboardStatusOptions): Whiteb
       if (phase === "loading" || phase === "reveal") return true;
       if (session.interactive && session.isMoving()) return true;
       if (session.interactive && !marksSettled(performance.now())) return true;
+      if (session.interactive && !boardDoodlesSettled()) return true;
       if (fetchError) return true;
       if (session.screen === "detail") return false;
       if (reducedMotion || phase !== "live") return false;
