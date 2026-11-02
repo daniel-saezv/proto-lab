@@ -19,7 +19,19 @@ window.__protoLabApp.onStop(function () {
 });
 ```
 
-`window.__protoLabApp.stop()` ejecuta esos ganchos. El laboratorio lo llama y después navega el iframe a `about:blank`.
+`window.__protoLabApp.stop()` ejecuta esos ganchos y revoca las URL de objeto. El laboratorio lo llama y después navega el iframe a `about:blank`.
+
+`arranque.js` también deja `window.__protoLabData` para archivos propios y para el guardado de una persona:
+
+```js
+window.__protoLabData.json("datos/nota.json").then(function (nota) {});
+window.__protoLabData.blobUrl("media/sprite.png").then(function (url) {});
+window.__protoLabData.set("partida", JSON.stringify({ nivel: 1 }));
+window.__protoLabData.get("partida").then(function (cruda) {});
+window.__protoLabData.remove("partida");
+```
+
+Las rutas son relativas y tienen que quedarse dentro de `/protos/<slug>/`. Entran imágenes, audio y JSON. Cupo por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. El guardado vive en `localStorage` del laboratorio (`proto-lab:app:<slug>`): 32 claves, 32 KiB por valor y 256 KiB por slug. El export no usa `localStorage` ni `sessionStorage` por su cuenta.
 
 La carpeta no necesita `package.json`. El build del laboratorio copia los archivos tal cual. El validador de la aplicación servida sigue aplicando: 64 archivos, 4 MiB por archivo, 16 MiB en total, aviso de JS a 1,5 MiB y fallo a 4 MiB.
 

@@ -44,5 +44,10 @@ interface Window {
     probeExternalFetch(): Promise<string>;
     probeBadAsset(path: string): Promise<string>;
     cspPresent(): boolean;
+    loadNote(): Promise<unknown>;
+    jsonMime(): Promise<string>;
+    roundtripSave(key: string, value: string): Promise<string | null>;
+    readSave(key: string): Promise<string | null>;
+    probeRelative(path: string): Promise<string>;
   };
 }

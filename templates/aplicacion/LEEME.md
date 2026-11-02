@@ -7,8 +7,21 @@ Copia esta carpeta a `protos/<slug>/`. No está en el catálogo ni en el sitio: 
 3. En `proto.json`, iguala `slug` al directorio y reescribe título, descripción, autor, fecha, etiquetas, versión e historial. `readyMs` es el plazo de arranque, en milisegundos. `permissions`, si hace falta, solo puede listar `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope` y `magnetometer`.
 4. `vite.config.ts` toma el `base` del slug del manifiesto.
 5. Al pintar el primer fotograma, avisa con `postLabSignal("ready", parent)`. Al cargar el script, avisa `alive`.
-6. Deja `stop()` en `window.__protoLabApp`. Tiene que cancelar bucles, quitar listeners, cerrar el audio y soltar WebGL (`loseContext`).
+6. Deja `stop()` en `window.__protoLabApp`. Tiene que cancelar bucles, quitar listeners, cerrar el audio, soltar WebGL (`loseContext`) y llamar a `window.__protoLabData.revoke()`.
 
-No uses `window.__protoLabAssets` ni `revokeAll`: el laboratorio ya no incrusta ese puente. Los archivos de la propia carpeta se piden por URL, mismo origen.
+Los archivos propios (imagen, audio o JSON) se piden por ruta relativa, dentro de `/protos/<slug>/`, con `window.__protoLabData`. El guardado de una persona va a `localStorage` del laboratorio, en la bolsa `proto-lab:app:<slug>`. La aplicación no lee ni escribe `localStorage` ni `sessionStorage` por su cuenta.
+
+```ts
+const nota = await window.__protoLabData.json("datos/nota.json");
+const sprite = await window.__protoLabData.blobUrl("media/sprite.png");
+const beep = await window.__protoLabData.load("media/beep.wav");
+await window.__protoLabData.set("partida", JSON.stringify({ nivel: 1 }));
+const cruda = await window.__protoLabData.get("partida");
+await window.__protoLabData.remove("partida");
+```
+
+`load` devuelve `{ mime, buffer }`. `json` devuelve el valor. `blobUrl` devuelve una URL de objeto para una imagen o un audio. `get` devuelve un string o `null`. `set` y `remove` guardan y borran una clave. El valor es un string: si hace falta un objeto, se serializa antes.
+
+Cupo de archivos por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. La segunda lectura de la misma ruta reutiliza la caché de esa apertura. Cupo de guardado por slug: 32 claves, 64 caracteres por clave, 32 KiB por valor y 256 KiB en total. La clave solo admite letras, números, punto, guion y guion bajo.
 
 El contrato con el laboratorio está en `AGENTS.md`.

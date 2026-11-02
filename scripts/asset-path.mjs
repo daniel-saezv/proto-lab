@@ -3,10 +3,10 @@ import { join, posix } from "node:path";
 
 /** Límites de recursos privados (manifiesto y tiempo de ejecución en el laboratorio). */
 export const ASSET_LIMITS = {
-  maxCount: 32,
-  maxBytesPerFile: 2 * 1024 * 1024,
-  maxBytesTotal: 8 * 1024 * 1024,
-  maxRequestsPerSession: 64,
+  maxCount: 64,
+  maxBytesPerFile: 4 * 1024 * 1024,
+  maxBytesTotal: 16 * 1024 * 1024,
+  maxRequestsPerSession: 128,
 };
 
 /**

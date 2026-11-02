@@ -1,5 +1,6 @@
 import { advanceBoot, bootFailureMessage, iframeAllow, type BootPhase } from "./prototype-boot";
 import { assertPrototypePage } from "./prototype-document";
+import { createSaveBridge } from "./app-save";
 import { createPrototypeAssetHost } from "./prototype-assets-host";
 import type { CatalogEntry } from "./types";
 
@@ -31,6 +32,7 @@ export function createOverlay(
   let readyTimer = 0;
   let boot: BootPhase = "opening";
   let assetHost: ReturnType<typeof createPrototypeAssetHost> | null = null;
+  let saveBridge: ReturnType<typeof createSaveBridge> | null = null;
 
   function setPseudo(on: boolean) {
     root.classList.toggle("is-pseudo-fullscreen", on);
@@ -121,6 +123,7 @@ export function createOverlay(
     const current = frame;
     frame = null;
     assetHost = null;
+    saveBridge = null;
     if (!current) return;
     current.style.visibility = "hidden";
     await blankFrame(current);
@@ -191,6 +194,10 @@ export function createOverlay(
       void assetHost?.onMessage(event, frame);
       return;
     }
+    if (data.type === "save") {
+      saveBridge?.onMessage(event, frame);
+      return;
+    }
     if (data.type === "close") {
       void close();
       return;
@@ -219,6 +226,7 @@ export function createOverlay(
     opened = true;
     frame = null;
     assetHost = null;
+    saveBridge = null;
     window.clearTimeout(readyTimer);
     clearBootMarks();
     exitFullscreenModes();
@@ -305,6 +313,7 @@ export function createOverlay(
           attachFrameGuards(next);
         });
         assetHost = createPrototypeAssetHost({ slug: entry.slug, allowedPaths: entry.assets });
+        saveBridge = createSaveBridge(entry.slug, localStorage);
         frame = next;
         slot.append(next);
         next.src = entry.href;

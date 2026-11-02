@@ -1,3 +1,5 @@
+// El e2e usa el cliente de la plantilla. Una aplicación nueva copia la plantilla, no la importa.
+import { installLabData } from "../../../templates/aplicacion/src/datos";
 import { installAssetBridge } from "./bridge";
 
 type AssetApi = {
@@ -16,6 +18,11 @@ declare global {
       probeExternalFetch(): Promise<string>;
       probeBadAsset(path: string): Promise<string>;
       cspPresent(): boolean;
+      loadNote(): Promise<unknown>;
+      jsonMime(): Promise<string>;
+      roundtripSave(key: string, value: string): Promise<string | null>;
+      readSave(key: string): Promise<string | null>;
+      probeRelative(path: string): Promise<string>;
     };
   }
 }
@@ -134,19 +141,37 @@ function loseGl() {
   gl?.getExtension("WEBGL_lose_context")?.loseContext();
 }
 
+const bridge = installAssetBridge();
+const data = installLabData(window);
+
 window.__assetLab = {
   runMediaChecks,
   probeExternalFetch,
   probeBadAsset,
   cspPresent,
+  loadNote: () => data.json("media/nota.json"),
+  jsonMime: () => window.__protoLabAssets?.getMime("media/nota.json") ?? Promise.resolve(""),
+  roundtripSave: async (key, value) => {
+    await data.set(key, value);
+    return data.get(key);
+  },
+  readSave: (key) => data.get(key),
+  probeRelative: async (path) => {
+    try {
+      await data.load(path);
+      return "ok";
+    } catch (error) {
+      return error instanceof Error ? error.message : "error";
+    }
+  },
 };
 
-const bridge = installAssetBridge();
 let stopped = false;
 window.__protoLabApp = {
   stop() {
     if (stopped) return;
     stopped = true;
+    data.revoke();
     bridge.revokeAll();
     loseGl();
   },

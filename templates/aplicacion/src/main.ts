@@ -1,4 +1,5 @@
 import { bindPage, browserHost, postLabSignal, startApp } from "./app";
+import { installLabData } from "./datos";
 
 declare global {
   interface Window {
@@ -12,6 +13,7 @@ if (!(root instanceof HTMLElement)) {
   throw new Error("falta #app");
 }
 
+const data = installLabData(window);
 const running = startApp((canvas) => {
   if (canvas instanceof HTMLCanvasElement) root.append(canvas);
 }, browserHost());
@@ -23,6 +25,7 @@ requestAnimationFrame(() => {
 window.__protoLabApp = bindPage(
   {
     stop() {
+      data.revoke();
       running.stop();
       if (estado) estado.textContent = "Detenida";
     },
