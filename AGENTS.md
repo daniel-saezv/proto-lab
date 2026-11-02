@@ -132,7 +132,7 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 - Preset None, comando `pnpm build`, directorio `dist`, `NODE_VERSION=22`
 - Access con PIN de un solo uso en producción y en las previews
 - Secreto de Pages: `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en `daniel-saezv/proto-lab`). Sin valor en el repo.
-- Secreto de Pages: `GITHUB_STATUS_TOKEN` (fine-grained **aparte**, solo lectura: Issues, Pull requests y Actions en este repo). Alimenta `GET /api/proposals/status`. No reutilices `GITHUB_TOKEN`.
+- Secreto de Pages: `GITHUB_STATUS_TOKEN` (fine-grained **aparte**, solo lectura: Issues, Pull requests, Actions y Contents en este repo). Alimenta `GET /api/proposals/status`. Contents hace falta para el campo GraphQL `files`. No reutilices `GITHUB_TOKEN`.
 - Secreto de Pages: `CF_PAGES_READ_TOKEN` (API token con permiso **Cloudflare Pages Read**). Opcional: sin él el tablón sigue funcionando pero no puede marcar `preview_lista` por despliegue.
 - Variables de Pages (no secretas): `CF_ACCOUNT_ID`, `CF_PAGES_PROJECT` (p. ej. `proto-lab`), `CF_ACCESS_AUD` (etiqueta AUD de la aplicación Access; no es un secreto, pero sin ella `/api/proposals` responde 401).
 - Binding opcional: KV `PROPOSALS`. Sin él no hay límite diario al crear propuestas ni caché del tablón; la Function de estado sigue respondiendo.

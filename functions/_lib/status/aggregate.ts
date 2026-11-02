@@ -2,7 +2,6 @@ import { aprobadoByOwner, type TimelineEvent } from "./aprobado";
 import { cacheFreshness, readStatusCache, writeStatusCache, type KvLike, type StatusCachePayload } from "./cache";
 import { PRODUCTION_HOST, STATUS_TITLE_MAX, type ProposalPhase } from "./constants";
 import {
-  extractSlug,
   previewAppUrl,
   resolveAppSlug,
   hasPropuestaLabel,
@@ -12,7 +11,6 @@ import {
   truncateTitle,
 } from "./format";
 import { fetchProposalBoard } from "./graphql";
-import { fetchPullFilenames } from "./pull-files";
 import {
   ciSnapshotFromRun,
   fetchPagesDeployments,
@@ -96,58 +94,6 @@ function buildDeploySnapshot(
   return { previewReady, previewUrl, productionReady };
 }
 
-const MAX_FILE_LOOKUPS = 8;
-
-/**
- * GraphQL `files` llega vacío si el token no tiene Contents. Para una preview
- * lista sin slug, el listado REST de la PR (añadidos incluidos) recupera
- * `protos/<slug>/`. Devuelve true si no se pudo completar.
- */
-async function attachMissingPreviewPaths(
-  token: string,
-  issues: readonly GitHubIssue[],
-  pulls: PullCandidate[],
-  timelines: Map<number, TimelineEvent[]>,
-  ciBySha: Map<string, WorkflowRun>,
-  deployments: PagesDeployment[] | null,
-  fetchImpl: GitHubFetch,
-): Promise<boolean> {
-  const wanted = new Set<number>();
-  for (const issue of issues) {
-    const labelNames = issue.labels.map((label) => label.name);
-    const timeline = timelines.get(issue.number) ?? [];
-    const pull = pickLinkedPullRequest(issue.number, timeline, pulls);
-    if (!pull || pull.state !== "open") continue;
-    const issueSlug = extractSlug(issue.title, issue.body ?? "", labelNames);
-    if (resolveAppSlug(pull.paths ?? [], issueSlug)) continue;
-    const phase = resolvePhase({
-      issueOpen: issue.state === "open",
-      issueStateReason: issue.state_reason ?? null,
-      labels: labelNames,
-      approvedByOwner: aprobadoByOwner(timeline),
-      pull,
-      ci: ciSnapshotFromRun(ciBySha.get(pull.headSha) ?? null),
-      deploy: buildDeploySnapshot(pull, deployments, null),
-    });
-    if (phase === "preview_lista") wanted.add(pull.number);
-  }
-
-  const numbers = [...wanted].sort((a, b) => a - b).slice(0, MAX_FILE_LOOKUPS);
-  let failed = wanted.size > numbers.length;
-  for (const number of numbers) {
-    const candidate = pulls.find((pr) => pr.number === number);
-    if (!candidate) continue;
-    const listed = await fetchPullFilenames(token, number, fetchImpl);
-    if (!listed) {
-      failed = true;
-      continue;
-    }
-    candidate.paths = listed.paths;
-    if (!listed.complete) failed = true;
-  }
-  return failed;
-}
-
 export async function buildProposalStatus(env: StatusEnv, options: StatusOptions = {}): Promise<StatusResponse> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? new Date();
@@ -204,19 +150,6 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
       isIssueVisibleOnBoard(issue, nowMs),
   );
 
-  if (!githubFailed) {
-    const filesIncomplete = await attachMissingPreviewPaths(
-      token,
-      filtered,
-      pulls,
-      timelines,
-      ciBySha,
-      deployments,
-      fetchImpl,
-    );
-    if (filesIncomplete) partial = true;
-  }
-
   const items: StatusItem[] = [];
 
   for (const issue of filtered) {
@@ -239,7 +172,7 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
       deploy,
     });
 
-    const slug = resolveAppSlug(pull?.paths ?? [], extractSlug(issue.title, issue.body ?? "", labelNames));
+    const slug = resolveAppSlug(pull?.paths ?? []);
 
     const item: StatusItem = {
       number: issue.number,

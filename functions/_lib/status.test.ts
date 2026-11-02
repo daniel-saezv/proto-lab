@@ -16,16 +16,13 @@ import {
 import { pickPhase, STATUS_TITLE_MAX } from "./status/constants";
 import {
   escapeDisplayText,
-  extractSlug,
   issueMentionsPattern,
   previewAppUrl,
   resolveAppSlug,
   stripIssueTitlePrefix,
   truncateTitle,
 } from "./status/format";
-import { boardDegradedByErrors } from "./status/graphql";
 import { closesIssue, prFromBodyMention, pickLinkedPullRequest } from "./status/issue-pr";
-import { filenamesFromPullFilePage } from "./status/pull-files";
 import { resolvePhase } from "./status/phases";
 import { buildProposalStatus } from "./status/aggregate";
 import { boardClosedSinceIso, BOARD_VISIBLE_MS, isIssueVisibleOnBoard } from "./status/board-visibility";
@@ -228,31 +225,14 @@ describe("formato", () => {
     expect(stripIssueTitlePrefix("[iteración] chispa: Más chispas")).toBe("Más chispas");
   });
 
-  it("extrae slug de iteraciones", () => {
-    const slug = extractSlug("[iteración] chispa: T", "Prototipo: `chispa`", ["propuesta", "iteracion", "chispa"]);
-    expect(slug).toBe("chispa");
-  });
-
-  it("abre la aplicación de la preview y, si no hay slug, deja la raíz", () => {
+  it("abre la aplicación de la preview y, si no hay un solo slug, deja la raíz", () => {
     const root = "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev";
     const paths = ["package.json", "protos/divertirse/index.html", "protos/divertirse/src/main.ts"];
-    expect(resolveAppSlug(paths, null)).toBe("divertirse");
+    expect(resolveAppSlug(paths)).toBe("divertirse");
     expect(previewAppUrl(root, "divertirse")).toBe(`${root}/protos/divertirse/`);
-    expect(resolveAppSlug(["protos/chispa/src/a.ts", "protos/divertirse/src/b.ts"], "chispa")).toBe("chispa");
-    expect(resolveAppSlug(["protos/chispa/src/a.ts", "protos/divertirse/src/b.ts"], null)).toBeNull();
-    expect(resolveAppSlug([], "chispa")).toBe("chispa");
+    expect(resolveAppSlug(["protos/chispa/src/a.ts", "protos/divertirse/src/b.ts"])).toBeNull();
+    expect(resolveAppSlug([])).toBeNull();
     expect(previewAppUrl(root, null)).toBe(root);
-  });
-
-  it("cuenta un archivo añadido y no uno borrado", () => {
-    expect(
-      filenamesFromPullFilePage([
-        { filename: "protos/divertirse/index.html", status: "added", patch: "diff --git" },
-        { filename: "protos/chispa/index.html", status: "removed" },
-        { filename: "pnpm-lock.yaml", status: "modified" },
-      ]),
-    ).toEqual(["protos/divertirse/index.html", "pnpm-lock.yaml"]);
-    expect(resolveAppSlug(["protos/divertirse/index.html", "pnpm-lock.yaml"], null)).toBe("divertirse");
   });
 });
 
@@ -363,10 +343,6 @@ describe("caché KV", () => {
     );
     expect(statusCacheKey(undefined)).toBe(STATUS_CACHE_KEY);
     expect(statusCacheKey("main")).not.toBe(statusCacheKey("cursor/permite-divertirse-1617"));
-    expect(boardDegradedByErrors([{ path: ["repository", "pullRequests", "nodes", 0, "files"], message: "forbidden" }])).toBe(
-      false,
-    );
-    expect(boardDegradedByErrors([{ path: ["repository", "pullRequests"], message: "otra cosa" }])).toBe(true);
   });
 
   it("lee y escribe con clave y TTL propios", async () => {
@@ -773,12 +749,18 @@ describe("buildProposalStatus con mocks", () => {
       app: { slug: "github-actions" },
       workflowRun: { workflow: { name: "CI", resourcePath: "/daniel-saezv/proto-lab/actions/workflows/ci.yml" } },
     };
-    const pull61 = openPull({ sha: appSha, branch: appBranch, files: null, suites: [ciSuite], body: "Closes #60" });
+    const pull61 = openPull({
+      sha: appSha,
+      branch: appBranch,
+      files: ["protos/divertirse/index.html", "protos/divertirse/src/main.ts"],
+      suites: [ciSuite],
+      body: "Closes #60",
+    });
     const pull63 = openPull({
       number: 63,
       sha: boardSha,
       branch: boardBranch,
-      files: null,
+      files: ["functions/_lib/status/aggregate.ts"],
       suites: [ciSuite],
       body: "Refs #60",
       updatedAt: "2026-11-02T06:31:07Z",
@@ -796,23 +778,7 @@ describe("buildProposalStatus con mocks", () => {
     });
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "https://api.github.com/graphql") {
-        return boardResponse([issue], [], [pull61, pull63], [
-          { type: "FORBIDDEN", path: ["repository", "pullRequests", "nodes", 0, "files"], message: "Resource not accessible by personal access token" },
-        ]);
-      }
-      if (url.includes("/pulls/61/files")) {
-        return new Response(JSON.stringify([{ filename: "protos/divertirse/index.html", status: "added" }]), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      if (url.includes("/pulls/63/files")) {
-        return new Response(JSON.stringify([{ filename: "functions/_lib/status/aggregate.ts", status: "modified" }]), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
+      if (url === "https://api.github.com/graphql") return boardResponse([issue], [], [pull61, pull63]);
       if (url.includes("env=preview")) {
         return jsonResponse({
           result: [
@@ -854,163 +820,10 @@ describe("buildProposalStatus con mocks", () => {
     expect(result.items[0]?.phase).toBe("preview_lista");
     expect(result.items[0]?.slug).toBe("divertirse");
     expect(result.items[0]?.previewUrl).toBe(appUrl);
-    expect(result.items[0]?.previewUrl).not.toContain("cursor-pizarra-preview-lista");
-    const called = fetchImpl.mock.calls.map((call) => String(call[0]));
-    expect(called.some((url) => url.includes("/pulls/61/files"))).toBe(true);
-    expect(called.some((url) => url.includes("/pulls/63/files"))).toBe(false);
-  });
-
-  it("con files de GraphQL prohibido lista la PR por REST y abre /protos/divertirse/", async () => {
-    const branch = "cursor/permite-divertirse-1617";
-    const sha = "f10ee90143541f2b3ed596897292303eeb886442";
-    const pull = openPull({
-      sha,
-      branch,
-      files: null,
-      suites: [
-        {
-          status: "COMPLETED",
-          conclusion: "SUCCESS",
-          app: { slug: "github-actions" },
-          workflowRun: { workflow: { name: "CI", resourcePath: "/daniel-saezv/proto-lab/actions/workflows/ci.yml" } },
-        },
-      ],
-    });
-    const deployment = {
-      id: "54a01ddd",
-      url: "https://54a01ddd.proto-lab-3k6.pages.dev",
-      environment: "preview",
-      created_on: "2026-11-01T16:00:59Z",
-      latest_stage: { name: "deploy", status: "success" },
-      aliases: ["https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev"],
-      deployment_trigger: { metadata: { branch, commit_hash: sha } },
-    };
-    const previewBranch = "cursor/pizarra-preview-lista-0fcf";
-    const kv = memoryKv();
-    const rootUrl = "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev/";
-    await writeStatusCache(
-      kv,
-      {
-        fetchedAt: new Date().toISOString(),
-        partial: false,
-        items: [
-          {
-            number: 60,
-            title: "Permite divertirse",
-            kind: "propuesta",
-            slug: null,
-            phase: "preview_lista",
-            updatedAt: "2026-11-01T16:02:00Z",
-            previewUrl: rootUrl,
-          },
-        ],
-      },
-      "main",
-    );
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === "https://api.github.com/graphql") {
-        return boardResponse([issue60(pull)], [], [pull], [
-          {
-            type: "FORBIDDEN",
-            path: ["repository", "pullRequests", "nodes", 0, "files"],
-            message: "Resource not accessible by personal access token",
-          },
-        ]);
-      }
-      if (url.startsWith("https://api.github.com/repos/daniel-saezv/proto-lab/pulls/61/files?")) {
-        expect(init?.headers).toMatchObject({ authorization: `Bearer ${TOKEN}` });
-        expect(url).toContain("per_page=100");
-        const page = new URL(url).searchParams.get("page");
-        if (page === "1") {
-          return new Response(
-            JSON.stringify([
-              { filename: "pnpm-lock.yaml", status: "modified" },
-              { filename: "protos/chispa/index.html", status: "removed" },
-            ]),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                link: `<https://api.github.com/repos/daniel-saezv/proto-lab/pulls/61/files?per_page=100&page=2>; rel="next"`,
-              },
-            },
-          );
-        }
-        return new Response(
-          JSON.stringify([{ filename: "protos/divertirse/index.html", status: "added", patch: "diff --git a/protos/divertirse/index.html" }]),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (url.includes("env=preview") && url.includes("page=1")) {
-        return jsonResponse({ result: [deployment], result_info: { total_pages: 1 } });
-      }
-      if (url.includes("env=production")) return jsonResponse({ result: [], result_info: { total_pages: 1 } });
-      return new Response("no", { status: 500 });
-    });
-    const result = await buildProposalStatus(
-      {
-        GITHUB_STATUS_TOKEN: TOKEN,
-        CF_PAGES_READ_TOKEN: "cf_pages_read_test",
-        CF_ACCOUNT_ID: "acc",
-        CF_PAGES_PROJECT: "proto-lab",
-        CF_PAGES_BRANCH: previewBranch,
-        PROPOSALS: kv,
-      },
-      { fetchImpl },
-    );
-    const appUrl = "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev/protos/divertirse/";
     expect(result.partial).toBe(false);
-    expect(result.items[0]?.slug).toBe("divertirse");
-    expect(result.items[0]?.phase).toBe("preview_lista");
-    expect(result.items[0]?.previewUrl).toBe(appUrl);
-    expect(JSON.stringify(result)).not.toContain("diff --git");
-    expect(kv.store.has(statusCacheKey(previewBranch))).toBe(true);
-    expect(JSON.parse(kv.store.get(statusCacheKey(previewBranch)) ?? "{}").items[0].previewUrl).toBe(appUrl);
-    const production = await readStatusCache(kv, "main");
-    expect(production?.items[0]).toMatchObject({ previewUrl: rootUrl, slug: null });
-    expect(kv.store.has("proposal-status:v5:all")).toBe(false);
-  });
-
-  it("si el listado REST de archivos falla deja la raíz y no la cachea", async () => {
-    const branch = "cursor/permite-divertirse-1617";
-    const sha = "f10ee90143541f2b3ed596897292303eeb886442";
-    const pull = openPull({
-      sha,
-      branch,
-      files: null,
-      suites: [{ status: "COMPLETED", conclusion: "SUCCESS", app: { slug: "github-actions" }, workflowRun: null }],
-    });
-    const kv = memoryKv();
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === "https://api.github.com/graphql") return boardResponse([issue60(pull)], [], [pull]);
-      if (url.includes("/pulls/61/files")) return new Response("forbidden", { status: 403 });
-      if (url.includes("env=preview")) {
-        return jsonResponse({
-          result: [
-            {
-              id: "54a01ddd",
-              url: "https://54a01ddd.proto-lab-3k6.pages.dev",
-              latest_stage: { status: "success" },
-              aliases: ["https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev"],
-              deployment_trigger: { metadata: { branch, commit_hash: sha } },
-            },
-          ],
-          result_info: { total_pages: 1 },
-        });
-      }
-      if (url.includes("env=production")) return jsonResponse({ result: [], result_info: { total_pages: 1 } });
-      return new Response("no", { status: 500 });
-    });
-    const result = await buildProposalStatus(
-      { GITHUB_STATUS_TOKEN: TOKEN, CF_PAGES_READ_TOKEN: "cf", CF_ACCOUNT_ID: "acc", PROPOSALS: kv },
-      { fetchImpl },
-    );
-    expect(result.partial).toBe(true);
-    expect(result.items[0]?.previewUrl).toBe("https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev");
-    expect(result.items[0]?.slug).toBeNull();
-    expect(kv.store.size).toBe(0);
+    const called = fetchImpl.mock.calls.map((call) => String(call[0]));
+    expect(called.some((url) => url.includes("api.github.com/repos"))).toBe(false);
+    expect(called.filter((url) => url === "https://api.github.com/graphql")).toHaveLength(1);
   });
 
   it("marca partial si GraphQL devuelve errores y no lo cachea", async () => {

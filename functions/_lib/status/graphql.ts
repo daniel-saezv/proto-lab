@@ -94,23 +94,6 @@ fragment PrBits on PullRequest {
 }
 `;
 
-/**
- * En un repo privado, `files` en GraphQL exige permiso de Contents.
- * El token del tablón solo tiene Issues, Pull requests y Actions: el campo
- * vuelve en `errors` con path `files` y el nodo a null. Ese fallo no invalida
- * el resto del tablón; las rutas se completan por REST (`pull_requests=read`).
- */
-export function boardDegradedByErrors(errors: unknown): boolean {
-  if (!Array.isArray(errors) || errors.length === 0) return false;
-  return errors.some((error) => !errorPathIncludes(error, "files"));
-}
-
-function errorPathIncludes(error: unknown, field: string): boolean {
-  if (!error || typeof error !== "object") return false;
-  const path = (error as { path?: unknown }).path;
-  return Array.isArray(path) && path.includes(field);
-}
-
 export type ProposalBoard = {
   issues: GitHubIssue[];
   pulls: GitHubPull[];
@@ -287,14 +270,12 @@ export function parseProposalBoard(data: unknown, degraded: boolean): ProposalBo
   function rememberPull(node: GqlPull | null | undefined): GitHubPull | null {
     const pull = mapPull(node);
     if (!pull) return null;
-    const existing = pulls.get(pull.number);
-    if (!existing) pulls.set(pull.number, pull);
-    else if (existing.paths.length === 0 && pull.paths.length > 0) existing.paths = pull.paths;
+    if (!pulls.has(pull.number)) pulls.set(pull.number, pull);
     if (node) {
       const run = ciFromPull(node);
       if (run && !ciBySha.has(run.head_sha)) ciBySha.set(run.head_sha, run);
     }
-    return pulls.get(pull.number) ?? pull;
+    return pull;
   }
 
   for (const node of pullRequests.nodes ?? []) rememberPull(node);
@@ -381,5 +362,6 @@ export async function fetchProposalBoard(
     throw new Error("graphql");
   }
   if (!payload.data) throw new Error("graphql");
-  return parseProposalBoard(payload.data, boardDegradedByErrors(payload.errors));
+  const degraded = Array.isArray(payload.errors) && payload.errors.length > 0;
+  return parseProposalBoard(payload.data, degraded);
 }

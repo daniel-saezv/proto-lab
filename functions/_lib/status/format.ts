@@ -21,18 +21,10 @@ export function slugsFromProtoPaths(paths: readonly string[]): string[] {
   return [...slugs].sort();
 }
 
-/**
- * Slug de la aplicación que hay que abrir.
- * Si la PR toca una sola carpeta bajo `protos/`, manda esa.
- * Si toca varias, vale el slug que ya trae la propuesta cuando coincide con una.
- * Si la PR no lista carpetas, se queda el de la propuesta. Si no hay ninguno, null.
- */
-export function resolveAppSlug(paths: readonly string[], fromIssue: string | null): string | null {
+/** Slug de la aplicación: la única carpeta `protos/<slug>/` del diff. Si no hay una sola, null. */
+export function resolveAppSlug(paths: readonly string[]): string | null {
   const fromPaths = slugsFromProtoPaths(paths);
-  if (fromPaths.length === 1) return fromPaths[0] ?? null;
-  if (fromIssue && fromPaths.includes(fromIssue)) return fromIssue;
-  if (fromPaths.length === 0) return fromIssue;
-  return null;
+  return fromPaths.length === 1 ? (fromPaths[0] ?? null) : null;
 }
 
 /** Raíz de la preview, o esa raíz más `/protos/<slug>/` cuando la aplicación está identificada. */
@@ -47,19 +39,6 @@ export function previewAppUrl(root: string, slug: string | null): string {
   } catch {
     return root;
   }
-}
-
-export function extractSlug(title: string, body: string, labels: readonly string[]): string | null {
-  const iterTitle = /^\[iteración\]\s+([a-z0-9]+(?:-[a-z0-9]+)*)\s*:/i.exec(title);
-  if (iterTitle?.[1]) return iterTitle[1].toLowerCase();
-  const bodySlug = /Prototipo:\s*`([a-z0-9]+(?:-[a-z0-9]+)*)`/i.exec(body);
-  if (bodySlug?.[1] && bodySlug[1] !== "nuevo") return bodySlug[1].toLowerCase();
-  for (const label of labels) {
-    if (label !== LABEL_PROPUESTA && label !== LABEL_ITERACION && label !== "aprobado" && label !== "en-curso") {
-      if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(label)) return label;
-    }
-  }
-  return null;
 }
 
 export function escapeDisplayText(input: string): string {
