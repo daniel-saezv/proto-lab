@@ -6,7 +6,7 @@ Producción: [https://proto-lab-3k6.pages.dev](https://proto-lab-3k6.pages.dev).
 
 ## Qué hay dentro
 
-Entras al laboratorio, caminas y te acercas a una máquina. Al usarla, la aplicación ocupa la pantalla en un `iframe` con `sandbox="allow-scripts"` (sin navegación de la ventana superior). Volver la cierra y regresas al mundo.
+Entras al laboratorio, caminas y te acercas a una máquina. Al usarla, la aplicación ocupa la pantalla en un iframe del mismo origen (`/protos/<slug>/`). El laboratorio suelta su WebGL mientras la aplicación está abierta. Volver avisa a la aplicación, cierra el iframe y reconstruye el mundo donde estabas.
 
 El Inventor pregunta, resume y pide confirmación. Al confirmar, una Pages Function crea una issue en este repositorio. El texto del amigo va citado como petición de producto. Eso avisa al Grok Bot para que el dueño pueda revisarla en el chat. Solo el dueño (@daniel-saezv) añade la etiqueta `aprobado`; entonces el bot comprueba en GitHub que la puso el dueño, marca la issue como `en-curso` y lanza un agente de Cursor. El agente abre un pull request con preview. El merge lo hace el dueño a mano.
 
@@ -33,21 +33,25 @@ Convención canónica para agentes y colaboradores: **[`AGENTS.md` — Convencio
 
 ## Añadir una aplicación
 
-Crea `protos/<slug>/` (o copia [`templates/aplicacion/`](templates/aplicacion/LEEME.md)) con su `package.json`, su build de Vite (`base` en `/protos/<slug>/`) y un `proto.json`:
+Crea `protos/<slug>/` a partir de una de las dos plantillas (cópias, no las importes):
+
+- Código: [`templates/aplicacion/`](templates/aplicacion/LEEME.md). Vite + TypeScript, `package.json` y `base` en `/protos/<slug>/`.
+- Export estático: [`templates/export-estatico/`](templates/export-estatico/LEEME.md). Shell HTML para un build ya hecho. Sin Vite y sin `package.json`.
+
+El `proto.json` lleva:
 
 - `slug` igual al nombre de la carpeta
 - `title`, `description`, `author` (email o alias), `date` (`AAAA-MM-DD`)
 - `tags`, `cover` (archivo en la misma carpeta, o `null`)
 - `version` y `history` (la versión actual tiene que aparecer en el historial)
-- opcional: `"assets": ["media/foo.png", …]` — rutas relativas declaradas para el puente de recursos privados (límites en [`AGENTS.md`](AGENTS.md))
+- opcional: `"readyMs"` (plazo de arranque, por defecto 8000 ms) y `"permissions"` (lista cerrada; ver [`AGENTS.md`](AGENTS.md))
+- opcional: `"assets": ["media/foo.png", …]` — puente heredado de recursos declarados (límites en [`AGENTS.md`](AGENTS.md))
 
 No hace falta registrar la carpeta en la raíz. `pnpm build` lee los manifiestos que hay en `protos/`, publica el laboratorio en `/` y cada aplicación en `/protos/<slug>/`. El mundo coloca una máquina por manifiesto. Crea también la etiqueta de GitHub con el slug para que las iteraciones puedan llevarla.
 
-`window.__protoLabApp.stop()` es obligatorio: al cerrar tiene que soltar bucles, listeners, audio y WebGL. La plantilla ya lo hace. El contrato del iframe (`blob:`, CSP `connect-src 'none'`, `sandbox="allow-scripts"`, puente y manifiesto) está en [`AGENTS.md`](AGENTS.md).
+Al abrirla, el laboratorio carga `/protos/<slug>/` en un iframe del mismo origen, sin `sandbox` y sin documento `blob:`. La aplicación avisa `alive` al cargar y `ready` cuando el primer fotograma ya se ve; hasta entonces una capa tapa el iframe. `window.__protoLabApp.stop()` es obligatorio: al cerrar, el laboratorio lo llama, pasa el iframe a `about:blank` y lo quita. El contrato (señales, permisos, topes de la aplicación servida y las dos plantillas) está en [`AGENTS.md`](AGENTS.md).
 
-Al abrirla desde el laboratorio, la app —que ya pasó Access— descarga el `index.html` y el JS, junta un solo documento y lo abre en un iframe aislado (`sandbox` solo `allow-scripts`, dirección `blob:`). La aplicación no ve las cookies ni el DOM del laboratorio. Si Access devuelve la página del PIN en vez de la aplicación, o la aplicación no llega a arrancar, se quita el iframe y queda el aviso con Volver: en el iPhone un documento a medias se ve como una pantalla blanca y tapa los botones.
-
-Tiene que ser una página autocontenida en el arranque: el build de Vite (un JS referenciado por el HTML, y el CSS si lo hay) es el formato esperado. No uses `import()` dinámicos ni `fetch` al propio sitio para cargar la aplicación; desde el iframe aislado no llevan la sesión y Access las corta. **Excepción:** binarios listados en `"assets"` del manifiesto se piden al laboratorio con `window.__protoLabAssets` (blob URLs o `ArrayBuffer`); el padre los descarga con la cookie de Access. Límites: 32 rutas, 2 MiB por archivo, 8 MiB total, 64 peticiones por sesión. Abrir `/protos/<slug>/` en una pestaña sigue funcionando con peticiones normales.
+Si Access devuelve la página del PIN en vez de la aplicación, no se monta el iframe y queda el aviso con Volver. En producción y en las previews, la aplicación de Access tiene que permitir iframes (`allow_iframe`); lo activa el dueño en el dashboard. En local no hay Access. La aplicación puede pedir sus propios archivos bajo `/protos/<slug>/`. No usa `localStorage`. Abrir `/protos/<slug>/` en una pestaña sigue funcionando.
 
 `pnpm previews` captura la vista de cada aplicación, con canvas o sin él, y no depende de un gancho concreto. Si existe `window.__protoLabPreview`, lo llama antes de la foto.
 
@@ -72,7 +76,7 @@ Hostnames:
 
 Access con PIN de un solo uso cubre los dos. La Function valida el JWT `Cf-Access-Jwt-Assertion` con las claves de `ancient-waterfall-b3eb.cloudflareaccess.com` y la variable `CF_ACCESS_AUD` (etiqueta AUD de la aplicación). No basta la cabecera de email. No definas `ALLOW_DEV_AUTH` en Pages: es solo para probar la Function en local, y solo en loopback.
 
-La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/protos/*` no basta para saltarse Access: sin la cookie, el PIN sigue delante. Por eso el laboratorio incrusta el prototipo en vez de dejar que el iframe lo pida solo.
+La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/protos/*` no basta para saltarse Access: sin la cookie, el PIN sigue delante. El iframe es del mismo origen, así que viaja con la cookie de quien ya entró. Además, la aplicación de Access tiene que permitir enmarcar (`allow_iframe`); si no, producción y las previews pueden mostrar el PIN dentro del arcade.
 
 En Pages, el secreto `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en este repositorio) y el binding KV `PROPOSALS` (límite de 5 propuestas por email y día UTC, y caché del tablón 120 s) ya están configurados en producción y en preview.
 
