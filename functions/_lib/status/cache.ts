@@ -1,4 +1,4 @@
-import { STATUS_CACHE_KEY, STATUS_CACHE_STORE_SECONDS, STATUS_CACHE_TTL_SECONDS } from "./constants";
+import { STATUS_CACHE_STORE_SECONDS, STATUS_CACHE_TTL_SECONDS, statusCacheKey } from "./constants";
 
 export type StatusCachePayload = {
   fetchedAt: string;
@@ -26,10 +26,10 @@ export function cacheFreshness(payload: StatusCachePayload, nowMs: number): Cach
   return "invalid";
 }
 
-export async function readStatusCache(kv: KvLike | undefined): Promise<StatusCachePayload | null> {
+export async function readStatusCache(kv: KvLike | undefined, branch?: string | null): Promise<StatusCachePayload | null> {
   if (!kv) return null;
   try {
-    const raw = await kv.get(STATUS_CACHE_KEY);
+    const raw = await kv.get(statusCacheKey(branch));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StatusCachePayload;
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.items)) return null;
@@ -39,22 +39,26 @@ export async function readStatusCache(kv: KvLike | undefined): Promise<StatusCac
   }
 }
 
-export async function writeStatusCache(kv: KvLike | undefined, payload: StatusCachePayload): Promise<void> {
+export async function writeStatusCache(
+  kv: KvLike | undefined,
+  payload: StatusCachePayload,
+  branch?: string | null,
+): Promise<void> {
   if (!kv) return;
   try {
-    await kv.put(STATUS_CACHE_KEY, JSON.stringify(payload), { expirationTtl: STATUS_CACHE_STORE_SECONDS });
+    await kv.put(statusCacheKey(branch), JSON.stringify(payload), { expirationTtl: STATUS_CACHE_STORE_SECONDS });
   } catch {
     // Sin caché no debe tumbar la respuesta.
   }
 }
 
-export async function deleteStatusCache(kv: KvLike | undefined): Promise<void> {
+export async function deleteStatusCache(kv: KvLike | undefined, branch?: string | null): Promise<void> {
   if (!kv?.delete) return;
   try {
-    await kv.delete(STATUS_CACHE_KEY);
+    await kv.delete(statusCacheKey(branch));
   } catch {
     // Si no se puede borrar, el TTL fresco sigue acotando lo viejo.
   }
 }
 
-export { STATUS_CACHE_KEY, STATUS_CACHE_STORE_SECONDS, STATUS_CACHE_TTL_SECONDS };
+export { STATUS_CACHE_STORE_SECONDS, STATUS_CACHE_TTL_SECONDS, statusCacheKey, STATUS_CACHE_KEY } from "./constants";

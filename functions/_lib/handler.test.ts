@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { installAccessKeysForTests, resetAccessCertsForTests } from "./access";
 import { accessClaims, createAccessFixture, type AccessFixture } from "./access-fixture";
 import { handleProposal, type KvLike, type ProposalEnv } from "./handler";
-import { STATUS_CACHE_KEY } from "./status/cache";
+import { STATUS_CACHE_KEY, statusCacheKey } from "./status/cache";
 import { LIMITS, buildIssue, quoteUserText, validateProposal } from "./validate";
 import { LIMITS as clientLimits } from "../../apps/world/src/limits";
 
@@ -295,5 +295,20 @@ describe("handleProposal", () => {
     expect(response.status).toBe(201);
     expect(kv.store.has(STATUS_CACHE_KEY)).toBe(false);
     expect(JSON.stringify(await response.json())).not.toContain(TOKEN);
+  });
+
+  it("al crear una propuesta en una preview no borra la caché de producción", async () => {
+    const kv = memoryKv();
+    kv.store.set(statusCacheKey("main"), "{\"items\":[]}");
+    kv.store.set(statusCacheKey("cursor/pizarra-preview-lista-0fcf"), "{}");
+    const fetchImpl = vi.fn(async () => githubOk(4));
+    const response = await handleProposal(
+      request(proposal, access()),
+      envOf({ PROPOSALS: kv, CF_PAGES_BRANCH: "cursor/pizarra-preview-lista-0fcf" }),
+      { knownSlugs: ["chispa"], fetchImpl },
+    );
+    expect(response.status).toBe(201);
+    expect(kv.store.has(statusCacheKey("main"))).toBe(true);
+    expect(kv.store.has(statusCacheKey("cursor/pizarra-preview-lista-0fcf"))).toBe(false);
   });
 });
