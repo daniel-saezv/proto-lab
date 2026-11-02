@@ -6,7 +6,7 @@ Producción: [https://proto-lab-3k6.pages.dev](https://proto-lab-3k6.pages.dev).
 
 ## Qué hay dentro
 
-Entras al laboratorio, caminas y te acercas a una máquina. Al usarla, el prototipo ocupa la pantalla en un `iframe` con `sandbox="allow-scripts"` (sin navegación de la ventana superior). Volver cierra el juego y regresas al mundo.
+Entras al laboratorio, caminas y te acercas a una máquina. Al usarla, la aplicación ocupa la pantalla en un `iframe` con `sandbox="allow-scripts"` (sin navegación de la ventana superior). Volver la cierra y regresas al mundo.
 
 El Inventor pregunta, resume y pide confirmación. Al confirmar, una Pages Function crea una issue en este repositorio. El texto del amigo va citado como petición de producto. Eso avisa al Grok Bot para que el dueño pueda revisarla en el chat. Solo el dueño (@daniel-saezv) añade la etiqueta `aprobado`; entonces el bot comprueba en GitHub que la puso el dueño, marca la issue como `en-curso` y lanza un agente de Cursor. El agente abre un pull request con preview. El merge lo hace el dueño a mano.
 
@@ -31,9 +31,9 @@ pnpm preview
 
 Convención canónica para agentes y colaboradores: **[`AGENTS.md` — Convenciones para agentes (pull requests)](AGENTS.md#convenciones-para-agentes-pull-requests)** (`[skip ci]` en commits intermedios; el último commit del PR sin marca para CI y preview de Pages).
 
-## Añadir un prototipo
+## Añadir una aplicación
 
-Crea `protos/<slug>/` con su `package.json`, su build de Vite (`base` en `/protos/<slug>/`) y un `proto.json`:
+Crea `protos/<slug>/` (o copia [`templates/aplicacion/`](templates/aplicacion/LEEME.md)) con su `package.json`, su build de Vite (`base` en `/protos/<slug>/`) y un `proto.json`:
 
 - `slug` igual al nombre de la carpeta
 - `title`, `description`, `author` (email o alias), `date` (`AAAA-MM-DD`)
@@ -41,11 +41,15 @@ Crea `protos/<slug>/` con su `package.json`, su build de Vite (`base` en `/proto
 - `version` y `history` (la versión actual tiene que aparecer en el historial)
 - opcional: `"assets": ["media/foo.png", …]` — rutas relativas declaradas para el puente de recursos privados (límites en [`AGENTS.md`](AGENTS.md))
 
-`pnpm build` lee esos manifiestos, publica el laboratorio en `/` y cada prototipo en `/protos/<slug>/`. El mundo coloca una máquina por manifiesto. Crea también la etiqueta de GitHub con el slug para que las iteraciones puedan llevarla.
+No hace falta registrar la carpeta en la raíz. `pnpm build` lee los manifiestos que hay en `protos/`, publica el laboratorio en `/` y cada aplicación en `/protos/<slug>/`. El mundo coloca una máquina por manifiesto. Crea también la etiqueta de GitHub con el slug para que las iteraciones puedan llevarla.
 
-Al jugar desde el laboratorio, la app —que ya pasó Access— descarga el `index.html` y el JS, junta un solo documento y lo abre en un iframe aislado (`sandbox` solo `allow-scripts`, dirección `blob:`). El prototipo no ve las cookies ni el DOM del laboratorio. Si Access devuelve la página del PIN en vez del juego, o el juego no llega a arrancar, se quita el iframe y queda el aviso con Volver: en el iPhone un documento a medias se ve como una pantalla blanca y tapa los botones.
+`window.__protoLabApp.stop()` es obligatorio: al cerrar tiene que soltar bucles, listeners, audio y WebGL. La plantilla ya lo hace. El contrato del iframe (`blob:`, CSP `connect-src 'none'`, `sandbox="allow-scripts"`, puente y manifiesto) está en [`AGENTS.md`](AGENTS.md).
 
-Tiene que ser una página autocontenida en el arranque: el build de Vite (un JS referenciado por el HTML, y el CSS si lo hay) es el formato esperado. No uses `import()` dinámicos ni `fetch` al propio sitio para cargar el juego; desde el iframe aislado no llevan la sesión y Access las corta. **Excepción:** binarios listados en `"assets"` del manifiesto se piden al laboratorio con `window.__protoLabAssets` (blob URLs o `ArrayBuffer`); el padre los descarga con la cookie de Access. Límites: 32 rutas, 2 MiB por archivo, 8 MiB total, 64 peticiones por sesión. Abrir `/protos/<slug>/` en una pestaña sigue funcionando con peticiones normales.
+Al abrirla desde el laboratorio, la app —que ya pasó Access— descarga el `index.html` y el JS, junta un solo documento y lo abre en un iframe aislado (`sandbox` solo `allow-scripts`, dirección `blob:`). La aplicación no ve las cookies ni el DOM del laboratorio. Si Access devuelve la página del PIN en vez de la aplicación, o la aplicación no llega a arrancar, se quita el iframe y queda el aviso con Volver: en el iPhone un documento a medias se ve como una pantalla blanca y tapa los botones.
+
+Tiene que ser una página autocontenida en el arranque: el build de Vite (un JS referenciado por el HTML, y el CSS si lo hay) es el formato esperado. No uses `import()` dinámicos ni `fetch` al propio sitio para cargar la aplicación; desde el iframe aislado no llevan la sesión y Access las corta. **Excepción:** binarios listados en `"assets"` del manifiesto se piden al laboratorio con `window.__protoLabAssets` (blob URLs o `ArrayBuffer`); el padre los descarga con la cookie de Access. Límites: 32 rutas, 2 MiB por archivo, 8 MiB total, 64 peticiones por sesión. Abrir `/protos/<slug>/` en una pestaña sigue funcionando con peticiones normales.
+
+`pnpm previews` captura la vista de cada aplicación, con canvas o sin él, y no depende de un gancho concreto. Si existe `window.__protoLabPreview`, lo llama antes de la foto.
 
 ## Cloudflare Pages
 

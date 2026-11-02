@@ -1,19 +1,34 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { readCatalog } from "./catalog-lib.mjs";
+import { assertManifest, readCatalog } from "./catalog-lib.mjs";
 import { isShellPath, renderServiceWorker } from "./sw.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+function protoDirectories() {
+  return readdirSync(join(root, "protos"))
+    .filter((name) => statSync(join(root, "protos", name)).isDirectory())
+    .sort();
+}
+
 describe("catálogo", () => {
-  it("lee el prototipo de ejemplo", () => {
+  it("sigue las carpetas de protos sin una lista fija", () => {
     const entries = readCatalog(root);
-    expect(entries.map((entry) => entry.slug)).toEqual(["asset-lab", "chispa"]);
+    expect(entries.map((entry) => entry.slug)).toEqual(protoDirectories());
     const chispa = entries.find((entry) => entry.slug === "chispa");
     expect(chispa?.href).toBe("/protos/chispa/");
     expect(chispa?.history?.length).toBeGreaterThan(0);
+  });
+
+  it("la plantilla tiene un manifiesto válido y no entra en el catálogo", () => {
+    const dir = join(root, "templates/aplicacion");
+    expect(dir.includes(`${join(root, "protos")}/`)).toBe(false);
+    const manifest = JSON.parse(readFileSync(join(dir, "proto.json"), "utf8"));
+    const validated = assertManifest(manifest.slug, manifest, dir);
+    expect(validated.slug).toBe("aplicacion");
+    expect(validated.history.some((entry) => entry.version === validated.version)).toBe(true);
   });
 });
 

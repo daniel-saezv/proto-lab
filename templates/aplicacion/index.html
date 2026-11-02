@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aplicación</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: #101820; color: #f4f7fb; font-family: system-ui, sans-serif; }
+      main { min-height: 100%; display: flex; flex-direction: column; }
+      h1 { margin: 0; padding: 16px 16px 8px; font-size: 1.25rem; }
+      p { margin: 0; padding: 0 16px 12px; }
+      canvas { display: block; width: 100%; height: auto; background: #0c1218; }
+    </style>
+  </head>
+  <body>
+    <main id="app">
+      <h1>Aplicación</h1>
+      <p id="estado">En marcha</p>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

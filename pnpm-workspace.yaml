@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "protos/*"
+  - "templates/*"
 skills:
   dirs:
     - .agents/skills
