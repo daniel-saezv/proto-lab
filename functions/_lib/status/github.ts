@@ -22,6 +22,8 @@ export type GitHubPull = {
   merge_commit_sha: string | null;
   updated_at: string;
   head: { ref: string; sha: string };
+  /** Rutas del diff. Vacío si la consulta no las trajo. */
+  paths: string[];
 };
 
 export type WorkflowRun = {

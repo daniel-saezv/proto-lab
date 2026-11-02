@@ -8,6 +8,7 @@ export type PullRequestRef = {
   branch: string;
   merged: boolean;
   state: "open" | "closed";
+  paths?: readonly string[];
 };
 
 export type TimelineCrossRef = {
@@ -25,6 +26,7 @@ export type PullCandidate = {
   merged: boolean;
   state: "open" | "closed";
   body: string;
+  paths?: readonly string[];
 };
 
 function prNumberFromUrl(url: string | null | undefined): number | null {
@@ -78,5 +80,6 @@ function toRef(pr: PullCandidate): PullRequestRef {
     branch: pr.branch,
     merged: pr.merged,
     state: pr.state,
+    paths: pr.paths,
   };
 }

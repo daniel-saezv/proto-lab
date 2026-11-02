@@ -13,7 +13,15 @@ import {
   type KvLike,
 } from "./status/cache";
 import { pickPhase, STATUS_TITLE_MAX } from "./status/constants";
-import { escapeDisplayText, extractSlug, issueMentionsPattern, stripIssueTitlePrefix, truncateTitle } from "./status/format";
+import {
+  escapeDisplayText,
+  extractSlug,
+  issueMentionsPattern,
+  previewAppUrl,
+  resolveAppSlug,
+  stripIssueTitlePrefix,
+  truncateTitle,
+} from "./status/format";
 import { prFromBodyMention, pickLinkedPullRequest } from "./status/issue-pr";
 import { resolvePhase } from "./status/phases";
 import { buildProposalStatus } from "./status/aggregate";
@@ -81,7 +89,7 @@ function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-function openPull(input: { sha: string; branch?: string; suites: unknown[] }) {
+function openPull(input: { sha: string; branch?: string; suites: unknown[]; files?: string[] }) {
   const branch = input.branch ?? "cursor/permite-divertirse-1617";
   return {
     number: 61,
@@ -94,6 +102,7 @@ function openPull(input: { sha: string; branch?: string; suites: unknown[] }) {
     headRefOid: input.sha,
     mergeCommit: null,
     headRef: { target: { oid: input.sha, checkSuites: { nodes: input.suites } } },
+    files: { nodes: (input.files ?? []).map((path) => ({ path })) },
   };
 }
 
@@ -210,6 +219,17 @@ describe("formato", () => {
   it("extrae slug de iteraciones", () => {
     const slug = extractSlug("[iteración] chispa: T", "Prototipo: `chispa`", ["propuesta", "iteracion", "chispa"]);
     expect(slug).toBe("chispa");
+  });
+
+  it("abre la aplicación de la preview y, si no hay slug, deja la raíz", () => {
+    const root = "https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev";
+    const paths = ["package.json", "protos/divertirse/index.html", "protos/divertirse/src/main.ts"];
+    expect(resolveAppSlug(paths, null)).toBe("divertirse");
+    expect(previewAppUrl(root, "divertirse")).toBe(`${root}/protos/divertirse/`);
+    expect(resolveAppSlug(["protos/chispa/src/a.ts", "protos/divertirse/src/b.ts"], "chispa")).toBe("chispa");
+    expect(resolveAppSlug(["protos/chispa/src/a.ts", "protos/divertirse/src/b.ts"], null)).toBeNull();
+    expect(resolveAppSlug([], "chispa")).toBe("chispa");
+    expect(previewAppUrl(root, null)).toBe(root);
   });
 });
 
@@ -563,6 +583,7 @@ describe("buildProposalStatus con mocks", () => {
     const pull = openPull({
       sha,
       branch,
+      files: ["pnpm-lock.yaml", "protos/divertirse/index.html", "protos/divertirse/src/main.ts"],
       suites: [
         {
           status: "COMPLETED",
@@ -610,7 +631,8 @@ describe("buildProposalStatus con mocks", () => {
     );
     expect(result.partial).toBe(false);
     expect(result.items[0]?.phase).toBe("preview_lista");
-    expect(result.items[0]?.previewUrl).toBe("https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev");
+    expect(result.items[0]?.slug).toBe("divertirse");
+    expect(result.items[0]?.previewUrl).toBe("https://cursor-permite-divertirse-16.proto-lab-3k6.pages.dev/protos/divertirse/");
     expect(JSON.stringify(result)).not.toContain(cfToken);
     expect(fetchImpl).toHaveBeenCalledTimes(4);
   });

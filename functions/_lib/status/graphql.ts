@@ -88,6 +88,9 @@ fragment PrBits on PullRequest {
       }
     }
   }
+  files(first: 100) {
+    nodes { path }
+  }
 }
 `;
 
@@ -124,6 +127,7 @@ type GqlPull = {
   mergeCommit?: { oid?: string | null } | null;
   headRef?: { target?: GqlCommitChecks | null } | null;
   commits?: { nodes?: ({ commit?: GqlCommitChecks | null } | null)[] | null } | null;
+  files?: { nodes?: ({ path?: string | null } | null)[] | null } | null;
 };
 
 type GqlTimelineNode = {
@@ -236,6 +240,9 @@ function mapPull(node: GqlPull | null | undefined): GitHubPull | null {
       ref: typeof node.headRefName === "string" ? node.headRefName : "",
       sha: typeof node.headRefOid === "string" ? node.headRefOid : "",
     },
+    paths: (node.files?.nodes ?? [])
+      .map((file) => (typeof file?.path === "string" ? file.path : ""))
+      .filter((path) => path.length > 0),
   };
 }
 

@@ -3,6 +3,8 @@ import { cacheFreshness, readStatusCache, writeStatusCache, type KvLike, type St
 import { PRODUCTION_HOST, STATUS_TITLE_MAX, type ProposalPhase } from "./constants";
 import {
   extractSlug,
+  previewAppUrl,
+  resolveAppSlug,
   hasPropuestaLabel,
   isUserProposalIssue,
   issueKind,
@@ -65,6 +67,7 @@ function toPullCandidates(pulls: readonly GitHubPull[]): PullCandidate[] {
     merged: Boolean(pr.merged_at),
     state: pr.state,
     body: pr.body ?? "",
+    paths: pr.paths,
   }));
 }
 
@@ -167,17 +170,19 @@ export async function buildProposalStatus(env: StatusEnv, options: StatusOptions
       deploy,
     });
 
+    const slug = resolveAppSlug(pull?.paths ?? [], extractSlug(issue.title, issue.body ?? "", labelNames));
+
     const item: StatusItem = {
       number: issue.number,
       title: truncateTitle(stripIssueTitlePrefix(issue.title), STATUS_TITLE_MAX),
       kind: issueKind(labelNames),
-      slug: extractSlug(issue.title, issue.body ?? "", labelNames),
+      slug,
       phase,
       updatedAt: issue.updated_at,
     };
 
     const preview = previewUrlForPhase(phase, deploy);
-    if (preview) item.previewUrl = preview;
+    if (preview) item.previewUrl = previewAppUrl(preview, slug);
     else if (phase === "publicada") item.previewUrl = `https://${PRODUCTION_HOST}`;
 
     items.push(item);
