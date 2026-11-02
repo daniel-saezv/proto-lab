@@ -20,6 +20,28 @@ describe("catálogo", () => {
     const chispa = entries.find((entry) => entry.slug === "chispa");
     expect(chispa?.href).toBe("/protos/chispa/");
     expect(chispa?.history?.length).toBeGreaterThan(0);
+    expect(chispa?.permissions).toEqual([]);
+    expect(chispa?.readyMs).toBeGreaterThan(0);
+  });
+
+  it("rechaza un permiso fuera de la lista y un readyMs imposible", () => {
+    const base = {
+      slug: "demo",
+      title: "Demo",
+      description: "Una aplicación de prueba.",
+      author: "proto-lab",
+      date: "2026-11-02",
+      tags: ["prueba"],
+      cover: null,
+      version: "0.1.0",
+      history: [{ version: "0.1.0", date: "2026-11-02", note: "Alta." }],
+    };
+    expect(() => assertManifest("demo", { ...base, permissions: ["camera", "usb"] }, root)).toThrow(/permiso/);
+    expect(() => assertManifest("demo", { ...base, permissions: ["camera", "camera"] }, root)).toThrow(/duplicado/);
+    expect(() => assertManifest("demo", { ...base, readyMs: 50 }, root)).toThrow(/readyMs/);
+    const ok = assertManifest("demo", { ...base, permissions: ["microphone"] }, root);
+    expect(ok.permissions).toEqual(["microphone"]);
+    expect(ok.readyMs).toBe(8000);
   });
 
   it("la plantilla tiene un manifiesto válido y no entra en el catálogo", () => {

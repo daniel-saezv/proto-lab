@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { readCatalog } from "./catalog-lib.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -40,5 +42,30 @@ describe("descubrimiento de aplicaciones", () => {
       encoding: "utf8",
     });
     expect(template).toContain("@proto-lab/aplicacion");
+  });
+
+  it("el catálogo acepta una carpeta sin package.json", () => {
+    const repo = mkdtempSync(join(tmpdir(), "catalogo-"));
+    const dir = join(repo, "protos", "export-fijo");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "proto.json"),
+      JSON.stringify({
+        slug: "export-fijo",
+        title: "Export fijo",
+        description: "Carpeta servida tal cual, sin Vite.",
+        author: "proto-lab",
+        date: "2026-11-02",
+        tags: ["export"],
+        cover: null,
+        version: "0.1.0",
+        history: [{ version: "0.1.0", date: "2026-11-02", note: "Alta estática." }],
+      }),
+    );
+    writeFileSync(join(dir, "index.html"), "<!doctype html><title>Export</title>");
+    const entries = readCatalog(repo);
+    expect(entries.map((entry) => entry.slug)).toEqual(["export-fijo"]);
+    expect(entries[0].readyMs).toBe(8000);
+    rmSync(repo, { recursive: true, force: true });
   });
 });
