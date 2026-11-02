@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bindPage, startApp, type AppHost, type AudioHandle, type CanvasLike, type GlHandle } from "./app";
+import { bindPage, postLabSignal, startApp, type AppHost, type AudioHandle, type CanvasLike, type GlHandle } from "./app";
 
 function fakeHost() {
   let nextFrame = 1;
@@ -70,18 +70,28 @@ describe("stop de la plantilla", () => {
     expect(calls.cancelled).toEqual([1]);
   });
 
-  it("en pagehide revoca los recursos del puente una sola vez", () => {
-    const { host } = fakeHost();
+  it("en pagehide llama a stop una sola vez", () => {
+    const { host, calls } = fakeHost();
     const app = startApp(() => {}, host);
-    let revoked = 0;
     const page: { listener?: () => void } = {};
-    const api = bindPage(app, {
-      assets: () => ({ revokeAll: () => { revoked += 1; } }),
-      target: { addEventListener: (_type, listener) => { page.listener = listener; } },
-    });
+    const api = bindPage(app, { addEventListener: (_type, listener) => { page.listener = listener; } });
     page.listener?.();
     api.stop();
     page.listener?.();
-    expect(revoked).toBe(1);
+    expect(calls.closed).toBe(1);
+    expect(calls.lost).toBe(1);
+  });
+
+  it("separa alive de ready", () => {
+    const sent: string[] = [];
+    const target = {
+      postMessage(message: unknown) {
+        const data = message as { type?: string };
+        if (data.type) sent.push(data.type);
+      },
+    };
+    postLabSignal("alive", target);
+    postLabSignal("ready", target);
+    expect(sent).toEqual(["alive", "ready"]);
   });
 });

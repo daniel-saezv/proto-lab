@@ -20,7 +20,15 @@ for slug in "${slugs[@]}"; do
     echo "Slug no válido: ${slug}" >&2
     exit 1
   fi
-  if [[ ! -f "protos/${slug}/package.json" ]]; then
+  dir="protos/${slug}"
+  if [[ ! -d "$dir" || ! -f "${dir}/package.json" ]]; then
+    if [[ -f "${dir}/proto.json" && ! -f "${dir}/package.json" ]]; then
+      echo "export estático ${slug}"
+      if [[ "${CI_PROTOS_DRY:-}" != "1" ]]; then
+        node scripts/app-budget.mjs "$dir"
+      fi
+      continue
+    fi
     echo "Sin paquete protos/${slug}; el catálogo cubre el alta y la baja."
     continue
   fi
@@ -33,4 +41,5 @@ for slug in "${slugs[@]}"; do
   pnpm --filter "./protos/${slug}" typecheck
   pnpm exec vitest run "protos/${slug}" --passWithNoTests
   pnpm --filter "./protos/${slug}" build
+  node scripts/app-budget.mjs "${dir}/dist"
 done

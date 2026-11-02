@@ -151,6 +151,10 @@ export type WorldHandle = {
   pulseDialogue: () => void;
   /** Pausa el bucle, el análisis de audio y el resto del trabajo por frame. */
   setSuspended: (suspended: boolean) => void;
+  /** Suelta el contexto WebGL del laboratorio. La escena y el jugador siguen en memoria. */
+  releaseRenderer: () => void;
+  /** Vuelve a crear el renderer sobre la misma escena, sin mover al jugador. */
+  restoreRenderer: () => void;
   dispose: () => void;
 };
 
@@ -206,17 +210,27 @@ export function startWorld(options: {
   const overviewCamera = new OrthographicCamera(-12, 12, 12, -12, 0.1, 90);
   overviewCamera.up.set(0, 0, -1);
   let cameraMode: "follow" | "top" = "follow";
-  const renderer = new WebGLRenderer({
-    antialias: e2eRender ? false : !coarse,
-    alpha: false,
-    powerPreference: coarse ? "low-power" : "default",
-  });
-  renderer.outputColorSpace = SRGBColorSpace;
-  renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
-  renderer.setPixelRatio(e2eRender ? 1 : Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2));
-  renderer.shadowMap.enabled = shadows;
+  const pixelRatio = e2eRender ? 1 : Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+  let gpuLive = false;
+
+  function createRenderer(): WebGLRenderer {
+    const next = new WebGLRenderer({
+      antialias: e2eRender ? false : !coarse,
+      alpha: false,
+      powerPreference: coarse ? "low-power" : "default",
+    });
+    next.outputColorSpace = SRGBColorSpace;
+    next.toneMapping = ACESFilmicToneMapping;
+    next.toneMappingExposure = 1.2;
+    next.setPixelRatio(pixelRatio);
+    next.shadowMap.enabled = shadows;
+    return next;
+  }
+
+  let renderer = createRenderer();
   options.viewport.append(renderer.domElement);
+  gpuLive = true;
+  options.viewport.dataset.gpu = "1";
 
   const labelRenderer = new CSS2DRenderer();
   labelRenderer.domElement.style.position = "absolute";
@@ -554,7 +568,7 @@ export function startWorld(options: {
     camera.aspect = width / height;
     camera.fov = camera.aspect < 0.9 ? 78 : 58;
     camera.updateProjectionMatrix();
-    renderer.setSize(width, height, false);
+    if (gpuLive) renderer.setSize(width, height, false);
     labelRenderer.setSize(width, height);
     if (boardPhase !== "idle") {
       if (cameraMode === "top") return;
@@ -575,27 +589,69 @@ export function startWorld(options: {
   observer.observe(options.viewport);
   resize();
 
-  renderer.domElement.addEventListener("pointerdown", (event) => {
+  const onSurfaceDown = (event: PointerEvent) => {
     pointerDownX = event.clientX;
     pointerDownY = event.clientY;
     pointerDragged = false;
-  });
-  renderer.domElement.addEventListener("pointermove", (event) => {
+  };
+  const onSurfaceMove = (event: PointerEvent) => {
     if (Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY) > 8) pointerDragged = true;
     if (boardPhase !== "hold") return;
     const uv = boardSurfaceUv(event.clientX, event.clientY);
     if (!uv) lobbyWhiteboard.clearHover();
     else lobbyWhiteboard.hoverAt(uv.u, uv.v);
-  });
-  renderer.domElement.addEventListener("pointerleave", () => {
+  };
+  const onSurfaceLeave = () => {
     lobbyWhiteboard.clearHover();
-  });
-  renderer.domElement.addEventListener("pointerup", onClick);
-  renderer.domElement.addEventListener("webglcontextlost", (event) => event.preventDefault());
+  };
+  const onContextLost = (event: Event) => {
+    event.preventDefault();
+  };
+  function bindSurface(canvas: HTMLCanvasElement) {
+    canvas.addEventListener("pointerdown", onSurfaceDown);
+    canvas.addEventListener("pointermove", onSurfaceMove);
+    canvas.addEventListener("pointerleave", onSurfaceLeave);
+    canvas.addEventListener("pointerup", onClick);
+    canvas.addEventListener("webglcontextlost", onContextLost);
+  }
+  function unbindSurface(canvas: HTMLCanvasElement) {
+    canvas.removeEventListener("pointerdown", onSurfaceDown);
+    canvas.removeEventListener("pointermove", onSurfaceMove);
+    canvas.removeEventListener("pointerleave", onSurfaceLeave);
+    canvas.removeEventListener("pointerup", onClick);
+    canvas.removeEventListener("webglcontextlost", onContextLost);
+  }
+  bindSurface(renderer.domElement);
+
+  function releaseRenderer() {
+    if (!gpuLive) return;
+    gpuLive = false;
+    options.viewport.dataset.gpu = "0";
+    const canvas = renderer.domElement;
+    unbindSurface(canvas);
+    const gl = renderer.getContext();
+    sun.shadow.dispose();
+    sun.shadow.map = null;
+    sun.shadow.mapPass = null;
+    renderer.dispose();
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    canvas.remove();
+  }
+
+  function restoreRenderer() {
+    if (gpuLive) return;
+    renderer = createRenderer();
+    options.viewport.append(renderer.domElement);
+    bindSurface(renderer.domElement);
+    input.rebind(renderer.domElement);
+    gpuLive = true;
+    options.viewport.dataset.gpu = "1";
+    resize();
+  }
 
   function loop() {
     loopQueued = false;
-    if (!running || suspended) return;
+    if (!running || suspended || !gpuLive) return;
     loopQueued = true;
     requestAnimationFrame(loop);
     const now = performance.now();
@@ -899,7 +955,7 @@ export function startWorld(options: {
   }
 
   function boardSurfaceUv(clientX: number, clientY: number): { u: number; v: number } | null {
-    if (!boardMesh) return null;
+    if (!gpuLive || !boardMesh) return null;
     const bounds = renderer.domElement.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return null;
     pointer.x = ((clientX - bounds.left) / bounds.width) * 2 - 1;
@@ -941,6 +997,7 @@ export function startWorld(options: {
   }
 
   function rayHitIdAt(clientX: number, clientY: number): string | null {
+    if (!gpuLive) return null;
     const bounds = renderer.domElement.getBoundingClientRect();
     pointer.x = ((clientX - bounds.left) / bounds.width) * 2 - 1;
     pointer.y = -((clientY - bounds.top) / bounds.height) * 2 + 1;
@@ -1149,6 +1206,7 @@ export function startWorld(options: {
   }
 
   function rendererStats() {
+    if (!gpuLive) return { calls: 0, triangles: 0, geometries: 0, textures: 0 };
     const render = renderer.info.render;
     return {
       calls: render.calls,
@@ -1233,6 +1291,12 @@ export function startWorld(options: {
       boardBox: (zone: "row" | "back" | "action", number?: number) => projectBoardRect(zone, number),
       renderFrame: () => frame,
       renderSuspended: () => suspended,
+      visibleApps: () => options.prototypes.map((entry) => entry.slug),
+      playerPose: () => ({
+        x: Number(player.position.x.toFixed(4)),
+        z: Number(player.position.z.toFixed(4)),
+        yaw: Number(yaw.toFixed(4)),
+      }),
       rendererStats,
       batchStats: () => batchStats,
       probeWalkable: () => {
@@ -1298,13 +1362,14 @@ export function startWorld(options: {
     },
     pulseDialogue,
     setSuspended,
+    releaseRenderer,
+    restoreRenderer,
     dispose() {
       running = false;
       input.dispose();
       observer.disconnect();
-      renderer.dispose();
+      releaseRenderer();
       labelRenderer.domElement.remove();
-      renderer.domElement.remove();
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
       disposeScreenMap();
@@ -1929,6 +1994,8 @@ declare global {
       openPrototype?: (slug: string) => void;
       renderFrame?: () => number;
       renderSuspended?: () => boolean;
+      visibleApps?: () => string[];
+      playerPose?: () => { x: number; z: number; yaw: number };
       rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
       batchStats?: () => BatchStats | null;
     };

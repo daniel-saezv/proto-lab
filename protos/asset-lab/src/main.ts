@@ -1,11 +1,15 @@
+import { installAssetBridge } from "./bridge";
+
 type AssetApi = {
   getBlobUrl(path: string): Promise<string>;
   getArrayBuffer(path: string): Promise<ArrayBuffer>;
   getMime(path: string): Promise<string>;
+  revokeAll(): void;
 };
 
 declare global {
   interface Window {
+    __protoLabApp?: { stop(): void };
     __protoLabAssets?: AssetApi;
     __assetLab?: {
       runMediaChecks(): Promise<Record<string, boolean>>;
@@ -115,7 +119,19 @@ async function probeBadAsset(path: string): Promise<string> {
 }
 
 function cspPresent(): boolean {
-  return Boolean(document.querySelector('meta[http-equiv="Content-Security-Policy"]'));
+  return Boolean(document.querySelector('meta[http-equiv="Content-Security-Policy"]')) || location.pathname.startsWith("/protos/");
+}
+
+function postLab(type: "alive" | "ready") {
+  if (window.parent === window) return;
+  window.parent.postMessage({ source: "proto-lab", type }, "*");
+}
+
+function loseGl() {
+  const canvas = document.getElementById("canvas-gl");
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+  const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+  gl?.getExtension("WEBGL_lose_context")?.loseContext();
 }
 
 window.__assetLab = {
@@ -124,6 +140,19 @@ window.__assetLab = {
   probeBadAsset,
   cspPresent,
 };
+
+const bridge = installAssetBridge();
+let stopped = false;
+window.__protoLabApp = {
+  stop() {
+    if (stopped) return;
+    stopped = true;
+    bridge.revokeAll();
+    loseGl();
+  },
+};
+window.addEventListener("pagehide", () => window.__protoLabApp?.stop());
+postLab("alive");
 
 void (async () => {
   try {
@@ -137,6 +166,8 @@ void (async () => {
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "error");
     document.body.dataset.mediaOk = "0";
+  } finally {
+    postLab("ready");
   }
 })();
 

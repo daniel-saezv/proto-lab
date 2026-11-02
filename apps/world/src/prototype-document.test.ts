@@ -1,39 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { collectSameOriginAssets, escapeInlineScript, rewritePrototypeHtml } from "./prototype-document";
+import { assertPrototypePage, isAccessLogin } from "./prototype-document";
 
-const pageUrl = "https://proto-lab-3k6.pages.dev/protos/chispa/";
-const scriptUrl = "https://proto-lab-3k6.pages.dev/protos/chispa/assets/index-abc.js";
+const origin = "https://proto-lab-3k6.pages.dev";
 
-const html = `<!doctype html>
-<html><head>
-<link rel="modulepreload" crossorigin href="/protos/chispa/assets/index-abc.js">
-<script type="module" crossorigin src="/protos/chispa/assets/index-abc.js"></script>
-<link href="/protos/chispa/assets/game.css" rel="stylesheet">
-</head><body>
-<p data-testid="game-title">Atrapa la chispa</p>
-</body></html>`;
+function responseOf(body: string, url = `${origin}/protos/chispa/`, status = 200, contentType = "text/html; charset=utf-8") {
+  return {
+    ok: status >= 200 && status < 300,
+    url,
+    headers: { get: (name: string) => (name.toLowerCase() === "content-type" ? contentType : null) },
+    text: async () => body,
+  } as unknown as Response;
+}
 
-describe("documento de prototipo", () => {
-  it("incrusta el JS como script clásico y no mete el HTML de otra web", () => {
-    const assets = new Map<string, string>([
-      [scriptUrl, "window.__game = true;</script><script>alert(1);var x='$&';"],
-      ["https://proto-lab-3k6.pages.dev/protos/chispa/assets/game.css", "body{color:white}"],
-    ]);
-    expect(collectSameOriginAssets(html, pageUrl)).toEqual([
-      scriptUrl,
-      "https://proto-lab-3k6.pages.dev/protos/chispa/assets/game.css",
-    ]);
-    const result = rewritePrototypeHtml(html, assets, pageUrl);
-    expect(result).not.toContain("modulepreload");
-    expect(result).not.toContain('src="/protos/chispa/assets/index-abc.js"');
-    expect(result).not.toContain('type="module"');
-    expect(result).toContain(`<script>${escapeInlineScript("window.__game = true;</script><script>alert(1);var x='$&';")}</script>`);
-    expect(result).not.toContain("</body>'");
-    expect(result).toContain("<style>body{color:white}</style>");
-    expect(result).toContain('type:"alive"');
-    expect(result).toContain("Content-Security-Policy");
-    expect(result).toContain("__protoLabAssets");
-    expect(result).toContain("Atrapa la chispa");
-    expect(() => rewritePrototypeHtml("<html><body>login de acceso</body></html>", new Map(), pageUrl)).toThrow(/not-prototype/);
+describe("comprobación de la página", () => {
+  it("reconoce el HTML de Access", () => {
+    expect(isAccessLogin("<p>Iniciar sesión en Cloudflare Access</p>")).toBe(true);
+    expect(isAccessLogin("<a href='https://ancient-waterfall-b3eb.cloudflareaccess.com/'>x</a>")).toBe(true);
+    expect(isAccessLogin("<p data-testid='game-title'>Pozo de bolas</p>")).toBe(false);
+  });
+
+  it("acepta el HTML del mismo origen y rechaza el login", async () => {
+    const fetchImpl = async () => responseOf("<!doctype html><title>Pozo</title>");
+    await expect(assertPrototypePage("/protos/chispa/", { fetchImpl, pageOrigin: origin })).resolves.toBeUndefined();
+
+    const blocked = async () => responseOf("<!doctype html><p>Cloudflare Access</p>");
+    await expect(assertPrototypePage("/protos/chispa/", { fetchImpl: blocked, pageOrigin: origin })).rejects.toThrow(/blocked/);
+  });
+
+  it("rechaza otro origen y lo que no es HTML", async () => {
+    const away = async () =>
+      responseOf("<!doctype html>", "https://ancient-waterfall-b3eb.cloudflareaccess.com/cdn-cgi/access/login");
+    await expect(assertPrototypePage("/protos/chispa/", { fetchImpl: away, pageOrigin: origin })).rejects.toThrow(/blocked/);
+
+    const script = async () => responseOf("export {}", `${origin}/protos/chispa/app.js`, 200, "text/javascript");
+    await expect(assertPrototypePage("/protos/chispa/", { fetchImpl: script, pageOrigin: origin })).rejects.toThrow(/blocked/);
+
+    await expect(assertPrototypePage("https://example.com/protos/chispa/", { fetchImpl: async () => responseOf(""), pageOrigin: origin })).rejects.toThrow(
+      /blocked/,
+    );
   });
 });

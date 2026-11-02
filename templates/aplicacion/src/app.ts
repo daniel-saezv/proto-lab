@@ -75,21 +75,20 @@ export function startApp(mount: (canvas: CanvasLike) => void, host: AppHost): Ru
   };
 }
 
-export function bindPage(
-  app: RunningApp,
-  options: {
-    assets?: () => { revokeAll(): void } | undefined;
-    target: EventTargetLike;
-  },
-): { stop(): void } {
+export type LabSignal = "alive" | "ready";
+
+export function postLabSignal(type: LabSignal, target: { postMessage(message: unknown, origin: string): void }): void {
+  target.postMessage({ source: "proto-lab", type }, "*");
+}
+
+export function bindPage(app: RunningApp, target: EventTargetLike): { stop(): void } {
   let stopped = false;
   const stop = () => {
     if (stopped) return;
     stopped = true;
     app.stop();
-    options.assets?.()?.revokeAll();
   };
-  options.target.addEventListener("pagehide", stop);
+  target.addEventListener("pagehide", stop);
   return { stop };
 }
 

@@ -108,9 +108,11 @@ const dialogue = createDialogue({
 const overlay = createOverlay(
   stage,
   () => {
-    inputEnabled = true;
-    world?.setInputEnabled(true);
+    const dialogueOpen = dialogue.isOpen();
+    inputEnabled = !dialogueOpen;
+    world?.setInputEnabled(!dialogueOpen);
     world?.setSelectorOpen(false);
+    world?.restoreRenderer();
     world?.setSuspended(false);
     resumeFallbackWhiteboardLoop();
     music.setPaused(document.visibilityState !== "visible");
@@ -134,6 +136,7 @@ const overlay = createOverlay(
 
 function openPrototype(entry: CatalogEntry) {
   world?.setSuspended(true);
+  world?.releaseRenderer();
   stopFallbackWhiteboardLoop();
   music.releasePlayback();
   overlay.open(entry);

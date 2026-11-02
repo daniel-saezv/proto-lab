@@ -502,7 +502,17 @@ body.is-pseudo-fullscreen #boot {
   min-height: 0;
   overflow: hidden;
 }
-.prototype-status { margin: 24px 16px; }
+.prototype-status {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px 16px;
+  background: #0e1224;
+  text-align: center;
+}
 #stage iframe {
   position: absolute;
   inset: 0;

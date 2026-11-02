@@ -1,14 +1,8 @@
-import { bindPage, browserHost, startApp } from "./app";
+import { bindPage, browserHost, postLabSignal, startApp } from "./app";
 
 declare global {
   interface Window {
     __protoLabApp?: { stop(): void };
-    __protoLabAssets?: {
-      getBlobUrl(path: string): Promise<string>;
-      getArrayBuffer(path: string): Promise<ArrayBuffer>;
-      getMime(path: string): Promise<string>;
-      revokeAll(): void;
-    };
     __protoLabPreview?: () => void | Promise<void>;
   }
 }
@@ -22,6 +16,10 @@ const running = startApp((canvas) => {
   if (canvas instanceof HTMLCanvasElement) root.append(canvas);
 }, browserHost());
 const estado = document.querySelector("#estado");
+postLabSignal("alive", window.parent);
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => postLabSignal("ready", window.parent));
+});
 window.__protoLabApp = bindPage(
   {
     stop() {
@@ -29,8 +27,5 @@ window.__protoLabApp = bindPage(
       if (estado) estado.textContent = "Detenida";
     },
   },
-  {
-    assets: () => window.__protoLabAssets,
-    target: window,
-  },
+  window,
 );

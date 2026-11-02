@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { APP_PERMISSIONS, READY_MS } from "./app-contract.mjs";
 import { parseManifestAssets } from "./asset-path.mjs";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -59,8 +60,34 @@ export function assertManifest(dirName, manifest, protoDir) {
   if (manifest.hidden != null && manifest.hidden !== true) {
     fail(`${dirName}: hidden solo puede ser true u omitirse`);
   }
+  const permissions = parsePermissions(dirName, manifest.permissions);
+  const readyMs = parseReadyMs(dirName, manifest.readyMs);
   const assets = parseManifestAssets(dirName, manifest.assets, protoDir);
-  return { ...manifest, assets };
+  return { ...manifest, assets, permissions, readyMs };
+}
+
+function parsePermissions(dirName, value) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) fail(`${dirName}: permissions tiene que ser una lista`);
+  const seen = new Set();
+  const accepted = [];
+  for (const item of value) {
+    if (typeof item !== "string" || !APP_PERMISSIONS.includes(item)) {
+      fail(`${dirName}: permiso no permitido (${String(item)})`);
+    }
+    if (seen.has(item)) fail(`${dirName}: permiso duplicado (${item})`);
+    seen.add(item);
+    accepted.push(item);
+  }
+  return accepted;
+}
+
+function parseReadyMs(dirName, value) {
+  if (value == null) return READY_MS.default;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < READY_MS.min || value > READY_MS.max) {
+    fail(`${dirName}: readyMs tiene que ser un entero entre ${READY_MS.min} y ${READY_MS.max}`);
+  }
+  return value;
 }
 
 export function readCatalog(repoRoot) {
@@ -87,6 +114,8 @@ export function readCatalog(repoRoot) {
       history: validated.history,
       href: `/protos/${validated.slug}/`,
       assets: validated.assets ?? [],
+      permissions: validated.permissions ?? [],
+      readyMs: validated.readyMs,
       hidden: validated.hidden === true,
     });
   }

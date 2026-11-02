@@ -1,7 +1,7 @@
 {
   "slug": "aplicacion",
   "title": "Aplicación de ejemplo",
-  "description": "Plantilla mínima para copiar a protos/<slug>/. Cambia el slug, el título y el nombre del paquete. stop() suelta el bucle, los listeners, el audio y WebGL.",
+  "description": "Plantilla de código (Vite y TypeScript) para copiar a protos/<slug>/. Avisa ready al pintar y stop() suelta el bucle, los listeners, el audio y WebGL.",
   "author": "proto-lab",
   "date": "2026-11-02",
   "tags": ["plantilla"],
@@ -11,7 +11,7 @@
     {
       "version": "0.1.0",
       "date": "2026-11-02",
-      "note": "Plantilla con stop() para el bucle, los listeners, el audio y WebGL."
+      "note": "Plantilla con ready y stop(), sin puente blob."
     }
   ]
 }
