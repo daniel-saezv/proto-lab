@@ -1,5 +1,13 @@
 import { drawChalkMark, type ChalkMarkId } from "./chalk-marks";
-import { CHALK_STROKE, drawChalkSegments, paintWhiteboardFrame, quadSeg, seg, type ChalkSegment } from "./proposals-board-chalk";
+import {
+  CHALK_STROKE,
+  drawChalkSegments,
+  paintCueChalk,
+  paintWhiteboardFrame,
+  quadSeg,
+  seg,
+  type ChalkSegment,
+} from "./proposals-board-chalk";
 import { computeRowLayouts, WHITEBOARD_HEIGHT, WHITEBOARD_WIDTH, type BoardRowLayout } from "./proposals-board-metrics";
 import {
   paintBoardHeader,
@@ -279,7 +287,7 @@ function paintOpenCue(
   color: string,
   width: number,
 ) {
-  drawChalkSegments(context, segments, progress, color, width);
+  paintCueChalk(context, segments, progress, color, width);
 }
 
 export function paintListAffordances(

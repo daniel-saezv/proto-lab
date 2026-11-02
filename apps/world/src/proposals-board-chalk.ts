@@ -248,7 +248,15 @@ export function drawChalkSegments(
 }
 
 /** Tiza de los dibujos de margen. Más baja que el texto y distinta del ámbar del énfasis. */
-export const DOODLE_STROKE = "rgba(244, 239, 228, 0.62)";
+export const DOODLE_STROKE = "rgba(244, 239, 228, 0.86)";
+/** Polvo del mismo color: ablanda el canto sin tapar el trazo. */
+const DOODLE_DUST = "rgba(244, 239, 228, 0.95)";
+
+/**
+ * Cuánto tarda la mano en trazar la pareja de dibujos al abrir la vista.
+ * Cabecera y pie van seguidos, en el orden de los segmentos.
+ */
+export const DOODLE_DRAW_MS = 1500;
 
 export type BoardDoodleId = "gatito" | "perrito" | "pajaro" | "caracol" | "avion" | "pez" | "barco";
 
@@ -261,120 +269,175 @@ const HEADER_AT = { x: 742, y: 8 };
 const FOOTER_AT = { x: 28, y: 514 };
 
 function shift(parts: readonly ChalkSegment[], dx: number, dy: number): ChalkSegment[] {
-  return parts.map((part) => {
-    const next: ChalkSegment = {
-      x1: part.x1 + dx,
-      y1: part.y1 + dy,
-      x2: part.x2 + dx,
-      y2: part.y2 + dy,
-      len: part.len,
-    };
-    if (part.qx != null && part.qy != null) {
-      next.qx = part.qx + dx;
-      next.qy = part.qy + dy;
-    }
-    return next;
-  });
+  return parts.map((part) => ({
+    ...part,
+    x1: part.x1 + dx,
+    y1: part.y1 + dy,
+    x2: part.x2 + dx,
+    y2: part.y2 + dy,
+    qx: part.qx == null ? undefined : part.qx + dx,
+    qy: part.qy == null ? undefined : part.qy + dy,
+  }));
 }
 
-function oval(cx: number, cy: number, rx: number, ry: number): ChalkSegment[] {
+function ink(part: ChalkSegment, weight: number, pace = 1): ChalkSegment {
+  part.weight = weight;
+  part.pace = pace;
+  return part;
+}
+
+function line(x1: number, y1: number, x2: number, y2: number, weight = 1, pace = 1): ChalkSegment {
+  return ink(seg(x1, y1, x2, y2), weight, pace);
+}
+
+function bow(
+  x1: number,
+  y1: number,
+  qx: number,
+  qy: number,
+  x2: number,
+  y2: number,
+  weight = 1,
+  pace = 1,
+): ChalkSegment {
+  return ink(quadSeg(x1, y1, qx, qy, x2, y2, weight), weight, pace);
+}
+
+function oval(cx: number, cy: number, rx: number, ry: number, weight = 1.2): ChalkSegment[] {
   return [
-    quadSeg(cx + rx, cy, cx + rx, cy - ry, cx, cy - ry),
-    quadSeg(cx, cy - ry, cx - rx, cy - ry, cx - rx, cy),
-    quadSeg(cx - rx, cy, cx - rx, cy + ry, cx, cy + ry),
-    quadSeg(cx, cy + ry, cx + rx, cy + ry, cx + rx, cy),
+    bow(cx + rx, cy, cx + rx, cy - ry, cx, cy - ry, weight, 1.05),
+    bow(cx, cy - ry, cx - rx, cy - ry, cx - rx, cy, weight),
+    bow(cx - rx, cy, cx - rx, cy + ry, cx, cy + ry, weight),
+    bow(cx, cy + ry, cx + rx, cy + ry, cx + rx, cy, weight, 0.95),
   ];
 }
 
+/**
+ * Siluetas en coordenadas locales. La cabecera cabe en y −4…60 y x −42…178;
+ * el pie, en y −2…22 y x −12…232. El orden es el de la mano.
+ */
 function doodleLocal(id: BoardDoodleId): ChalkSegment[] {
   if (id === "gatito") {
     return [
-      ...oval(46, 24, 16, 14),
-      seg(34, 14, 40, 2),
-      seg(40, 2, 48, 12),
-      seg(48, 12, 56, 2),
-      seg(56, 2, 60, 14),
-      seg(40, 24, 42, 24),
-      seg(52, 24, 54, 24),
-      seg(46, 28, 44, 32),
-      seg(46, 28, 48, 32),
-      seg(30, 28, 14, 26),
-      seg(62, 28, 76, 26),
-      quadSeg(58, 32, 86, 28, 112, 36),
-      quadSeg(60, 38, 88, 48, 108, 40),
-      seg(78, 46, 76, 52),
-      seg(96, 44, 98, 52),
-      quadSeg(112, 34, 136, 16, 118, 8),
+      ...oval(42, 24, 16, 13, 1.28),
+      bow(30, 15, 24, 1, 38, 14, 1.15, 0.9),
+      bow(44, 14, 52, 0, 58, 15, 1.15, 0.9),
+      line(34, 23, 37, 23, 1.45, 0.7),
+      line(48, 22, 51, 22, 1.45, 0.7),
+      line(41, 28, 38, 31, 1.05, 0.75),
+      line(41, 28, 44, 31, 1.05, 0.75),
+      bow(38, 32, 42, 36, 48, 31, 0.95, 0.8),
+      line(56, 26, 74, 21, 0.62, 0.65),
+      line(56, 30, 76, 30, 0.62, 0.65),
+      line(56, 33, 72, 37, 0.62, 0.65),
+      bow(30, 36, 16, 48, 44, 54, 1.32, 1.1),
+      bow(44, 54, 78, 58, 104, 44, 1.32, 1.1),
+      bow(104, 44, 98, 32, 58, 34, 1.18),
+      line(34, 52, 30, 58, 1.12),
+      line(48, 54, 50, 58, 1.12),
+      bow(98, 38, 128, 20, 114, 6, 1.22, 1.15),
+      bow(114, 6, 102, 2, 110, 14, 1.05, 0.85),
     ];
   }
   if (id === "perrito") {
     return [
-      ...oval(50, 24, 15, 13),
-      quadSeg(38, 16, 18, 22, 28, 40),
-      seg(58, 14, 66, 4),
-      seg(66, 4, 62, 16),
-      seg(44, 24, 46, 24),
-      seg(56, 24, 58, 24),
-      seg(50, 28, 48, 32),
-      seg(50, 32, 52, 38),
-      quadSeg(62, 30, 92, 26, 120, 34),
-      quadSeg(64, 36, 94, 46, 116, 38),
-      seg(82, 44, 80, 52),
-      seg(104, 42, 106, 52),
-      quadSeg(120, 32, 142, 20, 128, 12),
+      ...oval(40, 22, 15, 12, 1.26),
+      bow(32, 12, 14, 6, 16, 24, 1.22, 1),
+      bow(16, 24, 12, 40, 30, 36, 1.18, 0.95),
+      bow(52, 20, 74, 16, 76, 26, 1.18),
+      bow(52, 28, 72, 34, 76, 26, 1.12),
+      line(74, 24, 78, 26, 1.4, 0.65),
+      line(34, 20, 38, 20, 1.45, 0.7),
+      bow(62, 28, 68, 38, 58, 32, 1.05, 0.8),
+      bow(28, 32, 16, 48, 46, 54, 1.3, 1.1),
+      bow(46, 54, 84, 58, 110, 40, 1.3, 1.1),
+      bow(110, 40, 98, 28, 56, 30, 1.16),
+      line(40, 52, 36, 58, 1.12),
+      line(74, 50, 78, 58, 1.12),
+      bow(104, 36, 128, 8, 114, 2, 1.22, 1.1),
+      bow(114, 2, 100, 6, 118, 14, 1.05, 0.85),
     ];
   }
   if (id === "pajaro") {
     return [
-      ...oval(48, 30, 22, 12),
-      ...oval(78, 20, 10, 9),
-      seg(86, 18, 104, 16),
-      seg(104, 16, 88, 22),
-      seg(76, 18, 78, 18),
-      quadSeg(40, 26, 28, 8, 58, 22),
-      seg(40, 40, 36, 52),
-      seg(58, 40, 62, 52),
+      ...oval(52, 32, 22, 11, 1.26),
+      ...oval(80, 22, 10, 9, 1.22),
+      line(88, 20, 108, 16, 1.18, 0.85),
+      line(108, 16, 90, 26, 1.12, 0.85),
+      line(78, 20, 81, 20, 1.5, 0.65),
+      bow(44, 28, 16, 8, 66, 24, 1.24, 1.05),
+      bow(46, 34, 26, 44, 70, 34, 1.08),
+      line(32, 28, 8, 16, 1.12),
+      line(32, 34, 10, 38, 1.05),
+      line(46, 42, 42, 54, 1.08),
+      line(62, 42, 68, 54, 1.08),
+      line(42, 54, 32, 54, 1),
+      line(68, 54, 78, 54, 1),
     ];
   }
   if (id === "caracol") {
     return [
-      ...oval(40, 24, 16, 14),
-      quadSeg(32, 26, 24, 34, 36, 30),
-      quadSeg(52, 34, 86, 42, 118, 32),
-      seg(104, 30, 100, 14),
-      seg(100, 14, 106, 12),
-      seg(112, 30, 118, 12),
-      seg(118, 12, 124, 14),
+      bow(58, 30, 64, 10, 36, 8, 1.38, 1.15),
+      bow(36, 8, 8, 10, 12, 30, 1.38, 1.1),
+      bow(12, 30, 14, 50, 38, 44, 1.32, 1.05),
+      bow(38, 44, 54, 40, 48, 26, 1.2),
+      bow(48, 26, 46, 16, 32, 20, 1.12),
+      bow(32, 20, 28, 30, 40, 30, 1.05, 0.9),
+      bow(48, 36, 82, 46, 116, 34, 1.28, 1.1),
+      bow(116, 34, 132, 24, 122, 18, 1.16),
+      line(120, 22, 110, 6, 0.78, 0.7),
+      line(110, 6, 108, 3, 1.35, 0.55),
+      line(124, 22, 136, 8, 0.78, 0.7),
+      line(136, 8, 138, 5, 1.35, 0.55),
+      line(122, 24, 125, 24, 1.4, 0.6),
+      line(46, 44, 118, 42, 0.72, 0.8),
     ];
   }
   if (id === "avion") {
     return [
-      quadSeg(8, 12, 90, 8, 168, 12),
-      quadSeg(20, 14, 90, 18, 150, 14),
-      seg(78, 10, 108, 2),
-      seg(108, 2, 118, 12),
-      seg(16, 12, 4, 2),
-      seg(4, 2, 24, 10),
-      seg(150, 12, 156, 12),
+      bow(8, 10, 86, 6, 168, 8, 1.34, 1.12),
+      bow(12, 14, 86, 18, 158, 12, 1.28, 1.08),
+      line(168, 8, 158, 12, 1.2),
+      line(26, 9, 16, 1, 1.16, 0.85),
+      line(16, 1, 42, 8, 1.16, 0.85),
+      line(20, 13, 6, 17, 1.05),
+      bow(72, 10, 112, 0, 134, 9, 1.36, 1.05),
+      bow(76, 13, 114, 16, 132, 11, 1.2),
+      bow(126, 8, 146, 1, 158, 8, 1.12, 0.9),
+      line(138, 4, 150, 5, 0.75, 0.65),
+      line(164, 3, 174, 15, 0.9, 0.7),
     ];
   }
   if (id === "pez") {
     return [
-      ...oval(78, 12, 36, 9),
-      seg(42, 12, 18, 2),
-      seg(18, 2, 24, 12),
-      seg(24, 12, 18, 20),
-      seg(18, 20, 42, 12),
-      seg(96, 10, 98, 10),
-      seg(70, 6, 86, 2),
+      ...oval(92, 11, 38, 7, 1.3),
+      line(54, 11, 24, 2, 1.22),
+      line(24, 2, 34, 11, 1.08),
+      line(34, 11, 24, 20, 1.08),
+      line(24, 20, 54, 11, 1.22),
+      bow(80, 5, 100, 0, 118, 5, 1.16),
+      bow(82, 17, 102, 21, 120, 16, 1.1),
+      line(118, 9, 122, 9, 1.5, 0.6),
+      line(128, 10, 136, 13, 0.9, 0.7),
+      bow(108, 7, 102, 11, 108, 15, 0.85, 0.75),
     ];
   }
   return [
-    quadSeg(8, 14, 80, 20, 150, 12),
-    seg(8, 14, 150, 12),
-    seg(70, 14, 70, 2),
-    seg(70, 4, 98, 12),
-    seg(98, 12, 70, 14),
+    bow(6, 13, 80, 21, 158, 12, 1.46, 1.15),
+    bow(10, 10, 80, 7, 150, 9, 1.32, 1.05),
+    line(10, 10, 6, 13, 1.15),
+    line(150, 9, 158, 12, 1.15),
+    line(40, 10, 40, 4, 1.12),
+    line(40, 4, 58, 4, 1.12),
+    line(58, 4, 58, 10, 1.12),
+    line(78, 10, 78, 1, 1.18, 0.9),
+    bow(80, 2, 118, 0, 124, 9, 1.24, 1),
+    line(124, 9, 80, 10, 1.12),
+    line(78, 1, 94, 2, 1.05, 0.75),
+    line(94, 2, 78, 4, 1.05, 0.75),
+    line(28, 13, 33, 13, 1.4, 0.6),
+    bow(4, 17, 52, 21, 104, 16, 0.82, 0.85),
+    bow(104, 16, 146, 21, 184, 16, 0.82, 0.85),
   ];
 }
 
@@ -388,6 +451,54 @@ export function doodleSegments(id: BoardDoodleId): ChalkSegment[] {
 }
 
 let shownDoodles: readonly BoardDoodleId[] = ["gatito", "avion"];
+let doodleProgress = 1;
+let doodleStartedAt: number | null = null;
+
+function doodleEase(t: number): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+/** Empieza el trazo de la pareja actual. Con movimiento reducido aparece ya hecha. */
+export function beginBoardDoodleDraw(nowMs: number, reducedMotion: boolean): void {
+  if (reducedMotion) {
+    doodleStartedAt = null;
+    doodleProgress = 1;
+    return;
+  }
+  doodleStartedAt = nowMs;
+  doodleProgress = 0;
+}
+
+/** Deja la pareja terminada. La escena conserva ese dibujo, no uno a medias. */
+export function settleBoardDoodles(): void {
+  doodleStartedAt = null;
+  doodleProgress = 1;
+}
+
+/** Avanza el trazo según el reloj de la pizarra. Al completar, queda en 1. */
+export function noteBoardDoodleTime(nowMs: number): number {
+  if (doodleStartedAt == null) {
+    doodleProgress = 1;
+    return 1;
+  }
+  const t = (nowMs - doodleStartedAt) / DOODLE_DRAW_MS;
+  if (t >= 1) {
+    doodleStartedAt = null;
+    doodleProgress = 1;
+    return 1;
+  }
+  doodleProgress = t <= 0 ? 0 : doodleEase(t);
+  return doodleProgress;
+}
+
+export function boardDoodleProgress(): number {
+  return doodleProgress;
+}
+
+export function boardDoodlesSettled(): boolean {
+  return doodleStartedAt == null;
+}
 
 function pickOne(ids: readonly BoardDoodleId[], random: () => number): BoardDoodleId {
   const index = Math.min(ids.length - 1, Math.floor(random() * ids.length));
@@ -413,10 +524,61 @@ export function titleChalkSwash(): ChalkSegment[] {
   return [quadSeg(36, 64, 96, 56, 154, 66)];
 }
 
+/** Figura de margen: canto de tiza y un polvo corto, sin grano que rompa la silueta. */
+function paintDoodleChalk(
+  context: CanvasRenderingContext2D,
+  segments: readonly ChalkSegment[],
+  progress: number,
+) {
+  if (progress <= 0 || segments.length === 0) return;
+  const alpha = context.globalAlpha;
+  const blur = context.shadowBlur;
+  const shadow = context.shadowColor;
+  context.shadowColor = DOODLE_DUST;
+  context.shadowBlur = 1.7;
+  context.globalAlpha = alpha;
+  drawChalkSegments(context, segments, progress, DOODLE_STROKE, 2.45);
+  context.globalAlpha = alpha;
+  context.shadowBlur = blur;
+  context.shadowColor = shadow;
+}
+
+/**
+ * Trazo que señala un clic. Misma geometría y el mismo avance: solo el cuerpo
+ * de la tiza (grosor, polvo y grano). El polvo es una sombra corta para no
+ * comerse la tinta.
+ */
+export function paintCueChalk(
+  context: CanvasRenderingContext2D,
+  segments: readonly ChalkSegment[],
+  progress: number,
+  stroke: string,
+  lineWidth: number,
+) {
+  if (progress <= 0 || segments.length === 0) return;
+  const alpha = context.globalAlpha;
+  const blur = context.shadowBlur;
+  const shadow = context.shadowColor;
+  context.shadowColor = stroke;
+  context.shadowBlur = Math.max(1.35, lineWidth * 0.48);
+  context.globalAlpha = alpha * 0.94;
+  drawChalkSegments(context, segments, progress, stroke, lineWidth * 1.12);
+  context.shadowBlur = 0;
+  context.globalAlpha = alpha * 0.4;
+  context.setLineDash([2.4, 1.55]);
+  context.lineDashOffset = 0.85;
+  drawChalkSegments(context, segments, progress, stroke, lineWidth * 0.9);
+  context.setLineDash([]);
+  context.lineDashOffset = 0;
+  context.globalAlpha = alpha;
+  context.shadowBlur = blur;
+  context.shadowColor = shadow;
+}
+
 export function paintWhiteboardFrame(context: CanvasRenderingContext2D) {
   context.fillStyle = BOARD_SLATE;
   context.fillRect(0, 0, WHITEBOARD_WIDTH, WHITEBOARD_HEIGHT);
-  drawChalkSegments(context, boardDoodleSegments(), 1, DOODLE_STROKE, 2);
+  paintDoodleChalk(context, boardDoodleSegments(), doodleProgress);
 }
 
 export function paintSkeletonBoard(
