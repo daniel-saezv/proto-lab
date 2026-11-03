@@ -37,7 +37,9 @@ window.__protoLabData.query("top10", {}).then(function (mejores) {});
 
 Las rutas son relativas y tienen que quedarse dentro de `/protos/<slug>/`. Entran imágenes, audio y JSON. Cupo por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. El guardado de una persona vive en `localStorage` del laboratorio (`proto-lab:app:<slug>`): 32 claves, 32 KiB por valor y 256 KiB por slug. Los datos compartidos (`sharedGet`, `sharedSet`, `sharedRemove`) usan el mismo cupo y solo responden si `proto.json` declara `shared`. `query(nombre, params)` ejecuta una consulta de `db/queries.json` y solo responde si `capabilities` incluye `tables`. El export no usa `localStorage` ni `sessionStorage` por su cuenta, ni sondea esas APIs. Cómo crear, cambiar y borrar tablas está en `docs/contrato-tablas.md`.
 
-La carpeta no necesita `package.json`. El build del laboratorio copia los archivos tal cual, salvo `proto.json`, `godot/`, `db/`, `node_modules`, `dist` y los dotfiles. El validador de la aplicación servida aplica: 64 archivos, 12 MiB por archivo, 32 MiB en total y un fallo duro a los 25 MiB de Cloudflare Pages. El aviso de JS sigue en 1,5 MiB y el fallo de JS en 4 MiB.
+La carpeta no necesita `package.json`. El build del laboratorio copia los archivos tal cual, salvo `proto.json`, `godot/`, `db/`, `node_modules`, `dist` y los dotfiles. El validador de la aplicación servida aplica: 64 archivos, 12 MiB por archivo, 32 MiB en total y un fallo duro a los 25 MiB de Cloudflare Pages. El aviso de JS sigue en 1,5 MiB y el fallo de JS en 4 MiB. Una imagen o un audio servidos fallan a 1,5 MiB. El puente de datos sigue en 4 MiB por archivo y 16 MiB en total: no es el cupo de lo publicado.
+
+El HTML servido lleva un meta viewport con `width=device-width` y `touch-action: none`. El shell de esta carpeta ya los trae. `scripts/app-budget.mjs --static` lo comprueba y, si hay `godot/project.godot`, también el preset (390×844, `canvas_items` / `expand`, orientación vertical, `emulate_touch_from_mouse`, `for_desktop=false`). Falla el build. No hay smoke de WebKit por aplicación.
 
 Para instanciar WebAssembly, añade `"wasm"` a `capabilities`. El ensamblado pone `wasm-unsafe-eval` en la CSP de `/protos/<slug>/` y en ningún otro sitio. Sigue sin hilos y sin `SharedArrayBuffer`: no hay COOP ni COEP. Los formularios no se envían (`form-action 'none'`). Los permisos de dispositivo (`camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope`, `magnetometer`) rellenan el atributo `allow` del iframe y la `Permissions-Policy` de este slug. `permissions` sigue valiendo como lista de esos dispositivos.
 
@@ -53,7 +55,16 @@ Sirve para un export de Godot 4.7 en un solo hilo. La guía de Godot es [Exporti
 6. `proto.json`: `"capabilities": ["wasm"]`, `"readyMs": 20000`, versión, historial y `preview`. 20 s es el plazo de arranque de Godot hasta que el dueño lo confirme en el iPhone.
 7. Copia `arranque.js` junto al `index.html` publicado. El shell lo carga antes del motor, avisa `ready` en el `then` de `startGame` y registra `engine.requestQuit()` en `onStop`. No uses `JavaScriptBridge.eval`: la CSP no tiene `unsafe-eval`.
 8. El `.wasm` publicado es Brotli q11 con el mismo nombre (`index.wasm`). El ensamblado manda `Content-Type: application/wasm` y `Content-Encoding: br`. El navegador lo descomprime al pedirlo. No lo subas en claro si pasa de 25 MiB: Pages rechaza el archivo.
-9. El workflow `.github/workflows/exportar-godot.yml` exporta en CI cuando el pull request toca `protos/<slug>/godot/`. No corre en push a `main` ni en un horario. Comprueba que lo publicado coincide y no hace push. `.github/workflows/medir-godot.yml` solo se lanza a mano.
+9. El workflow `.github/workflows/exportar-godot.yml` descubre `protos/*/godot/` y exporta solo el proyecto que toca el diff (a mano, todos los que tengan `project.godot`). No corre en push a `main` ni en un horario. No tiene token de escritura ni secretos, y no hace push. Comprueba que lo publicado coincide y sube el árbol servido (wasm ya en Brotli q11, `arranque.js` incluido) como artefacto `godot-export-<slug>`, 14 días. `.github/workflows/medir-godot.yml` solo se lanza a mano.
+
+Para commitear ese export, el agente descarga el artefacto del run con permiso de lectura y copia los archivos a la raíz del prototipo. No pisa `proto.json` ni la carpeta `godot/`:
+
+```bash
+gh run download <run-id> -n godot-export-<slug> -D /tmp/godot-<slug>
+cp -a /tmp/godot-<slug>/. protos/<slug>/
+```
+
+Si el zip conserva la ruta `publicable/`, se copian los archivos de esa carpeta, no el proyecto. Luego se sube el commit. El workflow no escribe en la rama.
 
 El audio web, desde Godot 4.3, usa muestras (Sample) cuando no hay hilos: poca latencia, sin efectos ni audio posicional fiable. El navegador no suena hasta un gesto. Arranca el motor al abrir (así el wasm se descarga al entrar, no al primer toque) y reproduce el primer sonido dentro de `_input` con el toque. No hace falta `eval`. Hay un fallo abierto de Safari en iOS si se disparan muchas muestras seguidas durante mucho rato ([godot#116750](https://github.com/godotengine/godot/issues/116750)); pruébalo en el iPhone antes de darlo por bueno.
 
