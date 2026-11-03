@@ -19,7 +19,7 @@ Medido otra vez con `/?perf=1`, puntero grueso, dpr 3, viewports 390×844 y 844�
 | Apaisado, arcade | 137 | 6798 | 143 | 7844 |
 | Apaisado, pizarra | 85 | 4600 | 89 | 5566 |
 
-El techo era 160 llamadas y 10 000 triángulos en el apaisado. El spawn apaisado queda en 144 y 7880, con 0 proyectores de sombra y el buffer a 1,5× (585×1266 y 1266×585). El batch pasa de 290→165 a 309→175 (11 instancias, 35 fusiones). Cabe el lightmap: no añade llamadas ni triángulos; solo una textura (en retrato, 10→11 al arrancar).
+El presupuesto acordado (decisión del dueño, 3 de noviembre de 2026) es un único techo para el peor encuadre — spawn apaisado, puntero grueso —: **400 llamadas de dibujo** y **40 000 triángulos**, con revisión obligatoria al llegar a **500 llamadas**. Objetivo de fluidez en el teléfono: **16,7 ms** de media por frame (60 Hz); un paso estable a 30 Hz es un fallo. En la medición del commit `bb553c7` (`/?perf=1`, puntero grueso, dpr 3) el spawn apaisado quedó en **160** llamadas y **8466** triángulos; en spawn retrato, **86** y **4662** — ambos por debajo del techo. Tres reglas fijas aparte del contador (detalle en §4.3): conservar el sombreado y las luces móviles optimizadas actuales sin añadir shadow map en tiempo real ni técnicas costosas sin decisión del dueño; pixel ratio efectivo ≤ 1,5; **5 puntuales** como referencia (hoy 1 hemisférica, 1 direccional y 5 puntuales). Cualquier luz o sombra nueva debe seguir buenas prácticas móviles y medirse con `/?perf=1`. La tabla de arriba es de un diff anterior; el método y el techo vigente están en la sección 4.3. Tras ese diff el spawn apaisado había quedado en 144 y 7880, con 0 proyectores de shadow map y el buffer a 1,5× (585×1266 y 1266×585). El batch pasó de 290→165 a 309→175 (11 instancias, 35 fusiones). Cabe el lightmap: no añade llamadas ni triángulos; solo una textura (en retrato, 10→11 al arrancar).
 
 Qué hay en el diff:
 
@@ -28,7 +28,7 @@ Qué hay en el diff:
 - Inventor: piernas, segundo brazo, ojos, insignia y respiración del torso. Abrigo oscuro, pelo y lentes van fundidos, así el personaje sigue en 9 mallas. Jugador: cuerpo teal fundido, ojos, balanceo al andar. Arcade: cantos y un labio del color `0x171225`, que el batch absorbe.
 - En móvil (sin shadow map): una sola malla transparente con los discos de contacto, más el del jugador pegado a sus pies. En escritorio siguen las sombras de verdad y no se dibujan los discos.
 - Suelo subdividido (16×20) y muros con 4 cortes en altura, con color de vértice de oclusión. El material es propio: no se marca `vertexColors` en el `mat()` compartido, así que el AO no se instancia con otras cajas.
-- Lightmap 128×128, lineal, solo en el suelo, intensidad 0.65. Sustituye la puntual de la lámpara de pie suroeste (−8.35, 7.7). La bombilla sigue. Las luces puntuales pasan de 7 a 6.
+- Lightmap 128×128, lineal, solo en el suelo, intensidad 0.65. Sustituye la puntual de la lámpara de pie suroeste (−8.35, 7.7). La bombilla sigue. Las luces puntuales pasaron de 7 a 6 en ese diff; en `bb553c7` hay **5** puntuales (ver §1.2).
 
 No se ha hecho el póster extra, ni cantos de pinball y escritorio, ni el retoque de la hemisférica. El AO no cae en geometría repetida, así que `static-batch.ts` no cambia.
 
@@ -60,7 +60,15 @@ La escena tiene niebla lineal del color de fondo `0x1a2140`, de 18 a 36. Las luc
 
 - 1 `HemisphereLight` (cielo `0xd5e4ff`, suelo `0x5a4638`, intensidad 1.55).
 - 1 `DirectionalLight` (sol `0xfff1d0`, intensidad 1.85). Es la única que puede proyectar sombra, y solo con puntero fino.
-- 7 `PointLight`: lámpara de la pizarra (intensidad 6, alcance 7.5), arcade (4.5 / 5.2), dos de las tres lámparas colgantes (2.6 / 5.5; la tercera es solo malla), la tele del rincón (4.2 / 3.4) y dos lámparas de pie a media intensidad (2.1 / 4.2).
+- 5 `PointLight`: aplique de la pizarra (`SCONCE_LIGHT`), arcade (2.4 / 8.5), dos de las tres lámparas colgantes (`HANGING_LIGHT`; la tercera es solo malla) y la tele del rincón (4.2 / 3.4). Las dos lámparas de pie iluminan con el lightmap del suelo, no con puntuales.
+
+En móvil `(pointer: coarse)` el renderer **no** activa `shadowMap` (0 proyectores; la direccional no proyecta). El volumen y el anclaje al suelo salen de técnicas baratas ya en el código:
+
+- **Lightmap** 128×128 en el suelo Lambert (`floorLightMap()` → `MeshLambertMaterial.lightMap`, intensidad 0.65): charcos cálidos de las lámparas de pie sin puntuales extra.
+- **Oclusión en color de vértice** en suelo (16×20) y muros (cuatro planos con cortes).
+- **Sombras de contacto** estáticas: una malla transparente fundida (`addStaticContactShadows`, `MeshBasicMaterial`, `depthWrite: false`) bajo Inventor, arcade, sofás, mesa y nevera; el jugador lleva un disco propio cuando no hay shadow map (`buildPlayer`).
+
+Todo ello es el paquete móvil acordado: se mantiene. No confundir «sin shadow map en tiempo real» con «sin sombras».
 
 En Three.js 0.187 `MeshLambertMaterial` sombrea **por fragmento**. Cada luz puntual entra en el shader de todo lo que use Lambert, también donde la atenuación ya vale cero. El coste de una luz nueva casi no se ve en `renderer.info`: se ve en el tiempo de fragmento, que en el móvil es el recurso escaso. Las mallas `MeshBasicMaterial` no pagan ese bucle.
 
@@ -68,7 +76,7 @@ En Three.js 0.187 `MeshLambertMaterial` sombrea **por fragmento**. Cada luz punt
 
 `mat(color)` en `world.ts` reutiliza un `MeshLambertMaterial` por color. Ese es el material de paredes, suelo, muebles y cuerpos. Lo emisivo (bombillas, marquesina, botones, halo de la arcade, cielo, pantallas, neón) es `MeshBasicMaterial`, a menudo con `toneMapped: false`.
 
-No hay `MeshStandardMaterial`, mapas de normales, entorno ni lightmaps. El relieve visual sale de texturas de canvas pintadas al crear la escena:
+No hay `MeshStandardMaterial`, mapas de normales ni entorno. Hay un **lightmap** fijo en el suelo (§1.2). El relieve visual sale también de texturas de canvas pintadas al crear la escena:
 
 | Textura | Tamaño | Dónde |
 | --- | --- | --- |
@@ -136,7 +144,7 @@ El orden de cada ficha es: qué hacer, coste en un iPhone, por qué, impacto vis
 
 ### 2.1 Calidad de render que sale barata
 
-**Sombras de contacto en el suelo.** Un disco oscuro, `MeshBasicMaterial` transparente, `depthWrite: false`, bajo el Inventor, el jugador, la arcade, los sofás, la mesa y la nevera. Fundir esos discos en **una** malla: el batch ignora las transparentes, así que sueltas serían una llamada cada una. Coste bajo (una llamada y un poco de sobrepintado si no se apilan). Impacto alto en móvil, porque el mapa de sombras está apagado y los objetos flotan.
+**Sombras de contacto en el suelo.** Un disco oscuro, `MeshBasicMaterial` transparente, `depthWrite: false`, bajo el Inventor, el jugador, la arcade, los sofás, la mesa y la nevera. Fundir esos discos en **una** malla: el batch ignora las transparentes, así que sueltas serían una llamada cada una. Coste bajo (una llamada y un poco de sobrepintado si no se apilan). Impacto alto en móvil cuando no hay shadow map proyectado: sin anclaje en el suelo los objetos flotan (implementado; ver §1.2).
 
 **Oclusión en el color de vértice del suelo y de los muros.** Subdividir el plano del suelo (un `PlaneGeometry` de ~16×20 segmentos son unos 640 triángulos, una sola llamada) y oscurecer vértices en el zócalo y bajo los muebles grandes. En los cuatro muros, un par de cortes verticales bastan para un degradado suelo-techo. `MeshLambertMaterial` ya admite `vertexColors`. Coste bajo: son las mallas más grandes y no se instancian (hacen falta 3 copias idénticas). Impacto medio: la sala deja de ser un color plano y gana peso sin una luz nueva. No poner este AO en cajas repetidas (cartuchos, patas, botones): la firma de `static-batch.ts` no distingue colores de vértice y la instancia enseñaría el de la primera.
 
@@ -146,13 +154,13 @@ El orden de cada ficha es: qué hacer, coste en un iPhone, por qué, impacto vis
 
 **Contraste con la luz que ya hay.** La hemisférica a 1.55 aplana el Lambert. Bajarla un poco y dejar el sol, después del AO y no a la vez, recupera volumen. Coste bajo (cero geometría). Impacto medio y global: cambia el humor de toda la sala, así que va en un lote propio y con la sala delante, no como primer cambio.
 
-**Un lightmap que sustituya una puntual, no que se sume.** Una textura pequeña en el suelo con los charcos cálidos de la lámpara y de la arcade, y apagar una puntual secundaria (una de pie). El shader Lambert se acorta. Coste bajo si de verdad se apaga una luz; medio si el lightmap se añade y las nueve luces siguen. Impacto medio. Es el único cambio de luces que encaja con «no perder rendimiento», y solo después de medir los lotes anteriores.
+**Un lightmap que sustituya una puntual, no que se sume.** Una textura pequeña en el suelo con los charcos cálidos de la lámpara y de la arcade, y apagar una puntual secundaria (una de pie). El shader Lambert se acorta. Coste bajo si de verdad se apaga una luz; medio si el lightmap se añade y las cinco puntuales actuales siguen. Impacto medio. Es el único cambio de luces que encaja con «no perder rendimiento», y solo después de medir los lotes anteriores.
 
 Estas palancas suben el coste de fragmento y se quedan fuera de los lotes:
 
 - Subir el tope de `pixelRatio` por encima de 1.5. En un buffer de 390×844 el salto a 2 multiplica los píxeles por 1,78. Las llamadas no cambian; el tiempo de fragmento sí. Medido: con dpr de dispositivo 3 el canvas de 390×844 queda en 585×1266, que es exactamente 1,5.
-- Activar el antialias del canvas en `(pointer: coarse)`. Es MSAA encima de un Lambert con siete puntuales.
-- Volver a encender el shadow map, aunque sea a 512. En escritorio, con sombras, el mismo spawn de referencia no es comparable (otro fov), pero el renderer ya dibuja 32 proyectores de más.
+- Activar el antialias del canvas en `(pointer: coarse)`. Es MSAA encima de un Lambert con cinco puntuales.
+- Volver a encender el **shadow map** del renderer en `(pointer: coarse)`, aunque sea a 512. En escritorio, con sombras proyectadas, el mismo spawn de referencia no es comparable (otro fov), pero el renderer ya dibuja 32 proyectores de más. En móvil el anclaje al suelo pasa por lightmap, AO y discos de contacto (§1.2).
 - Un `EffectComposer` (FXAA, SMAA, bloom). Es otro pase a pantalla completa.
 - Pasar el laboratorio a `MeshStandardMaterial` o añadir luces puntuales «para dar ambiente». El ambiente ya pulsa las que hay.
 
@@ -202,7 +210,7 @@ Cada lote lo puede llevar un agente. Los que comparten fila tocan archivos disti
 
 Archivos: `world.ts` (suelo, muros, una malla de contacto) y, si el AO llega a geometría repetida, `static-batch.ts` para que la firma de instancia incluya un hash de color de vértice. Contenido: discos de contacto fundidos, AO de suelo y muros, y solo entonces un retoque de la hemisférica si la sala queda lavada. Sin luces nuevas.
 
-**Lote 4, el lightmap.** Hecho en esta rama: el spawn apaisado se quedó en 144 llamadas y 7880 triángulos, por debajo del techo, y el lightmap no mueve esas dos cifras. Ver «Implementado».
+**Lote 4, el lightmap.** Hecho en esta rama: el spawn apaisado se quedó en 144 llamadas y 7880 triángulos, por debajo del techo vigente (§4.3), y el lightmap no mueve esas dos cifras. Ver «Implementado».
 
 Fuera de cola, para cualquiera de estos agentes: sombras reales, MSAA, más pixel ratio, postproceso, `MeshStandardMaterial`, modelos glTF y texturas que se repinten cada frame.
 
@@ -244,15 +252,33 @@ No hay FPS de un iPhone. La única muestra de tiempo de frame es de SwiftShader,
 
 Tampoco se midió el caminar continuo, el tablón con datos reales ni un iPhone con la barra de inicio y el área segura. Un aparato más alto que 844 puntos CSS sube el fill-rate con el mismo tope de 1,5; las llamadas solo cambian si el encuadre enseña más sala.
 
-### 4.3 Techo propuesto a partir de esa línea base
+### 4.3 Presupuesto del peor encuadre (3 de noviembre de 2026)
 
-No es una cifra medida de «lo máximo que aguanta el teléfono». Es el margen que un lote de detalle puede gastar sin cambiar de régimen:
+Decisión del dueño (@daniel-saezv). Un solo techo para todo el lobby en móvil `(pointer: coarse)`, referido al **peor encuadre medido**: spawn apaisado, puntero grueso.
 
-- Apaisado en el spawn, que es el peor caso medido: como mucho 160 llamadas y 10 000 triángulos.
-- Retrato en el spawn: como mucho 100 llamadas y 6 000 triángulos.
-- En `(pointer: coarse)`: 0 proyectores de sombra, pixel ratio efectivo ≤ 1,5, las mismas 9 luces o menos, sin compositor de postproceso.
+**Lo que vigila el contador** (`renderer.info` tras `/?perf=1`):
 
-Un lote que añade una puntual o enciende sombras puede cumplir los triángulos y aun así ir peor. Esas dos cosas se miran en el diff, no solo en `renderer.info`.
+- Como mucho **400 llamadas de dibujo** y **40 000 triángulos** por frame.
+- Al llegar a **500 llamadas**, hace falta revisión antes de seguir sumando detalle.
+
+**Objetivo de fluidez en el teléfono real:** **16,7 ms de media por frame** (60 Hz), medido en el dispositivo. Un paso estable a 30 Hz cuenta como fallo.
+
+**Límites fijos que el contador no vigila** (las tres reglas del dueño; subir el (1) o el (3) con técnicas costosas, o el (2), exige su decisión):
+
+1. **Conservar** el sombreado y las luces móviles actuales, ya optimizadas (§1.2: lightmap de suelo, AO en vértices, discos de contacto fundidos, cinco puntuales + hemisférica + direccional sin shadow map). **No** añadir shadow map en tiempo real en móvil ni otra técnica costosa (más puntuales sin sustituir por horneado, `MeshStandardMaterial`, postproceso, etc.) sin decisión del dueño. Cualquier luz o sombra **nueva** debe seguir buenas prácticas móviles (horneado o lightmap, materiales baratos, sin postproceso) y medirse con `/?perf=1`.
+2. Pixel ratio efectivo **≤ 1,5**.
+3. **5 luces puntuales** como referencia (recuento en §1.2).
+
+Sin compositor de postproceso.
+
+**Por qué ese margen (orientativo; no sustituye medir en iPhone):**
+
+- Arm recomienda mantener las draw calls por frame **por debajo de 500** en OpenGL ES ([Draw call batching best practices](https://developer.arm.com/documentation/101897/0304/Optimizing-application-logic/Draw-call-batching-best-practices)).
+- Epic documenta **~700 draw calls por frame** como referencia móvil en Unreal Engine 5.8 (Galaxy Tab S6) ([Optimization and development best practices for mobile projects](https://dev.epicgames.com/documentation/unreal-engine/optimization-and-development-best-practices-for-mobile-projects-in-unreal-engine)).
+
+**Medición de escena en `bb553c7`** (mismo método que §4.1, viewports PWA 390×844 y 844×390, puntero grueso, dpr 3): spawn apaisado **160** llamadas y **8466** triángulos; spawn retrato **86** y **4662**. Ambos encuadres quedan por debajo del techo de 400 / 40 000.
+
+Un lote que añade una puntual sin lightmap/horneado, enciende el shadow map en móvil o sube el pixel ratio puede cumplir llamadas y triángulos y aun así ir peor. Esas palancas se miran en el diff y en `/?perf=1`, no solo en `renderer.info`.
 
 ### 4.4 Cómo repetirlo, y cómo medirlo en el iPhone
 
@@ -268,4 +294,4 @@ En el iPhone, antes del primer lote visual, anotar el baseline del aparato. Safa
 - Las mismas cuatro vistas, retrato y apaisado, leyendo `rendererStats()`.
 - El tiempo de frame con el timeline de Safari, o con los deltas de `requestAnimationFrame`, unos segundos quieto y unos segundos andando.
 
-Un lote se da por bueno si en ese aparato el frame se mantiene en el refresco que el baseline ya sostenía (un paso estable de 60 a 30 es un fallo) y el tiempo medio no sube más de aproximadamente un 10 % frente a ese baseline, y si las llamadas y los triángulos siguen bajo el techo de la sección 4.3. El primer baseline de iPhone hay que guardarlo en el PR de ese lote: este informe no lo tiene porque desde aquí no se puede tomar.
+Un lote se da por bueno si en ese aparato el tiempo medio de frame se mantiene en **≤ 16,7 ms** (60 Hz sostenido), sin un paso estable a 30 Hz, y no sube más de aproximadamente un 10 % frente al baseline quieto del aparato, y si las llamadas y los triángulos siguen bajo el techo de la sección 4.3. El primer baseline de iPhone hay que guardarlo en el PR de ese lote: este informe no lo tiene porque desde aquí no se puede tomar.
