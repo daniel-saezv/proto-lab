@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { classifyPaths, decide } from "./ci-paths.mjs";
+import { classifyPaths, closingIssueNumbers, decide, proposalScopeError } from "./ci-paths.mjs";
 
 const script = join(dirname(fileURLToPath(import.meta.url)), "ci-paths.mjs");
 
@@ -76,6 +76,8 @@ describe("salida para Actions", () => {
         ...process.env,
         EVENT_NAME: "pull_request",
         CI_PATHS_FILES: "protos/chispa/src/rules.ts\nREADME.md",
+        CI_PR_BODY: "",
+        CI_ISSUE_LABELS: "",
         GITHUB_OUTPUT: out,
       },
     });
@@ -83,5 +85,64 @@ describe("salida para Actions", () => {
     expect(text).toContain("lab=false");
     expect(text).toContain("protos=chispa");
     expect(text).toContain("mode=aplicaciones");
+  });
+});
+
+function runPaths(env) {
+  const out = join(mkdtempSync(join(tmpdir(), "ci-paths-")), "output");
+  try {
+    const stdout = execFileSync("node", [script], {
+      env: { ...process.env, GITHUB_OUTPUT: out, CI_PR_BODY: "", CI_ISSUE_LABELS: "", ...env },
+      encoding: "utf8",
+    });
+    return { status: 0, stdout, out: existsSync(out) ? readFileSync(out, "utf8") : "" };
+  } catch (error) {
+    const failed = /** @type {{ status?: number, stderr?: Buffer | string, stdout?: Buffer | string }} */ (error);
+    return {
+      status: failed.status ?? 1,
+      stdout: String(failed.stdout ?? ""),
+      stderr: String(failed.stderr ?? ""),
+      out: existsSync(out) ? readFileSync(out, "utf8") : "",
+    };
+  }
+}
+
+describe("barrera de una propuesta", () => {
+  it("solo cuenta la palabra que cierra la issue", () => {
+    expect(closingIssueNumbers("Menciono #4 y también Fixes: #12.")).toEqual([12]);
+    expect(closingIssueNumbers("Closes #9\nfixed #2")).toEqual([2, 9]);
+    expect(proposalScopeError(["protos/chispa/index.html"], [], new Map())).toBeNull();
+  });
+
+  it("una propuesta cerrada solo puede tocar un prototipo y el lockfile", () => {
+    const labels = new Map([[4, ["propuesta"]]]);
+    expect(proposalScopeError(["protos/chispa/src/main.ts", "pnpm-lock.yaml"], [4], labels)).toBeNull();
+    expect(proposalScopeError(["protos/chispa/a.ts", "protos/toque/index.html"], [4], labels)).toMatch(/un prototipo/);
+    expect(proposalScopeError(["protos/chispa/a.ts", ".github/workflows/ci.yml"], [4], labels)).toMatch(/no puede tocar/);
+    expect(proposalScopeError(["docs/nota.md"], [4], labels)).toMatch(/ninguno/);
+    expect(proposalScopeError([".github/workflows/ci.yml"], [4], new Map([[4, ["bug"]]]))).toBeNull();
+    expect(proposalScopeError([".github/workflows/ci.yml"], [4], new Map())).toMatch(/falla en cerrado/);
+  });
+
+  it("el script sale con error y no escribe la salida si la barrera falla", () => {
+    const failed = runPaths({
+      EVENT_NAME: "pull_request",
+      CI_PATHS_FILES: "protos/chispa/src/main.ts\n.github/workflows/ci.yml",
+      CI_PR_BODY: "Closes #4",
+      CI_ISSUE_LABELS: "4=propuesta",
+    });
+    expect(failed.status).not.toBe(0);
+    expect(failed.stderr).toMatch(/no puede tocar/);
+    expect(failed.out).toBe("");
+
+    const passed = runPaths({
+      EVENT_NAME: "pull_request",
+      CI_PATHS_FILES: "protos/chispa/src/main.ts\npnpm-lock.yaml",
+      CI_PR_BODY: "Closes #4",
+      CI_ISSUE_LABELS: "4=propuesta,iteracion",
+    });
+    expect(passed.status).toBe(0);
+    expect(passed.out).toContain("protos=chispa");
+    expect(passed.out).toContain("mode=completo");
   });
 });

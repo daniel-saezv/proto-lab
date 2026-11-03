@@ -4,7 +4,8 @@
  *
  *   node scripts/godot-web.mjs --check protos/<slug> --export <dir>
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertSingleThreadWasm, compressWasmBrotli, decodeServedWasm } from "./wasm-module.mjs";
@@ -68,7 +69,51 @@ export function assertGodotProject(projectText, presetText) {
   if (!/html\/custom_html_shell="shell\.html"/.test(presetText)) {
     errors.push('el preset tiene que usar html/custom_html_shell="shell.html"');
   }
+  if (!/vram_texture_compression\/for_desktop=false/.test(presetText)) {
+    errors.push("for_desktop tiene que ser false");
+  }
+  if (!projectText.includes("window/size/viewport_width=390")) errors.push("viewport_width tiene que ser 390");
+  if (!projectText.includes("window/size/viewport_height=844")) errors.push("viewport_height tiene que ser 844");
+  if (!projectText.includes('window/stretch/mode="canvas_items"')) errors.push('el estirado tiene que ser canvas_items');
+  if (!projectText.includes('window/stretch/aspect="expand"')) errors.push('el aspecto tiene que ser expand');
+  if (!projectText.includes("window/handheld/orientation=1")) errors.push("la orientación tiene que ser vertical (1)");
+  if (!projectText.includes("pointing/emulate_touch_from_mouse=true")) {
+    errors.push("emulate_touch_from_mouse tiene que ser true");
+  }
   return errors;
+}
+
+/** @param {string} protoDir */
+export function assertGodotTree(protoDir) {
+  const projectPath = join(protoDir, "godot", "project.godot");
+  if (!existsSync(projectPath)) return [];
+  const presetPath = join(protoDir, "godot", "export_presets.cfg");
+  if (!existsSync(presetPath)) return ["falta godot/export_presets.cfg"];
+  return assertGodotProject(readFileSync(projectPath, "utf8"), readFileSync(presetPath, "utf8"));
+}
+
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** @param {string[]} files */
+export function godotSlugsInDiff(files) {
+  const slugs = new Set();
+  for (const file of files) {
+    const path = String(file).replaceAll("\\", "/").replace(/^\.\//, "");
+    const match = /^protos\/([^/]+)\/godot\//.exec(path);
+    if (match && SLUG.test(match[1])) slugs.add(match[1]);
+  }
+  return [...slugs].sort();
+}
+
+/** @param {string} protosDir */
+export function listGodotProjects(protosDir) {
+  const slugs = [];
+  for (const name of readdirSync(protosDir)) {
+    if (!SLUG.test(name)) continue;
+    const project = join(protosDir, name, "godot", "project.godot");
+    if (statSync(project, { throwIfNoEntry: false })?.isFile()) slugs.push(name);
+  }
+  return slugs.sort();
 }
 
 function assertHtmlContract(name, text) {
@@ -224,10 +269,51 @@ function argValue(flag) {
   return process.argv[index + 1] ?? null;
 }
 
+/** @param {string} dir @param {Map<string, Buffer>} files */
+function stageServed(dir, files) {
+  mkdirSync(dir, { recursive: true });
+  for (const [name, buf] of files) {
+    if (name.startsWith("/") || name.includes("\\") || name.split("/").includes("..")) {
+      throw new Error(`ruta de export no válida: ${name}`);
+    }
+    const abs = join(dir, name);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, buf);
+  }
+}
+
+function writeGithubOutput(line) {
+  const text = `${line}\n`;
+  const file = process.env.GITHUB_OUTPUT;
+  if (file) appendFileSync(file, text);
+  else process.stdout.write(text);
+}
+
+function diffNames() {
+  if (process.env.CI_GODOT_FILES != null) {
+    return process.env.CI_GODOT_FILES.split("\n").filter(Boolean);
+  }
+  const base = process.env.BASE_SHA;
+  const head = process.env.HEAD_SHA || "HEAD";
+  if (!base) throw new Error("Falta BASE_SHA para listar los proyectos Godot del diff");
+  const out = execFileSync("git", ["diff", "--name-only", `${base}...${head}`], { cwd: root, encoding: "utf8" });
+  return out.split("\n").filter(Boolean);
+}
+
 function invokedDirectly() {
   const entry = process.argv[1];
   if (!entry) return false;
   return import.meta.url === pathToFileURL(entry).href;
+}
+
+if (invokedDirectly() && process.argv.includes("--list-changed")) {
+  const eventName = process.env.EVENT_NAME ?? "pull_request";
+  const found = eventName === "workflow_dispatch" ? listGodotProjects(join(root, "protos")) : godotSlugsInDiff(diffNames());
+  const slugs = found.filter((slug) => existsSync(join(root, "protos", slug, "godot", "project.godot")));
+  const line = `slugs=${JSON.stringify(slugs)}`;
+  writeGithubOutput(line);
+  console.log(line);
+  process.exit(0);
 }
 
 if (invokedDirectly() && process.argv.includes("--check")) {
@@ -246,6 +332,8 @@ if (invokedDirectly() && process.argv.includes("--check")) {
   if (!shell.equals(templateShell)) projectErrors.push("godot/shell.html no es el de la plantilla");
   const arranque = readFileSync(join(root, "templates", "export-estatico", "arranque.js"));
   const prepared = prepareServedFiles(exportDir, arranque);
+  const stage = argValue("--stage");
+  if (stage) stageServed(stage, prepared.files);
   const published = compareServed(protoDir, prepared.files);
   const errors = [...projectErrors, ...prepared.errors, ...published];
   if (errors.length > 0) {

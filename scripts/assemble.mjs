@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statS
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertServedApp } from "./app-budget.mjs";
+import { assertGodotTree } from "./godot-web.mjs";
 import { resolveProtoOutput, STATIC_SKIP } from "./proto-publish.mjs";
 import { writeCapabilityHeaders } from "./proto-csp.mjs";
 import { isShellPath, renderServiceWorker } from "./sw.mjs";
@@ -40,6 +41,10 @@ for (const slug of readdirSync(protosDir)) {
     }
   }
   assertServedApp(target, `protos/${slug}`);
+  const godotErrors = assertGodotTree(protoDir);
+  if (godotErrors.length > 0) {
+    throw new Error(godotErrors.map((line) => `protos/${slug}: ${line}`).join("\n"));
+  }
 }
 
 const shell = [];

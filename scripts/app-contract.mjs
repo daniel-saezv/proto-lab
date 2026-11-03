@@ -35,4 +35,6 @@ export const SERVED_APP_LIMITS = {
   pagesMaxBytes: 25 * 1024 * 1024,
   jsWarnBytes: Math.round(1.5 * 1024 * 1024),
   jsFailBytes: 4 * 1024 * 1024,
+  /** Imagen o audio servidos. El wasm y el pck siguen en `maxBytesPerFile`. */
+  mediaFailBytes: Math.round(1.5 * 1024 * 1024),
 };

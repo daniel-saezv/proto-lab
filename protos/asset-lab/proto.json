@@ -6,7 +6,7 @@
   "date": "2026-10-31",
   "tags": ["test", "puente"],
   "cover": null,
-  "version": "1.3.0",
+  "version": "1.4.0",
   "capabilities": ["save", "geolocation"],
   "history": [
     {
@@ -28,6 +28,11 @@
       "version": "1.3.0",
       "date": "2026-11-03",
       "note": "Declara save y geolocation. Sin save el laboratorio ignora el guardado; allow solo lleva el permiso."
+    },
+    {
+      "version": "1.4.0",
+      "date": "2026-11-03",
+      "note": "El canvas declara touch-action: none para el chequeo móvil del build."
     }
   ],
   "assets": ["media/pixel.png", "media/beep.wav", "media/nota.json"],

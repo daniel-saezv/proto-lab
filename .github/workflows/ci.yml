@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  issues: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +21,10 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      lab: ${{ steps.clasificar.outputs.lab }}
+      protos: ${{ steps.clasificar.outputs.protos }}
+      mode: ${{ steps.clasificar.outputs.mode }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: pnpm/action-setup@v6.1.0
@@ -72,47 +77,22 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test:unit
 
-  # La imagen de los e2e está fijada abajo (v1.64.1-noble). Este job ya no
-  # etiqueta el contenedor; también clasifica el diff para las compuertas.
-  # Se conserva hasta confirmar si el check es obligatorio.
-  playwright-version:
-    name: Versión Playwright (lockfile)
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      version: ${{ steps.playwright-version.outputs.version }}
-      lab: ${{ steps.clasificar.outputs.lab }}
-      protos: ${{ steps.clasificar.outputs.protos }}
-      mode: ${{ steps.clasificar.outputs.mode }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Resolver versión de Playwright
-        id: playwright-version
-        run: |
-          version=$(bash .github/scripts/playwright-lockfile-version.sh)
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - name: Clasificar diff
-        id: clasificar
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/ci-paths.mjs
-
   # Chromium en runners de 2 vCPU va a 1 worker (SwiftShader). Tres shards bajan
   # el reloj de pared. El grupo en serie de private-assets no se parte y puede
   # compartir máquina con otros tests del mismo shard.
   # Imagen fijada: al subir @playwright/test, actualiza este tag (la acción
   # de e2e exige que el CLI del contenedor coincida con el lockfile).
-  # Solo corre si el diff toca el laboratorio o su configuración. Si no, el
-  # job se omite y la compuerta E2E (chromium) informa éxito.
+  # Espera a verificar: la clasificación sale de ese job y no hace falta
+  # otro minuto solo para leer el diff. Si el diff no toca el laboratorio,
+  # este job se omite y la compuerta E2E (chromium) informa éxito.
   e2e-chromium:
     name: E2E (chromium ${{ matrix.shard }}/3)
-    needs: playwright-version
+    needs: verificar
     if: >-
+      always() &&
       (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
-      needs.playwright-version.outputs.lab == 'true'
+      needs.verificar.result != 'cancelled' &&
+      needs.verificar.outputs.lab == 'true'
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble
@@ -133,11 +113,11 @@ jobs:
   # correr e2e, termina en verde; si los shards fallan, falla.
   e2e-chromium-gate:
     name: E2E (chromium)
-    needs: [playwright-version, e2e-chromium]
+    needs: [verificar, e2e-chromium]
     if: >-
       always() &&
       (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
-      needs.playwright-version.result != 'cancelled' &&
+      needs.verificar.result != 'cancelled' &&
       needs.e2e-chromium.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -145,11 +125,10 @@ jobs:
       - name: Resultado de los shards
         run: |
           set -euo pipefail
-          version="${{ needs.playwright-version.result }}"
-          lab="${{ needs.playwright-version.outputs.lab }}"
+          lab="${{ needs.verificar.outputs.lab }}"
           shards="${{ needs.e2e-chromium.result }}"
-          echo "version_job=${version} lab=${lab} shards=${shards}"
-          if [ "${version}" != "success" ]; then
+          echo "verificar=${{ needs.verificar.result }} lab=${lab} shards=${shards}"
+          if [ -z "${lab}" ]; then
             echo "No se pudo clasificar el diff."
             exit 1
           fi
@@ -161,10 +140,12 @@ jobs:
 
   e2e-webkit:
     name: E2E (webkit-iphone trabajo)
-    needs: playwright-version
+    needs: verificar
     if: >-
+      always() &&
       (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
-      needs.playwright-version.outputs.lab == 'true'
+      needs.verificar.result != 'cancelled' &&
+      needs.verificar.outputs.lab == 'true'
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble
@@ -178,11 +159,11 @@ jobs:
 
   e2e-webkit-gate:
     name: E2E (webkit-iphone)
-    needs: [playwright-version, e2e-webkit]
+    needs: [verificar, e2e-webkit]
     if: >-
       always() &&
       (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
-      needs.playwright-version.result != 'cancelled' &&
+      needs.verificar.result != 'cancelled' &&
       needs.e2e-webkit.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -190,11 +171,10 @@ jobs:
       - name: Resultado de WebKit
         run: |
           set -euo pipefail
-          version="${{ needs.playwright-version.result }}"
-          lab="${{ needs.playwright-version.outputs.lab }}"
+          lab="${{ needs.verificar.outputs.lab }}"
           webkit="${{ needs.e2e-webkit.result }}"
-          echo "version_job=${version} lab=${lab} webkit=${webkit}"
-          if [ "${version}" != "success" ]; then
+          echo "verificar=${{ needs.verificar.result }} lab=${lab} webkit=${webkit}"
+          if [ -z "${lab}" ]; then
             echo "No se pudo clasificar el diff."
             exit 1
           fi
