@@ -1,15 +1,10 @@
-# Medición desechable del export web de Godot 4.7.2 en un solo hilo.
-# No fusionar. No publica el sitio, no usa secretos y no habla con R2.
-# Solo se dispara en esta rama, y solo si cambia la muestra o este archivo.
+# Mide un export web de Godot 4.7.2 en un solo hilo.
+# No publica el sitio, no usa secretos y no habla con R2.
+# Solo se lanza a mano (workflow_dispatch). No hay push, pull_request ni schedule.
 name: Medición Godot web
 
 on:
-  push:
-    branches:
-      - cursor/medir-godot-web-da18
-    paths:
-      - "medida/**"
-      - ".github/workflows/medir-godot.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
