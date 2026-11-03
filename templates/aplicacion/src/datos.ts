@@ -25,6 +25,9 @@ export type LabData = {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
+  sharedGet(key: string): Promise<string | null>;
+  sharedSet(key: string, value: string): Promise<void>;
+  sharedRemove(key: string): Promise<void>;
   revoke(): void;
 };
 
@@ -59,6 +62,15 @@ export function normalizeRelativePath(raw: string): string | null {
 function slugOf(pathname: string): string | null {
   const match = pathname.match(/^\/protos\/([a-z0-9-]+)(\/|$)/);
   return match?.[1] ?? null;
+}
+
+/** Slug de la página abierta. La API compartida no acepta otro. */
+export function appSlugFromHref(pageHref: string): string | null {
+  try {
+    return slugOf(new URL(pageHref).pathname);
+  } catch {
+    return null;
+  }
 }
 
 function directoryOf(page: URL, slug: string): string {
@@ -289,6 +301,54 @@ export function createSaveClient(target: SaveTarget, timeoutMs = 8000) {
   };
 }
 
+type SharedResponse = { ok?: boolean; value?: unknown; error?: unknown };
+
+export function createSharedClient(options: { pageHref: string; fetchImpl?: typeof fetch }) {
+  const fetchImpl = options.fetchImpl ?? fetch;
+
+  async function request(op: "get" | "set" | "delete", key: string, value?: string): Promise<string | null> {
+    const slug = appSlugFromHref(options.pageHref);
+    if (!slug) throw new Error("not-allowed");
+    const body: { op: "get" | "set" | "delete"; key: string; value?: string } = { op, key };
+    if (op === "set") body.value = value ?? "";
+    let response: Response;
+    try {
+      response = await fetchImpl(`/api/apps/${slug}/shared`, {
+        method: "POST",
+        credentials: "same-origin",
+        redirect: "manual",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new Error("unavailable");
+    }
+    if (response.status >= 300 && response.status < 400) throw new Error("unauthorized");
+    let payload: SharedResponse | null = null;
+    try {
+      payload = (await response.json()) as SharedResponse;
+    } catch {
+      throw new Error("unavailable");
+    }
+    if (!payload || payload.ok !== true) {
+      throw new Error(typeof payload?.error === "string" && payload.error ? payload.error : "unavailable");
+    }
+    if (payload.value == null) return null;
+    if (typeof payload.value !== "string") throw new Error("unavailable");
+    return payload.value;
+  }
+
+  return {
+    get: (key: string) => request("get", key),
+    set: async (key: string, value: string) => {
+      await request("set", key, value);
+    },
+    remove: async (key: string) => {
+      await request("delete", key);
+    },
+  };
+}
+
 declare global {
   interface Window {
     __protoLabData?: LabData;
@@ -319,6 +379,10 @@ export function installLabData(
     revokeObjectURL: options?.revokeObjectURL,
   });
   const save = createSaveClient(target, options?.timeoutMs);
+  const shared = createSharedClient({
+    pageHref: target.location.href,
+    fetchImpl: options?.fetchImpl ?? target.fetch.bind(target),
+  });
   const api: LabData = {
     load: (path) => files.load(path),
     json: (path) => files.json(path),
@@ -326,6 +390,9 @@ export function installLabData(
     get: (key) => save.get(key),
     set: (key, value) => save.set(key, value),
     remove: (key) => save.remove(key),
+    sharedGet: (key) => shared.get(key),
+    sharedSet: (key, value) => shared.set(key, value),
+    sharedRemove: (key) => shared.remove(key),
     revoke: () => files.revoke(),
   };
   target.__protoLabData = api;

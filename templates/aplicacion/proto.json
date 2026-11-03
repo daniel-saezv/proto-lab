@@ -6,7 +6,7 @@
   "date": "2026-11-02",
   "tags": ["plantilla"],
   "cover": null,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "capabilities": ["save"],
   "history": [
     {
@@ -23,6 +23,11 @@
       "version": "0.3.0",
       "date": "2026-11-03",
       "note": "Declara la capacidad save. wasm y los permisos de dispositivo se añaden aparte."
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-11-03",
+      "note": "sharedGet, sharedSet y sharedRemove si capabilities incluye shared."
     }
   ]
 }

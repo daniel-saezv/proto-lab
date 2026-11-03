@@ -82,7 +82,7 @@ function parseTokenList(dirName, field, value, allowed) {
 }
 
 /**
- * `capabilities` es la lista cerrada (save, wasm y permisos de dispositivo).
+ * `capabilities` es la lista cerrada (save, wasm, shared y permisos de dispositivo).
  * `permissions` sigue valiendo como lista solo de dispositivos. Si aparecen
  * los dos, se unen y el orden de salida es el canónico.
  */
@@ -96,6 +96,10 @@ function parseCapabilities(dirName, manifest) {
     capabilities: APP_CAPABILITIES.filter((item) => wanted.has(item)),
     permissions: APP_PERMISSIONS.filter((item) => wanted.has(item)),
   };
+}
+
+export function sharedCapabilitySlugs(entries) {
+  return entries.filter((entry) => entry.capabilities.includes("shared")).map((entry) => entry.slug);
 }
 
 function parseReadyMs(dirName, value) {

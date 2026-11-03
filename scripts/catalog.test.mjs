@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { assertManifest, readCatalog } from "./catalog-lib.mjs";
+import { assertManifest, readCatalog, sharedCapabilitySlugs } from "./catalog-lib.mjs";
 import { isShellPath, renderServiceWorker } from "./sw.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -26,6 +26,8 @@ describe("catálogo", () => {
     const assetLab = entries.find((entry) => entry.slug === "asset-lab");
     expect(assetLab?.capabilities).toEqual(["save", "geolocation"]);
     expect(assetLab?.permissions).toEqual(["geolocation"]);
+    const sharedFile = JSON.parse(readFileSync(join(root, "functions/_lib/shared-slugs.json"), "utf8"));
+    expect(sharedFile).toEqual(sharedCapabilitySlugs(entries));
   });
 
   it("rechaza un permiso fuera de la lista y un readyMs imposible", () => {
@@ -61,6 +63,13 @@ describe("catálogo", () => {
     const wasm = assertManifest("demo", { ...base, capabilities: ["wasm"] }, root);
     expect(wasm.capabilities).toEqual(["wasm"]);
     expect(wasm.permissions).toEqual([]);
+    expect(() => assertManifest("demo", { ...base, capabilities: ["shared", "shared"] }, root)).toThrow(/duplicad/);
+    expect(() => assertManifest("demo", { ...base, capabilities: "shared" }, root)).toThrow(/lista/);
+    const shared = assertManifest("demo", { ...base, capabilities: ["camera", "shared", "save"] }, root);
+    expect(shared.capabilities).toEqual(["save", "shared", "camera"]);
+    expect(shared.permissions).toEqual(["camera"]);
+    const plain = assertManifest("demo", base, root);
+    expect(sharedCapabilitySlugs([shared, plain, legacy])).toEqual(["demo"]);
   });
 
   it("la plantilla tiene un manifiesto válido y no entra en el catálogo", () => {

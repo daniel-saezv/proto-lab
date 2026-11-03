@@ -4,7 +4,7 @@ Copia esta carpeta a `protos/<slug>/`. No está en el catálogo ni en el sitio: 
 
 1. Renombra el directorio al slug (`a-z`, números y guiones).
 2. En `package.json`, cambia `name` a `@proto-lab/<slug>` (tiene que ser único en el workspace).
-3. En `proto.json`, iguala `slug` al directorio y reescribe título, descripción, autor, fecha, etiquetas, versión e historial. `readyMs` es el plazo de arranque, en milisegundos. `capabilities`, si hace falta, solo puede listar `save`, `wasm`, `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope` y `magnetometer`. Esta plantilla declara `save`. `wasm` añade `wasm-unsafe-eval` a la CSP de este slug. Los permisos de dispositivo rellenan el atributo `allow` del iframe y la `Permissions-Policy` de `/protos/<slug>/` (`(self)` solo para los declarados).
+3. En `proto.json`, iguala `slug` al directorio y reescribe título, descripción, autor, fecha, etiquetas, versión e historial. `readyMs` es el plazo de arranque, en milisegundos. `capabilities`, si hace falta, solo puede listar `save`, `wasm`, `shared`, `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope` y `magnetometer`. Esta plantilla declara `save`. `wasm` añade `wasm-unsafe-eval` a la CSP de este slug. `shared` abre `sharedGet`, `sharedSet` y `sharedRemove`. Los permisos de dispositivo rellenan el atributo `allow` del iframe y la `Permissions-Policy` de `/protos/<slug>/` (`(self)` solo para los declarados). `save`, `wasm` y `shared` no entran en `allow`.
 4. `vite.config.ts` toma el `base` del slug del manifiesto.
 5. Al pintar el primer fotograma, avisa con `postLabSignal("ready", parent)`. Al cargar el script, avisa `alive`.
 6. Deja `stop()` en `window.__protoLabApp`. Tiene que cancelar bucles, quitar listeners, cerrar el audio, soltar WebGL (`loseContext`) y llamar a `window.__protoLabData.revoke()`.
@@ -18,10 +18,13 @@ const beep = await window.__protoLabData.load("media/beep.wav");
 await window.__protoLabData.set("partida", JSON.stringify({ nivel: 1 }));
 const cruda = await window.__protoLabData.get("partida");
 await window.__protoLabData.remove("partida");
+await window.__protoLabData.sharedSet("mesa", "norte");
+const puesta = await window.__protoLabData.sharedGet("mesa");
+await window.__protoLabData.sharedRemove("mesa");
 ```
 
-`load` devuelve `{ mime, buffer }`. `json` devuelve el valor. `blobUrl` devuelve una URL de objeto para una imagen o un audio. `get` devuelve un string o `null`. `set` y `remove` guardan y borran una clave. El valor es un string: si hace falta un objeto, se serializa antes.
+`load` devuelve `{ mime, buffer }`. `json` devuelve el valor. `blobUrl` devuelve una URL de objeto para una imagen o un audio. `get` devuelve un string o `null`. `set` y `remove` guardan y borran una clave de esa persona. `sharedGet`, `sharedSet` y `sharedRemove` hacen lo mismo con un dato que ven todas las sesiones, y solo si `proto.json` declara `"capabilities": ["shared"]`. El valor es un string: si hace falta un objeto, se serializa antes. No sondees: cada llamada compartida es una petición.
 
-Cupo de archivos por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. La segunda lectura de la misma ruta reutiliza la caché de esa apertura. Cupo de guardado por slug: 32 claves, 64 caracteres por clave, 32 KiB por valor y 256 KiB en total. La clave solo admite letras, números, punto, guion y guion bajo.
+Cupo de archivos por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. La segunda lectura de la misma ruta reutiliza la caché de esa apertura. Cupo de guardado por slug, local o compartido: 32 claves, 64 caracteres por clave, 32 KiB por valor y 256 KiB en total. La clave solo admite letras, números, punto, guion y guion bajo.
 
 El contrato con el laboratorio está en `AGENTS.md`.

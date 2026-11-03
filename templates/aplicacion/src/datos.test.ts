@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAppSave, replyToSave } from "../../../apps/world/src/app-save";
-import { DATA_LIMITS, createFileLoader, createSaveClient, installLabData, resolveAppFile, type DataLimits } from "./datos";
+import { DATA_LIMITS, appSlugFromHref, createFileLoader, createSaveClient, createSharedClient, installLabData, resolveAppFile, type DataLimits } from "./datos";
 
 const page = "http://127.0.0.1:4173/protos/demo/";
 
@@ -176,6 +176,36 @@ describe("cliente de guardado", () => {
     const pending = client.get("partida");
     listeners[0]?.({ source: {}, data: { source: "proto-lab", type: "save-result", id: 1, ok: true, value: "no" } } as MessageEvent);
     await expect(pending).rejects.toThrow(/timeout/);
+  });
+});
+
+describe("datos compartidos", () => {
+  it("pide el slug de la página y no reintenta un cupo", async () => {
+    expect(appSlugFromHref("http://127.0.0.1:4173/protos/demo/index.html")).toBe("demo");
+    expect(appSlugFromHref("http://127.0.0.1:4173/")).toBeNull();
+    const calls: Array<{ href: string; init: RequestInit | undefined }> = [];
+    const fetchImpl = vi.fn(async (href: string | URL, init?: RequestInit) => {
+      calls.push({ href: String(href), init });
+      const key = JSON.parse(String(init?.body)).key as string;
+      if (key === "lleno") {
+        return new Response(JSON.stringify({ ok: false, error: "quota", message: "cupo" }), { status: 400 });
+      }
+      return new Response(JSON.stringify({ ok: true, value: key === "mesa" ? "norte" : null }), { status: 200 });
+    });
+    const client = createSharedClient({ pageHref: "http://127.0.0.1:4173/protos/demo/", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.get("mesa")).resolves.toBe("norte");
+    await client.set("mesa", "sur");
+    await client.remove("mesa");
+    expect(calls.map((call) => call.href)).toEqual(["/api/apps/demo/shared", "/api/apps/demo/shared", "/api/apps/demo/shared"]);
+    expect(calls[0]?.init?.credentials).toBe("same-origin");
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ op: "set", key: "mesa", value: "sur" });
+    expect(JSON.parse(String(calls[0]?.init?.body))).not.toHaveProperty("slug");
+    await expect(client.set("lleno", "x")).rejects.toThrow("quota");
+    expect(calls).toHaveLength(4);
+    const outside = createSharedClient({ pageHref: "http://127.0.0.1:4173/", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(outside.get("mesa")).rejects.toThrow("not-allowed");
+    expect(calls).toHaveLength(4);
   });
 });
 

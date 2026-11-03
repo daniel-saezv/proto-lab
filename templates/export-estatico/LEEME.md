@@ -29,9 +29,12 @@ window.__protoLabData.blobUrl("media/sprite.png").then(function (url) {});
 window.__protoLabData.set("partida", JSON.stringify({ nivel: 1 }));
 window.__protoLabData.get("partida").then(function (cruda) {});
 window.__protoLabData.remove("partida");
+window.__protoLabData.sharedSet("mesa", "norte");
+window.__protoLabData.sharedGet("mesa").then(function (puesta) {});
+window.__protoLabData.sharedRemove("mesa");
 ```
 
-Las rutas son relativas y tienen que quedarse dentro de `/protos/<slug>/`. Entran imágenes, audio y JSON. Cupo por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. El guardado vive en `localStorage` del laboratorio (`proto-lab:app:<slug>`): 32 claves, 32 KiB por valor y 256 KiB por slug. El export no usa `localStorage` ni `sessionStorage` por su cuenta.
+Las rutas son relativas y tienen que quedarse dentro de `/protos/<slug>/`. Entran imágenes, audio y JSON. Cupo por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. El guardado de una persona vive en `localStorage` del laboratorio (`proto-lab:app:<slug>`): 32 claves, 32 KiB por valor y 256 KiB por slug. Los datos compartidos (`sharedGet`, `sharedSet`, `sharedRemove`) usan el mismo cupo y solo responden si `proto.json` declara `"capabilities": ["shared"]`. El export no usa `localStorage` ni `sessionStorage` por su cuenta, ni sondea la API compartida.
 
 La carpeta no necesita `package.json`. El build del laboratorio copia los archivos tal cual. El validador de la aplicación servida sigue aplicando: 64 archivos, 4 MiB por archivo, 16 MiB en total, aviso de JS a 1,5 MiB y fallo a 4 MiB.
 

@@ -6,6 +6,7 @@ templates/*/dist
 apps/world/src/generated/*
 !apps/world/src/generated/.gitkeep
 functions/_lib/slugs.json
+functions/_lib/shared-slugs.json
 test-results
 shots/
 playwright-report
