@@ -23,6 +23,7 @@ import {
   resolvePosition,
   walkToward,
 } from "./navigation";
+import { WORKSHOP_SEAT } from "./workshop-cinematic";
 
 function dot(a: { x: number; z: number }, b: { x: number; z: number }): number {
   return a.x * b.x + a.z * b.z;
@@ -123,10 +124,16 @@ describe("rincón de sofás", () => {
       const distance = Math.hypot(LAYOUT.radio.x - other.x, LAYOUT.radio.z - other.z);
       expect(distance, `zona de la radio y ${other.id}`).toBeGreaterThan(RADIO_USE_RADIUS + other.radius);
     }
+    const deskDistance = Math.hypot(LAYOUT.radio.x - LAYOUT.desk.x, LAYOUT.radio.z - LAYOUT.desk.z);
+    expect(deskDistance, "zona de la radio y el escritorio").toBeGreaterThan(RADIO_USE_RADIUS + LAYOUT.desk.collider);
+    const seatDistance = Math.hypot(LAYOUT.radio.x - WORKSHOP_SEAT.x, LAYOUT.radio.z - WORKSHOP_SEAT.z);
+    expect(seatDistance, "zona de la radio y la silla del escritorio").toBeGreaterThan(RADIO_USE_RADIUS + 0.6);
     const position = { x: RADIO_APPROACH.x, z: RADIO_APPROACH.z };
     resolvePosition(position, colliders, bounds);
     expect(position.x).toBeCloseTo(RADIO_APPROACH.x, 2);
     expect(position.z).toBeCloseTo(RADIO_APPROACH.z, 2);
+    const approachDesk = Math.hypot(position.x - LAYOUT.desk.x, position.z - LAYOUT.desk.z);
+    expect(approachDesk, "el uso de la radio no cae en el escritorio").toBeGreaterThan(LAYOUT.desk.collider + PLAYER_RADIUS);
     const own = Math.hypot(position.x - LAYOUT.radio.x, position.z - LAYOUT.radio.z);
     expect(own).toBeLessThanOrEqual(RADIO_USE_RADIUS);
     expect(own).toBeGreaterThan(LAYOUT.radio.collider + PLAYER_RADIUS);
