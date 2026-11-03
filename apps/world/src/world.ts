@@ -543,6 +543,8 @@ export function startWorld(options: {
   let dialogueElapsed = 0;
   let dialogueSpeaker = "";
   let dialogueFlourish = 0;
+  let returnFlourish = 0;
+  let returnMarqueePulse = 0;
   const dialogueFrom = new Vector3();
   const dialogueTo = new Vector3();
   const dialogueLookFrom = new Vector3();
@@ -647,6 +649,11 @@ export function startWorld(options: {
     gpuLive = true;
     options.viewport.dataset.gpu = "1";
     resize();
+    if (!calmDialogue) {
+      returnFlourish = 0.45;
+      returnMarqueePulse = 0.55;
+    }
+    kickLoop();
   }
 
   function loop() {
@@ -659,6 +666,8 @@ export function startWorld(options: {
     lastFrame = now;
     frame += dt;
     if (dialogueFlourish > 0) dialogueFlourish = Math.max(0, dialogueFlourish - dt);
+    if (returnFlourish > 0) returnFlourish = Math.max(0, returnFlourish - dt);
+    if (returnMarqueePulse > 0) returnMarqueePulse = Math.max(0, returnMarqueePulse - dt);
     const sample = input.read();
     input.resetLook();
     const readingBoard = boardPhase === "enter" || boardPhase === "hold";
@@ -717,8 +726,9 @@ export function startWorld(options: {
       if (!e2eRender) {
         inventor.position.y = Math.sin(frame * 2) * 0.04;
         const arm = inventor.userData.arm as Object3D | undefined;
+        const flourishAmt = Math.max(dialogueFlourish, returnFlourish);
         if (arm) {
-          const flourish = dialogueFlourish > 0 ? Math.sin(frame * 14) * 0.4 * (dialogueFlourish / 0.45) : 0;
+          const flourish = flourishAmt > 0 ? Math.sin(frame * 14) * 0.4 * (flourishAmt / 0.45) : 0;
           arm.rotation.x = Math.sin(frame * 1.6) * 0.25 + flourish;
         }
         const armL = inventor.userData.armL as Object3D | undefined;
@@ -742,13 +752,19 @@ export function startWorld(options: {
         if (!data.pulseBase) data.pulseBase = material.color.clone();
         material.color.copy(data.pulseBase).multiplyScalar(pulse);
       }
+      const marqueeMat = arcadeMachine.userData.marqueeMat as MeshBasicMaterial | undefined;
+      if (marqueeMat && returnMarqueePulse > 0) {
+        const phase = 1 - returnMarqueePulse / 0.55;
+        marqueeMat.color.setScalar(0.82 + Math.sin(phase * Math.PI) * 0.45);
+      }
     }
     for (const ring of highlightRings.values()) {
       const material = ring.material as MeshBasicMaterial;
       if (!ring.visible) continue;
       material.opacity = reduced || e2eRender ? 0.92 : 0.58 + Math.sin(frame * 4) * 0.28;
     }
-    ambient.tick(frame, dt, player.position, bass, mid);
+    const playerStill = Math.hypot(velX, velZ) <= 0.12;
+    ambient.tick(frame, dt, player.position, bass, mid, playerStill);
     lobbyWhiteboard.tick(now);
 
     if (!selectorOpen && options.prototypes.length > 1 && !reduced && !e2eRender) {
@@ -1794,6 +1810,7 @@ export function startWorld(options: {
     const marquee = new Mesh(geo(new PlaneGeometry(1.16, 0.32)), marqueeMat);
     marquee.position.set(0, 1.7, 0.32);
     group.add(marquee);
+    group.userData.marqueeMat = marqueeMat;
     box(group, 1.08, 0.74, 0.05, 0, 1.16, 0.3, 0x100c18, false);
     const screen = new Mesh(geo(new PlaneGeometry(0.94, 0.6)), screenMaterial);
     screen.position.set(0, 1.16, 0.35);
