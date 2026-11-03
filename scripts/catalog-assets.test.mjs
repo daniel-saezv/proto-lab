@@ -8,6 +8,30 @@ import { assertManifest, readCatalog } from "./catalog-lib.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+const LIMIT_LINES = ["maxCount: 64", "maxBytesPerFile: 4 * 1024 * 1024", "maxBytesTotal: 16 * 1024 * 1024", "maxRequestsPerSession: 128"];
+
+describe("cupos de la decisión 4", () => {
+  it("coinciden en el manifiesto, el laboratorio y las plantillas", () => {
+    expect(ASSET_LIMITS).toEqual({
+      maxCount: 64,
+      maxBytesPerFile: 4 * 1024 * 1024,
+      maxBytesTotal: 16 * 1024 * 1024,
+      maxRequestsPerSession: 128,
+    });
+    for (const relative of [
+      "scripts/asset-path.mjs",
+      "apps/world/src/asset-limits.ts",
+      "templates/aplicacion/src/datos.ts",
+      "templates/export-estatico/arranque.js",
+    ]) {
+      const source = readFileSync(join(root, relative), "utf8");
+      for (const line of LIMIT_LINES) expect(source, relative).toContain(line);
+    }
+    expect(readFileSync(join(root, "templates/aplicacion/LEEME.md"), "utf8")).toContain("__protoLabData");
+    expect(readFileSync(join(root, "templates/export-estatico/LEEME.md"), "utf8")).toContain("__protoLabData");
+  });
+});
+
 describe("rutas de assets", () => {
   it("normaliza y rechaza rutas peligrosas", () => {
     expect(normalizeAssetPath("media/pixel.png")).toBe("media/pixel.png");

@@ -96,7 +96,7 @@ test.describe("recursos privados del puente", () => {
       const assets = window.__protoLabAssets;
       if (!assets) return "sin-puente";
       let last = "";
-      for (let index = 0; index < 70; index += 1) {
+      for (let index = 0; index < 140; index += 1) {
         try {
           await assets.getBlobUrl("media/pixel.png");
           last = "ok";
@@ -130,5 +130,48 @@ test.describe("recursos privados del puente", () => {
     const frame = page.frameLocator("iframe");
     await waitAssetLabReady(frame);
     await context.close();
+  });
+
+  test("JSON relativo y guardado por slug", async ({ page }) => {
+    await page.goto("/?e2e=1");
+    await expect(page.getByTestId("world-ready")).toBeVisible();
+    await page.evaluate(() => localStorage.removeItem("proto-lab:app:asset-lab"));
+    await page.evaluate(() => {
+      if (!window.__protoLab?.openPrototype) throw new Error("openPrototype no disponible");
+      window.__protoLab.openPrototype("asset-lab");
+    });
+    await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+    const frame = page.frameLocator("iframe");
+    await waitAssetLabReady(frame);
+    const note = await frame.locator("body").evaluate(async () => window.__assetLab?.loadNote());
+    expect(note).toEqual({ nota: "laboratorio" });
+    const mime = await frame.locator("body").evaluate(async () => window.__assetLab?.jsonMime() ?? "");
+    expect(mime).toBe("application/json");
+    const saved = await frame.locator("body").evaluate(async () => window.__assetLab?.roundtripSave("partida", "noche-1") ?? null);
+    expect(saved).toBe("noche-1");
+    const outside = await frame.locator("body").evaluate(async () => window.__assetLab?.probeRelative("../chispa/index.html") ?? "");
+    expect(outside).toBe("not-allowed");
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          window.postMessage({ source: "proto-lab", type: "save", id: 99, op: "set", key: "intruso", value: "no" }, "*");
+          setTimeout(resolve, 0);
+        }),
+    );
+    const bag = await page.evaluate(() => localStorage.getItem("proto-lab:app:asset-lab") ?? "");
+    expect(bag).toContain("noche-1");
+    expect(bag).not.toContain("intruso");
+    expect(await page.evaluate(() => localStorage.getItem("proto-lab:app:chispa"))).toBeNull();
+    await page.getByTestId("close-prototype").click();
+    await expect(page.getByTestId("prototype-chrome")).toBeHidden();
+    await page.evaluate(() => {
+      if (!window.__protoLab?.openPrototype) throw new Error("openPrototype no disponible");
+      window.__protoLab.openPrototype("asset-lab");
+    });
+    await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+    const again = page.frameLocator("iframe");
+    await expect.poll(async () => again.locator("body").evaluate(() => typeof window.__assetLab?.readSave === "function")).toBe(true);
+    await expect.poll(async () => again.locator("body").evaluate(async () => window.__assetLab?.readSave("partida") ?? null)).toBe("noche-1");
+    await page.evaluate(() => localStorage.removeItem("proto-lab:app:asset-lab"));
   });
 });

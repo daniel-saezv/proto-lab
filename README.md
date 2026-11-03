@@ -45,13 +45,13 @@ El `proto.json` lleva:
 - `tags`, `cover` (archivo en la misma carpeta, o `null`)
 - `version` y `history` (la versión actual tiene que aparecer en el historial)
 - opcional: `"readyMs"` (plazo de arranque, por defecto 8000 ms) y `"permissions"` (lista cerrada; ver [`AGENTS.md`](AGENTS.md))
-- opcional: `"assets": ["media/foo.png", …]` — puente heredado de recursos declarados (límites en [`AGENTS.md`](AGENTS.md))
+- opcional: `"assets": ["media/foo.png", …]` — puente heredado de recursos declarados (64 rutas, 4 MiB, 16 MiB; ver [`AGENTS.md`](AGENTS.md))
 
 No hace falta registrar la carpeta en la raíz. `pnpm build` lee los manifiestos que hay en `protos/`, publica el laboratorio en `/` y cada aplicación en `/protos/<slug>/`. El mundo coloca una máquina por manifiesto. Crea también la etiqueta de GitHub con el slug para que las iteraciones puedan llevarla.
 
 Al abrirla, el laboratorio carga `/protos/<slug>/` en un iframe del mismo origen, sin `sandbox` y sin documento `blob:`. La aplicación avisa `alive` al cargar y `ready` cuando el primer fotograma ya se ve; hasta entonces una capa tapa el iframe. `window.__protoLabApp.stop()` es obligatorio: al cerrar, el laboratorio lo llama, pasa el iframe a `about:blank` y lo quita. El contrato (señales, permisos, topes de la aplicación servida y las dos plantillas) está en [`AGENTS.md`](AGENTS.md).
 
-Si Access devuelve la página del PIN en vez de la aplicación, no se monta el iframe y queda el aviso con Volver. En producción y en las previews, la aplicación de Access tiene que permitir iframes (`allow_iframe`); lo activa el dueño en el dashboard. En local no hay Access. La aplicación puede pedir sus propios archivos bajo `/protos/<slug>/`. No usa `localStorage`. Abrir `/protos/<slug>/` en una pestaña sigue funcionando.
+Si Access devuelve la página del PIN en vez de la aplicación, no se monta el iframe y queda el aviso con Volver. En producción y en las previews, la aplicación de Access tiene que permitir iframes (`allow_iframe`); lo activa el dueño en el dashboard. En local no hay Access. La aplicación pide imágenes, audio y JSON bajo `/protos/<slug>/` con `window.__protoLabData`, y guarda la partida de una persona en el `localStorage` del laboratorio (`proto-lab:app:<slug>`). Abrir `/protos/<slug>/` en una pestaña sigue funcionando.
 
 `pnpm previews` captura la vista de cada aplicación, con canvas o sin él, y no depende de un gancho concreto. Si existe `window.__protoLabPreview`, lo llama antes de la foto.
 

@@ -6,13 +6,18 @@
   "date": "2026-11-02",
   "tags": ["plantilla"],
   "cover": null,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "readyMs": 20000,
   "history": [
     {
       "version": "0.1.0",
       "date": "2026-11-02",
       "note": "Shell sin Vite: ready al primer fotograma y stop() con ganchos."
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-11-02",
+      "note": "El shell expone archivos relativos y el guardado por slug."
     }
   ]
 }

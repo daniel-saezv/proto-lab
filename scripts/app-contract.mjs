@@ -15,7 +15,7 @@ export const READY_MS = {
   max: 60000,
 };
 
-/** Topes de la aplicación ya servida (decisión 4), no del puente de assets. */
+/** Topes de la aplicación ya servida (decisión 4). El cargador de rutas usa las mismas cifras y 128 peticiones. */
 export const SERVED_APP_LIMITS = {
   maxFiles: 64,
   maxBytesPerFile: 4 * 1024 * 1024,

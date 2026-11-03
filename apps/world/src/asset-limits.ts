@@ -1,9 +1,9 @@
-/** Debe coincidir con scripts/asset-path.mjs (ASSET_LIMITS). */
+/** Debe coincidir con scripts/asset-path.mjs y con DATA_LIMITS de las plantillas. */
 export const ASSET_LIMITS = {
-  maxCount: 32,
-  maxBytesPerFile: 2 * 1024 * 1024,
-  maxBytesTotal: 8 * 1024 * 1024,
-  maxRequestsPerSession: 64,
+  maxCount: 64,
+  maxBytesPerFile: 4 * 1024 * 1024,
+  maxBytesTotal: 16 * 1024 * 1024,
+  maxRequestsPerSession: 128,
 } as const;
 
 export function normalizeAssetPath(raw: string): string | null {
