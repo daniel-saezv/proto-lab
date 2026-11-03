@@ -48,7 +48,7 @@ import {
 import { attachInput } from "./input";
 import { getMusicEnergy } from "./ambience-music";
 import { addAmbient } from "./ambient";
-import { dialogueCameraPose, dialogueSubject, dialogueTransitionSeconds } from "./dialogue-camera";
+import { dialogueCameraPose, dialogueSubject, dialogueTransitionSeconds, type DialogueSubject } from "./dialogue-camera";
 import type { DialogueCue } from "./dialogue-cues";
 import { drawTitleCard } from "./title-card";
 import {
@@ -78,6 +78,16 @@ import {
   type ColliderSpot,
 } from "./navigation";
 import { DEBUG_MARKERS, VIEWPOINTS, viewpointById } from "./viewpoints";
+import {
+  homePose,
+  poseAlong,
+  remainingBlend,
+  seatPose,
+  workshopSeatCamera,
+  workshopSeatSubject,
+  workshopTripSeconds,
+  type InventorPose,
+} from "./workshop-cinematic";
 import {
   FLOOR_LAMPS,
   HANGING_GLOW,
@@ -155,6 +165,11 @@ export type WorldHandle = {
   releaseRenderer: () => void;
   /** Vuelve a crear el renderer sobre la misma escena, sin mover al jugador. */
   restoreRenderer: () => void;
+  /** Lleva al Inventor al escritorio o a su sitio. `movesCamera` false deja la cámara en paz. */
+  playWorkshopTrip: (dest: "desk" | "home", onDone: () => void, movesCamera?: boolean) => void;
+  skipWorkshopTrip: () => void;
+  /** Si se quedó a medias, lo devuelve a (−1,5, −3,4) antes de un diálogo nuevo. */
+  ensureInventorHome: () => void;
   dispose: () => void;
 };
 
@@ -551,6 +566,24 @@ export function startWorld(options: {
   const dialogueLookTo = new Vector3();
   const dialogueLook = new Vector3();
   const calmDialogue = reduced || e2eRender;
+  let dialoguePlace: "stand" | "desk" = "stand";
+  let inventorPose: InventorPose = homePose();
+  let workshopToken = 0;
+  type WorkshopTrip = {
+    dest: "desk" | "home";
+    from: InventorPose;
+    u: number;
+    rebaseU: number;
+    movesCamera: boolean;
+    onDone: () => void;
+  };
+  let workshopTrip: WorkshopTrip | null = null;
+  let perfWorkMs = 0;
+  const workshopCamFrom = new Vector3();
+  const workshopCamTo = new Vector3();
+  const workshopLookFrom = new Vector3();
+  const workshopLookTo = new Vector3();
+  const workshopLook = new Vector3();
 
   let handlePrimaryTap: (clientX: number, clientY: number) => void = () => {};
 
@@ -583,6 +616,10 @@ export function startWorld(options: {
         boardLook.copy(boardLookTo);
         camera.lookAt(boardLook);
       }
+      return;
+    }
+    if (workshopTrip?.movesCamera) {
+      retargetWorkshopCamera();
       return;
     }
     if (dialoguePhase !== "idle") syncDialogueTarget();
@@ -724,15 +761,24 @@ export function startWorld(options: {
       const sconceBase = (lampLight.userData.base as number) ?? SCONCE_LIGHT.intensity;
       lampLight.intensity = sconceBase * (0.94 + Math.sin(frame * 2.2) * 0.06) * lampBeat;
       if (!e2eRender) {
-        inventor.position.y = Math.sin(frame * 2) * 0.04;
         const arm = inventor.userData.arm as Object3D | undefined;
-        const flourishAmt = Math.max(dialogueFlourish, returnFlourish);
-        if (arm) {
-          const flourish = flourishAmt > 0 ? Math.sin(frame * 14) * 0.4 * (flourishAmt / 0.45) : 0;
-          arm.rotation.x = Math.sin(frame * 1.6) * 0.25 + flourish;
-        }
         const armL = inventor.userData.armL as Object3D | undefined;
-        if (armL) armL.rotation.x = Math.sin(frame * 1.6 + 2.1) * 0.18;
+        const posing = workshopTrip !== null || inventorPose.sit > 0.001;
+        if (!posing) {
+          inventor.position.y = Math.sin(frame * 2) * 0.04;
+          const flourishAmt = Math.max(dialogueFlourish, returnFlourish);
+          if (arm) {
+            const flourish = flourishAmt > 0 ? Math.sin(frame * 14) * 0.4 * (flourishAmt / 0.45) : 0;
+            arm.rotation.x = Math.sin(frame * 1.6) * 0.25 + flourish;
+          }
+          if (armL) armL.rotation.x = Math.sin(frame * 1.6 + 2.1) * 0.18;
+        } else if (inventorPose.sit > 0.35) {
+          if (arm) arm.rotation.x = -0.55 * inventorPose.sit;
+          if (armL) armL.rotation.x = -0.35 * inventorPose.sit;
+        } else {
+          if (arm) arm.rotation.x = Math.sin(frame * 8) * 0.45;
+          if (armL) armL.rotation.x = Math.sin(frame * 8 + Math.PI) * 0.45;
+        }
         const torso = inventor.userData.torso as Object3D | undefined;
         if (torso) torso.scale.y = breathScale(frame, 0.4);
         const inventorEyes = inventor.userData.eyes as Object3D | undefined;
@@ -775,9 +821,12 @@ export function startWorld(options: {
       }
     }
 
+    if (workshopTrip) stepWorkshopTrip(dt);
     const activeCamera = cameraMode === "top" ? overviewCamera : camera;
     if (boardPhase !== "idle") {
       stepBoardCamera(dt);
+    } else if (workshopTrip?.movesCamera) {
+      camera.lookAt(workshopLook);
     } else if (dialoguePhase !== "idle") {
       stepDialogueCamera(dt);
     } else if (cameraMode === "top") {
@@ -814,6 +863,7 @@ export function startWorld(options: {
     updateTarget();
     renderer.render(scene, activeCamera);
     labelRenderer.render(scene, activeCamera);
+    if (options.perf) perfWorkMs = performance.now() - now;
   }
 
   function updateTarget() {
@@ -1119,10 +1169,132 @@ export function startWorld(options: {
     }
   }
 
-  function syncDialogueTarget() {
-    const subject = dialogueSubject(dialogueSpeaker);
+  function subjectForDialogue(): DialogueSubject | undefined {
+    if (dialoguePlace === "desk") return workshopSeatSubject();
+    return dialogueSubject(dialogueSpeaker);
+  }
+
+  function aimWorkshopEnd(dest: "desk" | "home") {
+    const subject = dest === "desk" ? workshopSeatSubject() : dialogueSubject("inventor");
     if (!subject) return;
-    const framed = dialogueCameraPose(subject, camera.aspect, camera.fov);
+    const framed = dest === "desk" ? workshopSeatCamera(camera.aspect, camera.fov) : dialogueCameraPose(subject, camera.aspect, camera.fov);
+    workshopCamTo.set(framed.x, framed.y, framed.z);
+    workshopLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
+  }
+
+  function retargetWorkshopCamera() {
+    if (!workshopTrip?.movesCamera) return;
+    workshopCamFrom.copy(camera.position);
+    workshopLookFrom.copy(workshopLook);
+    workshopTrip.rebaseU = workshopTrip.u;
+    aimWorkshopEnd(workshopTrip.dest);
+  }
+
+  function applyInventorPose(pose: InventorPose) {
+    inventor.position.set(pose.x, pose.y, pose.z);
+    inventor.rotation.y = pose.yaw;
+    const hips = inventor.userData.hips as Object3D | undefined;
+    if (hips) hips.rotation.x = -1.35 * pose.sit;
+  }
+
+  function playWorkshopTrip(dest: "desk" | "home", onDone: () => void, movesCamera = true) {
+    const token = ++workshopToken;
+    workshopTrip = {
+      dest,
+      from: {
+        x: inventor.position.x,
+        y: inventor.position.y,
+        z: inventor.position.z,
+        yaw: inventor.rotation.y,
+        sit: inventorPose.sit,
+      },
+      u: 0,
+      rebaseU: 0,
+      movesCamera,
+      onDone: () => {
+        if (token !== workshopToken) return;
+        onDone();
+      },
+    };
+    if (movesCamera) {
+      workshopCamFrom.copy(camera.position);
+      if (dialoguePhase !== "idle") workshopLookFrom.copy(dialogueLook);
+      else workshopLookFrom.set(player.position.x, 1.15, player.position.z);
+      workshopLook.copy(workshopLookFrom);
+      aimWorkshopEnd(dest);
+      player.visible = false;
+    }
+    if (workshopTripSeconds(calmDialogue) <= 0) stepWorkshopTrip(0);
+  }
+
+  function skipWorkshopTrip() {
+    if (!workshopTrip) return;
+    workshopTrip.u = 1;
+    stepWorkshopTrip(0);
+  }
+
+  function ensureInventorHome() {
+    if (dialoguePlace === "desk" && dialoguePhase !== "idle") return;
+    workshopToken += 1;
+    workshopTrip = null;
+    inventorPose = homePose();
+    applyInventorPose(inventorPose);
+    dialoguePlace = "stand";
+  }
+
+  function stepWorkshopTrip(dt: number) {
+    const trip = workshopTrip;
+    if (!trip) return;
+    const duration = workshopTripSeconds(calmDialogue);
+    if (duration <= 0) trip.u = 1;
+    else trip.u = Math.min(1, trip.u + dt / duration);
+    inventorPose = poseAlong(trip.from, trip.dest === "desk" ? seatPose() : homePose(), trip.u);
+    applyInventorPose(inventorPose);
+    if (trip.movesCamera) {
+      const blend = remainingBlend(trip.u, trip.rebaseU);
+      workshopLook.lerpVectors(workshopLookFrom, workshopLookTo, blend);
+      camera.position.lerpVectors(workshopCamFrom, workshopCamTo, blend);
+      camera.lookAt(workshopLook);
+      dialogueLook.copy(workshopLook);
+    }
+    if (trip.u < 1) return;
+    workshopTrip = null;
+    if (trip.movesCamera) {
+      dialoguePlace = trip.dest === "desk" ? "desk" : "stand";
+      dialogueFrom.copy(camera.position);
+      dialogueTo.copy(camera.position);
+      dialogueLookFrom.copy(workshopLook);
+      dialogueLookTo.copy(workshopLook);
+      dialogueLook.copy(workshopLook);
+      dialogueElapsed = dialogueTransitionSeconds(calmDialogue);
+      if (dialoguePhase === "enter" || dialoguePhase === "hold") dialogueSpeaker = "inventor";
+    } else if (trip.dest === "home") {
+      dialoguePlace = "stand";
+    }
+    trip.onDone();
+  }
+
+  function workshopView() {
+    return {
+      place: dialoguePlace,
+      x: Number(inventor.position.x.toFixed(3)),
+      y: Number(inventor.position.y.toFixed(3)),
+      z: Number(inventor.position.z.toFixed(3)),
+      yaw: Number(inventor.rotation.y.toFixed(3)),
+      sit: Number(inventorPose.sit.toFixed(3)),
+      camX: Number(camera.position.x.toFixed(3)),
+      camY: Number(camera.position.y.toFixed(3)),
+      camZ: Number(camera.position.z.toFixed(3)),
+    };
+  }
+
+  function syncDialogueTarget() {
+    const subject = subjectForDialogue();
+    if (!subject) return;
+    const framed =
+      dialoguePlace === "desk" && subject.id === "inventor"
+        ? workshopSeatCamera(camera.aspect, camera.fov)
+        : dialogueCameraPose(subject, camera.aspect, camera.fov);
     dialogueLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
     if (dialoguePhase === "leave") return;
     dialogueTo.set(framed.x, framed.y, framed.z);
@@ -1135,6 +1307,7 @@ export function startWorld(options: {
 
   function beginEnterDialogue(id: string) {
     if (boardPhase !== "idle") return;
+    dialoguePlace = "stand";
     const subject = dialogueSubject(id);
     if (!subject) return;
     const wasIdle = dialoguePhase === "idle";
@@ -1157,6 +1330,7 @@ export function startWorld(options: {
 
   function beginLeaveDialogue() {
     if (dialoguePhase === "idle" || dialoguePhase === "leave") return;
+    dialoguePlace = "stand";
     dialogueFrom.copy(camera.position);
     dialogueLookFrom.copy(dialogueLook);
     const pose = resolveCameraArm({
@@ -1315,6 +1489,7 @@ export function startWorld(options: {
       }),
       rendererStats,
       batchStats: () => batchStats,
+      workshopView,
       probeWalkable: () => {
         const bounds = playerLobbyBounds();
         const start = { x: 0, z: 1.7 };
@@ -1340,6 +1515,8 @@ export function startWorld(options: {
       renderSuspended: () => suspended,
       rendererStats,
       batchStats: () => batchStats,
+      workshopView,
+      frameWorkMs: () => Number(perfWorkMs.toFixed(2)),
     };
   }
 
@@ -1380,6 +1557,9 @@ export function startWorld(options: {
     setSuspended,
     releaseRenderer,
     restoreRenderer,
+    playWorkshopTrip,
+    skipWorkshopTrip,
+    ensureInventorHome,
     dispose() {
       running = false;
       input.dispose();
@@ -1678,13 +1858,19 @@ export function startWorld(options: {
   function buildInventor(): Group {
     const group = new Group();
     group.userData.interactId = "inventor";
+    const hips = new Group();
+    hips.position.set(0, 0.46, 0);
+    group.add(hips);
+    group.userData.hips = hips;
+    const legL = box(hips, 0.14, 0.42, 0.16, -0.1, -0.25, 0, PALETTE.coatDark);
+    const legR = box(hips, 0.14, 0.42, 0.16, 0.1, -0.25, 0, PALETTE.coatDark);
+    trackedFuse([legL, legR]);
+
     const pelvis = box(group, 0.36, 0.18, 0.28, 0, 0.46, 0, PALETTE.coatDark);
-    const legL = box(group, 0.14, 0.42, 0.16, -0.1, 0.21, 0, PALETTE.coatDark);
-    const legR = box(group, 0.14, 0.42, 0.16, 0.1, 0.21, 0, PALETTE.coatDark);
     const hat = new Mesh(geo(new CylinderGeometry(0.16, 0.18, 0.28, 10)), mat(PALETTE.coatDark));
     hat.position.set(0, 1.84, 0);
     group.add(hat);
-    trackedFuse([pelvis, legL, legR, hat]);
+    trackedFuse([pelvis, hat]);
 
     const torso = box(group, 0.66, 0.78, 0.4, 0, 0.8, 0, PALETTE.coat);
     group.userData.torso = torso;
@@ -2014,7 +2200,19 @@ declare global {
       visibleApps?: () => string[];
       playerPose?: () => { x: number; z: number; yaw: number };
       rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
+      frameWorkMs?: () => number;
       batchStats?: () => BatchStats | null;
+      workshopView?: () => {
+        place: string;
+        x: number;
+        y: number;
+        z: number;
+        yaw: number;
+        sit: number;
+        camX: number;
+        camY: number;
+        camZ: number;
+      };
     };
   }
 }

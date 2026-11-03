@@ -121,6 +121,25 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 #board-back[hidden] { display: none; }
 
+#workshop-skip {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  left: calc(12px + env(safe-area-inset-left));
+  z-index: 9;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(246, 241, 231, 0.4);
+  background: rgba(10, 12, 24, 0.72);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#workshop-skip[hidden] { display: none; }
+
 body.reading-board #hint,
 body.reading-board #labels,
 body.reading-board #touch-controls,
@@ -413,6 +432,28 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
 }
 .dialogue-input:focus { outline: 2px solid transparent; border-bottom-color: #fff; }
 .dialogue-input::placeholder { color: rgba(246, 241, 231, 0.45); }
+
+@media (max-height: 500px) {
+  #dialogue {
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    width: min(640px, calc(100% - 16px));
+    max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    padding: 8px 12px;
+  }
+  .dialogue-head { margin-bottom: 4px; }
+  #dialogue .portrait { width: 32px; height: 32px; }
+  .dialogue-text {
+    margin: 0 0 4px;
+    font-size: 0.92rem;
+    line-height: 1.3;
+  }
+  .dialogue-choice {
+    margin-top: 4px;
+    padding: 8px 12px;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
 
 body.prototype-open #viewport,
 body.prototype-open #labels {

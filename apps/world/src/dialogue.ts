@@ -1,4 +1,5 @@
 import type { DialogueCue } from "./dialogue-cues";
+import { inventorChoices, phaseAfterWorkshopTrip, type ChoiceAction } from "./dialogue-flow";
 import { lineRuns, type EmphasisKind, type LineRun } from "./dialogue-emphasis";
 import { INVENTOR_RESULT_OK, inventorSpeech, type DialoguePhase } from "./dialogue-speech";
 import { chooseScript, scriptNode, startScript, type DialogueScript, type ScriptCursor } from "./dialogue-script";
@@ -38,6 +39,10 @@ export function createDialogue(options: {
   onShowInstallHelp?: () => void;
   onOpen: () => void;
   onClose: () => void;
+  /** Viaje al escritorio o de vuelta. `done` abre la fase siguiente. */
+  onWorkshopTravel?: (dest: "desk" | "home", done: () => void) => void;
+  /** El diálogo se cierra con el Inventor fuera de su sitio. */
+  onInventorReset?: () => void;
   /** Encuadre del hablante. `null` al cerrar. */
   onFocus?: (focus: { speakerId: string; cue: DialogueCue | null } | null) => void;
   /** Un énfasis acaba de revelarse: gesto corto del personaje. */
@@ -49,6 +54,8 @@ export function createDialogue(options: {
   let draft: ProposalDraft = { kind: "propuesta", title: "", description: "" };
   let token = 0;
   let open = false;
+  let atDesk = false;
+  let traveling = false;
   let typingFrame = 0;
   let emphTimer = 0;
   let skipTyping: (() => void) | null = null;
@@ -117,49 +124,66 @@ export function createDialogue(options: {
         },
       }));
     }
-    if (phase.name === "greet") {
-      return [
-        { id: "choice-propose", label: "Quiero proponer un prototipo", run: () => { resetDraft("propuesta"); phase = { name: "title", mode: "propuesta" }; render(); } },
-        { id: "choice-iterate", label: "Quiero mejorar uno que ya está", run: () => { resetDraft("iteracion"); phase = { name: "pick" }; render(); } },
-        {
-          id: "choice-install",
-          label: "¿Cómo instalo el laboratorio?",
-          run: () => {
-            close();
-            options.onShowInstallHelp?.();
-          },
-        },
-        { id: "choice-bye", label: "Nada, seguiré mirando", run: () => close() },
-      ];
-    }
-    if (phase.name === "pick") {
-      const list: Choice[] = [];
-      for (const entry of options.prototypes) {
-        list.push({
-          id: `choice-proto-${entry.slug}`,
-          label: `${entry.title} (v${entry.version})`,
-          run: () => {
-            draft.slug = entry.slug;
-            draft.kind = "iteracion";
-            phase = { name: "title", mode: "iteracion" };
-            render();
-          },
-        });
-      }
-      list.push({ id: "choice-back", label: "Mejor otra cosa", run: () => { phase = { name: "greet" }; render(); } });
-      return list;
-    }
-    if (phase.name === "confirm") {
-      return [
-        { id: "choice-confirm", label: "Sí, envíalo", run: () => void send() },
-        { id: "choice-edit", label: "Quiero cambiarlo", run: () => { phase = { name: "title", mode: draft.kind }; render(); } },
-        { id: "choice-cancel", label: "Mejor no", run: () => close() },
-      ];
-    }
     if (phase.name === "done") {
       return [{ id: "choice-close", label: "Seguir en el laboratorio", run: () => close() }];
     }
-    return [];
+    return inventorChoices(phase, draft, options.prototypes).map((choice) => ({
+      id: choice.id,
+      label: choice.label,
+      run: () => applyChoice(choice.action),
+    }));
+  }
+
+  function applyChoice(action: ChoiceAction) {
+    if (action.type === "close") {
+      close();
+      return;
+    }
+    if (action.type === "install") {
+      close();
+      options.onShowInstallHelp?.();
+      return;
+    }
+    if (action.type === "send") {
+      void send();
+      return;
+    }
+    if (action.type === "trip") {
+      beginWorkshopTrip(action.dest);
+      return;
+    }
+    if (action.type === "pick") {
+      draft.slug = action.slug;
+      draft.kind = "iteracion";
+      phase = { name: "title", mode: "iteracion" };
+      render();
+      return;
+    }
+    if (action.reset) resetDraft(action.reset);
+    phase = action.phase;
+    render();
+  }
+
+  function beginWorkshopTrip(dest: "desk" | "home") {
+    const my = ++token;
+    traveling = true;
+    stopTyping();
+    window.clearTimeout(emphTimer);
+    options.root.hidden = true;
+    const finish = () => {
+      if (!open || my !== token) return;
+      traveling = false;
+      atDesk = dest === "desk";
+      phase = phaseAfterWorkshopTrip(dest);
+      options.root.hidden = false;
+      bumpBubble();
+      render();
+    };
+    if (!options.onWorkshopTravel) {
+      finish();
+      return;
+    }
+    options.onWorkshopTravel(dest, finish);
   }
 
   function render(notice?: string) {
@@ -377,10 +401,14 @@ export function createDialogue(options: {
 
   function close() {
     if (!open) return;
+    const away = atDesk || traveling;
     open = false;
+    atDesk = false;
+    traveling = false;
     token += 1;
     stopTyping();
     window.clearTimeout(emphTimer);
+    if (away) options.onInventorReset?.();
     document.body.classList.remove("dialogue-open");
     options.root.hidden = true;
     options.root.replaceChildren();
@@ -398,6 +426,8 @@ export function createDialogue(options: {
   function show() {
     if (open) return;
     open = true;
+    atDesk = false;
+    traveling = false;
     session = { kind: "inventor" };
     phase = { name: "greet" };
     draft = { kind: "propuesta", title: "", description: "" };
@@ -412,6 +442,8 @@ export function createDialogue(options: {
     const entry = options.prototypes.find((item) => item.slug === slug);
     if (!entry) return;
     open = true;
+    atDesk = false;
+    traveling = false;
     session = { kind: "inventor" };
     resetDraft("iteracion", slug);
     phase = { name: "title", mode: "iteracion" };
@@ -425,6 +457,8 @@ export function createDialogue(options: {
   function openScript(script: DialogueScript) {
     if (open) return;
     open = true;
+    atDesk = false;
+    traveling = false;
     session = { kind: "script", cursor: startScript(script) };
     phase = { name: "greet" };
     document.body.classList.add("dialogue-open");

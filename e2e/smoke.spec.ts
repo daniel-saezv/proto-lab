@@ -802,13 +802,45 @@ test("en horizontal las acciones de confirmación del diálogo caben en pantalla
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await reachConfirmStep(page);
-  for (const id of ["choice-confirm", "choice-edit", "choice-cancel"] as const) {
+  for (const id of ["choice-confirm", "choice-workshop", "choice-edit", "choice-cancel"] as const) {
     const box = await page.getByTestId(id).boundingBox();
     expect(box).toBeTruthy();
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height + 1);
     expect(box!.y).toBeGreaterThanOrEqual(-1);
   }
   await context.close();
+});
+
+test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await reachConfirmStep(page);
+  await expect(page.getByTestId("workshop-skip")).toBeHidden();
+  await page.getByTestId("choice-workshop").click();
+  await expect(page.getByTestId("choice-workshop-back")).toBeVisible();
+  await expect(page.getByTestId("choice-workshop-send")).toBeVisible();
+  await expect(page.getByTestId("workshop-skip")).toBeHidden();
+  await expect(page.getByTestId("dialogue-text")).toContainText("Cometa lunar");
+  const seated = await page.evaluate(() => window.__protoLab?.workshopView?.());
+  expect(seated?.place).toBe("desk");
+  expect(seated?.sit).toBe(1);
+  await page.getByTestId("choice-workshop-back").click();
+  await expect(page.getByTestId("choice-confirm")).toBeVisible();
+  await expect(page.getByTestId("dialogue-text")).toContainText("Cometa lunar");
+  const home = await page.evaluate(() => window.__protoLab?.workshopView?.());
+  expect(home?.place).toBe("stand");
+  expect(home?.sit).toBe(0);
+  expect(home?.x).toBeCloseTo(-1.5, 1);
+  expect(home?.z).toBeCloseTo(-3.4, 1);
+  await page.getByTestId("choice-workshop").click();
+  await expect(page.getByTestId("choice-workshop-send")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("dialogue")).toBeHidden();
+  const left = await page.evaluate(() => window.__protoLab?.workshopView?.());
+  expect(left?.place).toBe("stand");
+  expect(left?.sit).toBe(0);
+  expect(left?.x).toBeCloseTo(-1.5, 1);
+  expect(left?.z).toBeCloseTo(-3.4, 1);
 });
 
 test("la música se sirve y no muestra créditos en pantalla", async ({ page }) => {

@@ -34,6 +34,7 @@ const interact = must<HTMLButtonElement>("#interact");
 const muteMusic = must<HTMLButtonElement>("#mute-music");
 const music = createAmbienceMusic(muteMusic);
 const boardBack = must<HTMLButtonElement>("#board-back");
+const workshopSkip = must<HTMLButtonElement>("#workshop-skip");
 const boardA11y = must("#board-a11y");
 const touchControls = must("#touch-controls");
 const touchZoneMove = must("#touch-zone-move");
@@ -92,10 +93,36 @@ const dialogue = createDialogue({
   instant,
   submit: sendProposal,
   onShowInstallHelp: () => installHelp.open(),
-  onOpen: blockWorldInput,
+  onOpen: () => {
+    blockWorldInput();
+    workshopSkip.hidden = true;
+    world?.ensureInventorHome();
+  },
   onClose: () => {
     if (world?.isDialogueFraming()) return;
     restoreWorldInput();
+  },
+  onWorkshopTravel: (dest, done) => {
+    if (!world) {
+      done();
+      return;
+    }
+    if (!instant) workshopSkip.hidden = false;
+    world.playWorkshopTrip(dest, () => {
+      workshopSkip.hidden = true;
+      done();
+    });
+  },
+  onInventorReset: () => {
+    if (!world) return;
+    if (!instant) workshopSkip.hidden = false;
+    world.playWorkshopTrip(
+      "home",
+      () => {
+        workshopSkip.hidden = true;
+      },
+      false,
+    );
   },
   onFocus: (focus) => {
     world?.setDialogueFocus(focus);
@@ -103,6 +130,10 @@ const dialogue = createDialogue({
   onEmphasis: () => {
     world?.pulseDialogue();
   },
+});
+
+workshopSkip.addEventListener("click", () => {
+  world?.skipWorkshopTrip();
 });
 
 const overlay = createOverlay(
