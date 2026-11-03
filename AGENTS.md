@@ -80,7 +80,7 @@ Comandos comprobados en este repositorio (Node 22.23, pnpm 12.17.0):
 
 - Instalación: `corepack enable && corepack prepare pnpm@12.17.0 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit`
 - Build: `pnpm build` → sitio estático en `dist/` (`/` el laboratorio, `/protos/chispa/` el ejemplo)
-- Vistas previas de prototipos: `pnpm previews` (construye el sitio, arranca `pnpm preview` si hace falta, captura con Playwright y escribe `protos/<slug>/preview.webp`; declara `"preview": "preview.webp"` en `proto.json` si no existía). Sirve para cualquier aplicación: si hay canvas, recorta el más grande; si no, fotografía la ventana. Opcional: `window.__protoLabPreview` (función o promesa) se llama antes de la captura. Vuelve a ejecutarlo al crear o iterar un prototipo.
+- Vistas previas de prototipos: `pnpm previews` (construye el sitio, arranca `pnpm preview` si hace falta, captura con Playwright y escribe `protos/<slug>/preview.webp`; declara `"preview": "preview.webp"` en `proto.json` si no existía). Sirve para cualquier aplicación: si hay canvas, recorta el más grande; si no, fotografía la ventana. Opcional: `window.__protoLabPreview` (función o promesa) se llama antes de la foto fija, no antes del clip. Al crear o modificar una aplicación hay que ejecutarlo y commitear en el mismo PR `preview.webp`, `preview.mp4` y `preview-src.sha256`. La CI solo comprueba el clip (MP4 H.264 Baseline, sin audio, faststart, 3 s a 12 fps, dentro de 320×180, tope 160 KiB) y que el sello coincide con las fuentes; no lo graba.
 - Pasada visual del lobby: con `pnpm dev` o `pnpm preview` en marcha, `pnpm shots -- --out shots --prefix antes` (y el mismo comando con `--prefix despues`). Usa los encuadres fijos de `apps/world/src/viewpoints.ts` (aparición, Inventor, arcade, cuatro rincones y cenital) en escritorio 1280×800, iPhone 390×844 y 844×390, abre el selector en la arcade y compone una sola hoja de contacto. `--debug` añade una cenital con anillos en Inventor, arcade y pizarra. `SHOTS_URL` fuerza la base; si no hay servidor, arranca `pnpm dev`. La carpeta `shots/` no se versiona.
 - Typecheck: `pnpm typecheck`
 - Tests unitarios: `pnpm test:unit`
@@ -112,7 +112,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - El diálogo es un guion fijo. No hay LLM ni llamadas de pago.
 - Los límites de título, descripción y propuestas por día están duplicados en `functions/_lib/validate.ts` y `apps/world/src/limits.ts`. Un test falla si divergen.
 - Cada prototipo declara sus dependencias en su `package.json`. Phaser no entra en el bundle del laboratorio.
-- Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB).
+- Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB). El mismo comando deja `preview.mp4` y `preview-src.sha256`, que también se commitean.
 - Opcional en `proto.json`: `"assets": ["ruta/relativa.png", …]` (puente heredado; ver arriba). Una aplicación nueva pide imágenes, audio y JSON con `window.__protoLabData` y una ruta relativa bajo `/protos/<slug>/`.
 - Opcional en `proto.json`: `"capabilities"` (`save`, `wasm`, `shared`, `tables` y permisos de dispositivo) y `"readyMs"` (plazo de `ready`; ver el contrato). `"permissions"` sigue aceptándose como lista de dispositivos. `tables` exige `protos/<slug>/db/` (migraciones y `queries.json`); el contrato está en [`docs/contrato-tablas.md`](docs/contrato-tablas.md).
 - Opcional en `proto.json`: `"hidden": true` excluye el prototipo del selector, la pizarra y el fallback HTML (sigue en el catálogo, build y `/protos/<slug>/` para pruebas).
@@ -166,7 +166,7 @@ El iframe es del mismo origen: `src="/protos/<slug>/"`, sin `sandbox` y sin docu
 - llamar a `window.__protoLabData.revoke()` si se usaron URL de objeto
 - si usas Phaser, `game.destroy(true)`
 
-Vista previa opcional: `window.__protoLabPreview` puede ser una función (o una promesa) que deja la aplicación en un fotograma representativo. `pnpm previews` la llama si existe. Si no hay canvas, captura la ventana.
+Vista previa: `window.__protoLabPreview` (función o promesa) deja un fotograma para `preview.webp`; el clip `preview.mp4` se graba sin ese gancho. Al crear o modificar la aplicación, ejecutar `pnpm previews` y commitear `preview.webp`, `preview.mp4` y `preview-src.sha256` es obligatorio. La CI comprueba formato, tope y frescura, y no graba. Si no hay canvas, la foto fija es la ventana.
 
 ## CI/CD
 

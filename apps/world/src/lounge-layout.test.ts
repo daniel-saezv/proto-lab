@@ -15,12 +15,15 @@ import {
 import {
   LAYOUT,
   PLAYER_RADIUS,
+  RADIO_APPROACH,
+  RADIO_USE_RADIUS,
   arcadeMachineCollider,
   lobbyStaticColliders,
   playerLobbyBounds,
   resolvePosition,
   walkToward,
 } from "./navigation";
+import { WORKSHOP_SEAT } from "./workshop-cinematic";
 
 function dot(a: { x: number; z: number }, b: { x: number; z: number }): number {
   return a.x * b.x + a.z * b.z;
@@ -88,6 +91,7 @@ describe("rincón de sofás", () => {
       { id: "inventor", x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, radius: 2.25 },
       { id: "chalkboard", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 2.2 },
       { id: "arcade", x: LAYOUT.arcade.x, z: LAYOUT.arcade.z, radius: 2.55 },
+      { id: "radio", x: LAYOUT.radio.x, z: LAYOUT.radio.z, radius: RADIO_USE_RADIUS },
     ];
     for (const npc of LOUNGE_NPCS) {
       const position = { x: npc.approach.x, z: npc.approach.z };
@@ -107,6 +111,38 @@ describe("rincón de sofás", () => {
         expect(distance, `${npc.id} no debe caer en ${other.id}`).toBeGreaterThan(other.radius);
       }
     }
+  });
+
+  it("deja la radio a mano y su zona no pisa la de nadie", () => {
+    const talkers = [
+      ...LOUNGE_NPCS.map((npc) => ({ id: npc.id, x: npc.x, z: npc.z, radius: npc.radius })),
+      { id: "inventor", x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, radius: 2.25 },
+      { id: "chalkboard", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 2.2 },
+      { id: "arcade", x: LAYOUT.arcade.x, z: LAYOUT.arcade.z, radius: 2.55 },
+    ];
+    for (const other of talkers) {
+      const distance = Math.hypot(LAYOUT.radio.x - other.x, LAYOUT.radio.z - other.z);
+      expect(distance, `zona de la radio y ${other.id}`).toBeGreaterThan(RADIO_USE_RADIUS + other.radius);
+    }
+    const deskDistance = Math.hypot(LAYOUT.radio.x - LAYOUT.desk.x, LAYOUT.radio.z - LAYOUT.desk.z);
+    expect(deskDistance, "zona de la radio y el escritorio").toBeGreaterThan(RADIO_USE_RADIUS + LAYOUT.desk.collider);
+    const seatDistance = Math.hypot(LAYOUT.radio.x - WORKSHOP_SEAT.x, LAYOUT.radio.z - WORKSHOP_SEAT.z);
+    expect(seatDistance, "zona de la radio y la silla del escritorio").toBeGreaterThan(RADIO_USE_RADIUS + 0.6);
+    const position = { x: RADIO_APPROACH.x, z: RADIO_APPROACH.z };
+    resolvePosition(position, colliders, bounds);
+    expect(position.x).toBeCloseTo(RADIO_APPROACH.x, 2);
+    expect(position.z).toBeCloseTo(RADIO_APPROACH.z, 2);
+    const approachDesk = Math.hypot(position.x - LAYOUT.desk.x, position.z - LAYOUT.desk.z);
+    expect(approachDesk, "el uso de la radio no cae en el escritorio").toBeGreaterThan(LAYOUT.desk.collider + PLAYER_RADIUS);
+    const own = Math.hypot(position.x - LAYOUT.radio.x, position.z - LAYOUT.radio.z);
+    expect(own).toBeLessThanOrEqual(RADIO_USE_RADIUS);
+    expect(own).toBeGreaterThan(LAYOUT.radio.collider + PLAYER_RADIUS);
+    for (const other of talkers) {
+      const distance = Math.hypot(position.x - other.x, position.z - other.z);
+      expect(distance, `radio no debe caer en ${other.id}`).toBeGreaterThan(other.radius);
+    }
+    const walked = walkToward({ x: 0, z: 1.7 }, RADIO_APPROACH, colliders, bounds, { steps: 720 });
+    expect(walked.remaining).toBeLessThan(0.6);
   });
 
   it("sigue dejando paso hasta la pizarra y hasta el sofá", () => {

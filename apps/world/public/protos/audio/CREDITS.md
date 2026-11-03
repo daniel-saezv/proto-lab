@@ -3,10 +3,12 @@
 The lobby loops one track from the Infraction catalogue (sold via inaudio.org).
 File: AAC-LC ~96 kbps stereo 44.1 kHz, loudness-normalized to -16 LUFS (two-pass loudnorm), faststart.
 
-## Luanda ("Upbeat Afro Beat Vlog")
+## luanda.m4a
 
+- Title: Luanda ("Upbeat Afro Beat Vlog")
 - File: `luanda.m4a`
 - Artist: Infraction & MORAI (YouTube channel "Infraction - No Copyright Music")
+- Licencia: royalty-free with conditions, quoted below from the track page. You can use this track for any projects. You can NOT claim the music as your own and you can NOT sell the music anywhere. Commercial use requires an inaudio.org subscription. Fine for this private, non-commercial lab.
 - Source: https://youtu.be/tjWNTiMIHDE
 - Track page: https://inaudio.org/track/luanda-afrobeat/
 - License text quoted from the description:

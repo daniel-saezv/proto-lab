@@ -2,6 +2,11 @@ import { LOUNGE_FURNITURE, loungeCameraBlockers } from "./lounge-layout";
 
 export const PLAYER_RADIUS = 0.38;
 
+/** Alcance para cambiar la música, el mismo del dial. */
+export const RADIO_USE_RADIUS = 2.1;
+/** Delante de la radio, mirando al este: dentro de su radio y fuera del de cualquier otra zona. */
+export const RADIO_APPROACH = { x: 7.05, z: 0.55 };
+
 /**
  * Caras interiores de los muros (el muro tiene 0,4 de grosor).
  * El suelo útil va de aquí hasta el jugador, sin descontar la cámara.
@@ -69,7 +74,7 @@ export const LAYOUT = {
   pinball: { x: -4.85, z: 5.55, collider: 0.48 },
   arcade: { x: 0.6, z: -0.35, collider: 0.78 },
   chalkboard: { x: -4.6, z: -6.8, collider: 0.55 },
-  radio: { x: -5.85, z: -2.05, collider: 0.26 },
+  radio: { x: 8.45, z: 0.55, collider: 0.26 },
   plantPinball: { x: -7.7, z: 7.35, collider: 0.24 },
   plantRest: { x: 8.58, z: 7.28, collider: 0.24 },
 } as const;

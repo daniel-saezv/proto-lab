@@ -37,6 +37,8 @@ El puente `window.__protoLabData` es otro cupo: 64 rutas, 4 MiB por archivo, 16 
 
 Al iterar, sube `version` en `proto.json` y añade la entrada en `history` con esa versión, la fecha y una nota breve.
 
+Al crear o modificar la aplicación, ejecuta `pnpm previews` y commitea en el mismo PR `preview.webp`, `preview.mp4` y `preview-src.sha256`. La CI comprueba el clip y no lo graba.
+
 ## Godot
 
 El agente no exporta en la máquina: no hay binario de Godot en el entorno. El workflow `.github/workflows/exportar-godot.yml` exporta el proyecto que toca el diff y sube el artefacto `godot-export-<slug>`. Descárgalo con `gh run download` (lectura) y copia los archivos a `protos/<slug>/` sin pisar `proto.json` ni `godot/`. El procedimiento está en `templates/export-estatico/LEEME.md`. El workflow no hace push y no tiene secretos.

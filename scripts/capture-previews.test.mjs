@@ -37,5 +37,10 @@ describe("captura genérica", () => {
     expect(source).not.toContain("__chispa");
     expect(source).toContain("__protoLabPreview");
     expect(source).toContain("chooseClip");
+    expect(source).toContain("PROTO_LAB_SKIP_PREVIEW_CHECK");
+    expect(source).toContain("PREVIEW_MOTION_FILE");
+    expect(source).toContain("writePreviewStamp");
+    expect(source).toContain("recordMotion");
+    expect(source).toContain("motionSeek");
   });
 });

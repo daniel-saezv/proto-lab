@@ -3,11 +3,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCatalog, sharedCapabilitySlugs } from "./catalog-lib.mjs";
 import { assertSharedEngines } from "./godot-engine.mjs";
+import { assertAllPreviewMotion } from "./preview-motion.mjs";
 import { assertLabMigrations, readTableQueries } from "./table-sql.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 assertSharedEngines(root);
 const entries = readCatalog(root);
+if (process.env.PROTO_LAB_SKIP_PREVIEW_CHECK !== "1") assertAllPreviewMotion(root);
 const catalogPath = join(root, "apps/world/src/generated/catalog.json");
 const slugsPath = join(root, "functions/_lib/slugs.json");
 const sharedPath = join(root, "functions/_lib/shared-slugs.json");

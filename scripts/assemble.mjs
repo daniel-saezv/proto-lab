@@ -45,6 +45,8 @@ for (const slug of readdirSync(protosDir)) {
         cpSync(previewFile, join(target, manifest.preview));
       }
     }
+    const motionFile = join(protoDir, "preview.mp4");
+    if (existsSync(motionFile)) cpSync(motionFile, join(target, "preview.mp4"));
   }
   assertServedApp(target, `protos/${slug}`);
   const godotErrors = assertGodotTree(protoDir);

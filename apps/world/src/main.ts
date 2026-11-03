@@ -1,4 +1,5 @@
 import { createAmbienceMusic } from "./ambience-music";
+import { musicNowLabel } from "./music-catalog";
 import { sendProposal } from "./api";
 import catalogFile from "./generated/catalog.json";
 import { LAB_ROOT_HREF, type BoardNavAction, type BoardUiSnapshot } from "./proposals-board-actions";
@@ -379,6 +380,8 @@ async function mountFallback() {
     prototypes: visiblePrototypes,
     onTalk: () => dialogue.open(),
     onInstallHelp: () => installHelp.open(),
+    onTune: () => music.tune(),
+    tuneLabel: () => musicNowLabel(music.trackTitle()),
     onPlay: (entry) => openPrototype(entry),
     knownSlugs: visiblePrototypes.map((entry) => entry.slug),
     onBoardUi: syncBoardControls,
@@ -442,6 +445,7 @@ async function bootWorld() {
           openPrototype(entry);
         };
       },
+      onTune: () => music.tune(),
       onTalk: () => dialogue.open(),
       onTalkNpc: (id) => {
         const script = loungeScript(id);

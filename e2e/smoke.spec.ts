@@ -426,6 +426,14 @@ test("desde el Inventor se abre la guía de instalación PWA", async ({ page }) 
   await expect(page.getByTestId("world-ready")).toBeVisible();
 });
 
+test("la radio queda a mano desde el spawn", async ({ page }, testInfo) => {
+  skipUnlessChromium(testInfo, "atajo de la radio, una sola vez");
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("radio"));
+  await expect(page.getByTestId("interact")).toHaveText("Cambiar la música");
+});
+
 test("sin WebGL queda un respaldo usable", async ({ browser }, testInfo) => {
   skipUnlessChromium(testInfo, "comprobación única del fallback HTML");
   const context = await browser.newContext({ baseURL: "http://127.0.0.1:4173", locale: "es-ES" });
@@ -443,6 +451,8 @@ test("sin WebGL queda un respaldo usable", async ({ browser }, testInfo) => {
   await page.getByTestId("fallback-talk").click();
   await expect(page.getByTestId("dialogue-text")).toContainText("la máquina de este laboratorio");
   await expect(page.getByTestId("fallback-whiteboard-section")).toBeVisible();
+  await expect(page.getByTestId("fallback-tune")).toHaveText("Otra música");
+  await expect(page.getByTestId("fallback-tune-label")).toContainText("Música:");
   await page.getByTestId("choice-install").click();
   await expect(page.getByTestId("install-help")).toBeVisible();
   await page.getByTestId("install-close").click();
