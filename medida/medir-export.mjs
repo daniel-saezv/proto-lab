@@ -12,8 +12,9 @@ import { tmpdir } from "node:os";
 import { join, relative, extname } from "node:path";
 import { cpus, platform, release, totalmem } from "node:os";
 import { SERVED_APP_LIMITS } from "../scripts/app-contract.mjs";
+import { inspectWasm } from "../scripts/wasm-module.mjs";
 
-const PAGES_MAX_BYTES = 25 * 1024 * 1024;
+const PAGES_MAX_BYTES = SERVED_APP_LIMITS.pagesMaxBytes;
 const GITHUB_WARN_BYTES = 50 * 1024 * 1024;
 const GITHUB_BLOCK_BYTES = 100 * 1024 * 1024;
 
@@ -30,62 +31,6 @@ const CLOUDFLARE_COMPRESSIBLE = new Set([
   ".webmanifest",
   ".txt",
 ]);
-
-function readLeb(buf, offset) {
-  let result = 0;
-  let shift = 0;
-  let bytes = 0;
-  while (offset + bytes < buf.length && shift <= 28) {
-    const byte = buf[offset + bytes];
-    bytes += 1;
-    result |= (byte & 0x7f) << shift;
-    if ((byte & 0x80) === 0) return { value: result, bytes };
-    shift += 7;
-  }
-  throw new Error("LEB128 incompleto");
-}
-
-/** El bit shared de la sección memory es la prueba de hilos, no una cadena suelta. */
-export function inspectWasm(buf) {
-  if (buf.length < 8 || buf.toString("utf8", 0, 4) !== "\0asm") return { wasm: false };
-  let offset = 8;
-  const memories = [];
-  while (offset + 1 < buf.length) {
-    const id = buf[offset];
-    offset += 1;
-    const size = readLeb(buf, offset);
-    offset += size.bytes;
-    const start = offset;
-    const end = start + size.value;
-    if (end > buf.length) break;
-    if (id === 5) {
-      const count = readLeb(buf, start);
-      let cursor = start + count.bytes;
-      for (let i = 0; i < count.value; i += 1) {
-        const flags = buf[cursor];
-        cursor += 1;
-        const initial = readLeb(buf, cursor);
-        cursor += initial.bytes;
-        let maximum = null;
-        if ((flags & 1) !== 0) {
-          const max = readLeb(buf, cursor);
-          cursor += max.bytes;
-          maximum = max.value;
-        }
-        memories.push({
-          shared: (flags & 2) !== 0,
-          memory64: (flags & 4) !== 0,
-          flags,
-          initialPages: initial.value,
-          initialBytes: initial.value * 65536,
-          maximumPages: maximum,
-        });
-      }
-    }
-    offset = end;
-  }
-  return { wasm: true, memories };
-}
 
 function listFiles(dir) {
   const files = [];
@@ -180,7 +125,9 @@ export function measureDirectory(dir) {
   const total = sum(files, "bytes");
   if (total > limits.maxBytesTotal) violations.push(`total ${total} > ${limits.maxBytesTotal}`);
   for (const file of files) {
-    if (file.bytes > limits.maxBytesPerFile) violations.push(`${file.name} supera 4 MiB (${file.bytes})`);
+    if (file.bytes > limits.maxBytesPerFile) {
+      violations.push(`${file.name} supera ${limits.maxBytesPerFile} bytes (${file.bytes})`);
+    }
     if (file.bytes > PAGES_MAX_BYTES) violations.push(`${file.name} supera 25 MiB de Pages (${file.bytes})`);
     if (file.bytes > GITHUB_WARN_BYTES) violations.push(`${file.name} supera el aviso de 50 MiB de GitHub`);
     if (file.bytes > GITHUB_BLOCK_BYTES) violations.push(`${file.name} supera el bloqueo de 100 MiB de GitHub`);

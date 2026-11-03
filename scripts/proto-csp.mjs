@@ -1,8 +1,9 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { APP_PERMISSIONS } from "./app-contract.mjs";
 import { readCatalog } from "./catalog-lib.mjs";
 import { headersForPath, parsePagesHeaders } from "./pages-headers.mjs";
+import { decodeServedWasm } from "./wasm-module.mjs";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SCRIPT_SRC = "script-src 'self' 'unsafe-inline'";
@@ -96,9 +97,40 @@ export function appendCapabilityHeaders(source, entries) {
   return `${source.replace(/\s*$/, "\n")}\n${blocks.join("\n")}`;
 }
 
+/** Cabecera de un `.wasm` ya comprimido con Brotli. El cuerpo no se vuelve a comprimir. */
+export function brotliWasmHeader(slug) {
+  if (!SLUG.test(slug)) fail(`slug no válido (${String(slug)})`);
+  return [
+    `# ${slug}: index.wasm está en Brotli q11. El navegador lo descomprime.`,
+    `/protos/${slug}/index.wasm`,
+    "  Content-Type: application/wasm",
+    "  Content-Encoding: br",
+    "",
+  ].join("\n");
+}
+
+export function appendBrotliWasmHeaders(source, slugs) {
+  if (slugs.length === 0) return source.endsWith("\n") ? source : `${source}\n`;
+  return `${source.replace(/\s*$/, "\n")}\n${slugs.map((slug) => brotliWasmHeader(slug)).join("\n")}`;
+}
+
+export function brotliWasmSlugs(repoRoot, entries) {
+  const slugs = [];
+  for (const entry of entries) {
+    if (!declaredTokens(entry).includes("wasm")) continue;
+    if (typeof entry?.slug !== "string" || !SLUG.test(entry.slug)) continue;
+    const file = join(repoRoot, "protos", entry.slug, "index.wasm");
+    if (!existsSync(file)) continue;
+    const decoded = decodeServedWasm(readFileSync(file));
+    if (decoded?.brotli) slugs.push(entry.slug);
+  }
+  return slugs;
+}
+
 export function headerSource(repoRoot) {
   const source = readFileSync(join(repoRoot, "apps/world/public/_headers"), "utf8");
-  return appendCapabilityHeaders(source, readCatalog(repoRoot));
+  const entries = readCatalog(repoRoot);
+  return appendBrotliWasmHeaders(appendCapabilityHeaders(source, entries), brotliWasmSlugs(repoRoot, entries));
 }
 
 export function pagesHeaderRules(repoRoot) {
