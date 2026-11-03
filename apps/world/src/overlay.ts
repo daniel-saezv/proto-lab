@@ -1,3 +1,4 @@
+import { createBootScreen, paintBootProgress } from "./boot-screen";
 import { advanceBoot, bootFailureMessage, iframeAllow, type BootPhase } from "./prototype-boot";
 import { assertPrototypePage } from "./prototype-document";
 import { createSaveBridge } from "./app-save";
@@ -158,6 +159,7 @@ export function createOverlay(
     window.clearTimeout(readyTimer);
     await discardFrame();
     if (mine !== generation || !banner.isConnected) return;
+    root.querySelector(".prototype-status")?.remove();
     banner.hidden = false;
     banner.dataset.testid = "prototype-error";
     banner.textContent = message;
@@ -188,7 +190,7 @@ export function createOverlay(
 
   function onMessage(event: MessageEvent) {
     if (!frame || event.source !== frame.contentWindow) return;
-    const data = event.data as { source?: string; type?: string; message?: string } | null;
+    const data = event.data as { source?: string; type?: string; message?: string; loaded?: unknown; total?: unknown } | null;
     if (data?.source !== "proto-lab") return;
     if (data.type === "asset-request") {
       void assetHost?.onMessage(event, frame);
@@ -200,6 +202,13 @@ export function createOverlay(
     }
     if (data.type === "close") {
       void close();
+      return;
+    }
+    if (data.type === "progress") {
+      if (boot === "ready") return;
+      const status = root.querySelector<HTMLElement>(".prototype-status");
+      if (!status) return;
+      paintBootProgress(status, data.loaded, data.total);
       return;
     }
     if (data.type === "alive") {
@@ -284,11 +293,7 @@ export function createOverlay(
     header.append(back, title, suggest, full, banner);
     const slot = document.createElement("div");
     slot.className = "prototype-frame";
-    const status = document.createElement("p");
-    status.className = "prototype-status";
-    status.dataset.testid = "prototype-status";
-    status.textContent = "Abriendo la aplicación…";
-    slot.append(status);
+    slot.append(createBootScreen());
     root.append(header, slot);
 
     hooks?.onOpenEntry?.(entry);
