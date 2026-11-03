@@ -192,6 +192,9 @@ if (window.__protoLabApp) {
 					statusProgress.removeAttribute('value');
 					statusProgress.removeAttribute('max');
 				}
+				if (window.parent !== window) {
+					window.parent.postMessage({ source: 'proto-lab', type: 'progress', loaded: current, total: total }, '*');
+				}
 			},
 		}).then(function () {
 			setStatusMode('hidden');

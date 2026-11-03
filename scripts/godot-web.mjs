@@ -79,6 +79,9 @@ function assertHtmlContract(name, text) {
   if (!text.includes("startGame")) errors.push(`${name} no arranca con startGame`);
   if (!text.includes("requestQuit")) errors.push(`${name} no cierra con requestQuit`);
   if (!text.includes("./arranque.js")) errors.push(`${name} no carga arranque.js`);
+  if (text.includes("onProgress") && !text.includes("type: 'progress'")) {
+    errors.push(`${name} no reenvía el avance de la descarga`);
+  }
   return errors;
 }
 
