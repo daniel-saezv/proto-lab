@@ -99,6 +99,19 @@ describe("guardado por slug", () => {
     const direct = replyToSave(createAppSave(storage, "demo"), { source: "proto-lab", type: "save", id: 9, op: "get", key: 12 });
     expect(direct?.ok).toBe(false);
   });
+
+  it("ignora save si la aplicación no declara la capacidad", () => {
+    const storage = memoryStorage();
+    const bridge = createSaveBridge("chispa", storage, { enabled: false });
+    const postMessage = viPost();
+    const frame = { contentWindow: { postMessage: postMessage.fn } } as unknown as HTMLIFrameElement;
+    bridge.onMessage(
+      { source: frame.contentWindow, data: { source: "proto-lab", type: "save", id: 3, op: "set", key: "partida", value: "no" } } as MessageEvent,
+      frame,
+    );
+    expect(postMessage.calls).toHaveLength(0);
+    expect(storage.getItem(appStorageKey("chispa"))).toBeNull();
+  });
 });
 
 function viPost() {

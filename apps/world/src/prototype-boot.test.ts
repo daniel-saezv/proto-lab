@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { advanceBoot, bootFailureMessage, iframeAllow } from "./prototype-boot";
+import { APP_PERMISSIONS } from "../../../scripts/app-contract.mjs";
+import { DEVICE_PERMISSIONS, advanceBoot, bootFailureMessage, iframeAllow } from "./prototype-boot";
 
 describe("arranque de la aplicación", () => {
   it("no da el arranque por bueno con alive", () => {
@@ -16,8 +17,10 @@ describe("arranque de la aplicación", () => {
     expect(bootFailureMessage("alive")).not.toContain("salir del laboratorio");
   });
 
-  it("escribe allow solo con los permisos declarados", () => {
+  it("escribe allow solo con los permisos de dispositivo", () => {
+    expect([...DEVICE_PERMISSIONS]).toEqual(APP_PERMISSIONS);
     expect(iframeAllow([])).toBe("");
     expect(iframeAllow(["camera", "geolocation"])).toBe("camera; geolocation");
+    expect(iframeAllow(["geolocation", "camera", "save", "wasm", "usb", "payment"])).toBe("camera; geolocation");
   });
 });

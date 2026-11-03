@@ -20,8 +20,12 @@ describe("catálogo", () => {
     const chispa = entries.find((entry) => entry.slug === "chispa");
     expect(chispa?.href).toBe("/protos/chispa/");
     expect(chispa?.history?.length).toBeGreaterThan(0);
+    expect(chispa?.capabilities).toEqual([]);
     expect(chispa?.permissions).toEqual([]);
     expect(chispa?.readyMs).toBeGreaterThan(0);
+    const assetLab = entries.find((entry) => entry.slug === "asset-lab");
+    expect(assetLab?.capabilities).toEqual(["save", "geolocation"]);
+    expect(assetLab?.permissions).toEqual(["geolocation"]);
   });
 
   it("rechaza un permiso fuera de la lista y un readyMs imposible", () => {
@@ -36,12 +40,27 @@ describe("catálogo", () => {
       version: "0.1.0",
       history: [{ version: "0.1.0", date: "2026-11-02", note: "Alta." }],
     };
-    expect(() => assertManifest("demo", { ...base, permissions: ["camera", "usb"] }, root)).toThrow(/permiso/);
+    expect(() => assertManifest("demo", { ...base, permissions: ["camera", "usb"] }, root)).toThrow(/no permitido/);
     expect(() => assertManifest("demo", { ...base, permissions: ["camera", "camera"] }, root)).toThrow(/duplicado/);
+    expect(() => assertManifest("demo", { ...base, permissions: ["save"] }, root)).toThrow(/permiso|no permitido/);
+    expect(() => assertManifest("demo", { ...base, capabilities: ["save", "usb"] }, root)).toThrow(/no permitido/);
+    expect(() => assertManifest("demo", { ...base, capabilities: ["wasm", "wasm"] }, root)).toThrow(/duplicado/);
+    expect(() => assertManifest("demo", { ...base, capabilities: "save" }, root)).toThrow(/lista/);
     expect(() => assertManifest("demo", { ...base, readyMs: 50 }, root)).toThrow(/readyMs/);
-    const ok = assertManifest("demo", { ...base, permissions: ["microphone"] }, root);
-    expect(ok.permissions).toEqual(["microphone"]);
-    expect(ok.readyMs).toBe(8000);
+    const legacy = assertManifest("demo", { ...base, permissions: ["microphone"] }, root);
+    expect(legacy.permissions).toEqual(["microphone"]);
+    expect(legacy.capabilities).toEqual(["microphone"]);
+    expect(legacy.readyMs).toBe(8000);
+    const caps = assertManifest(
+      "demo",
+      { ...base, capabilities: ["geolocation", "save", "camera"], permissions: ["microphone"] },
+      root,
+    );
+    expect(caps.capabilities).toEqual(["save", "camera", "microphone", "geolocation"]);
+    expect(caps.permissions).toEqual(["camera", "microphone", "geolocation"]);
+    const wasm = assertManifest("demo", { ...base, capabilities: ["wasm"] }, root);
+    expect(wasm.capabilities).toEqual(["wasm"]);
+    expect(wasm.permissions).toEqual([]);
   });
 
   it("la plantilla tiene un manifiesto válido y no entra en el catálogo", () => {
@@ -50,6 +69,8 @@ describe("catálogo", () => {
     const manifest = JSON.parse(readFileSync(join(dir, "proto.json"), "utf8"));
     const validated = assertManifest(manifest.slug, manifest, dir);
     expect(validated.slug).toBe("aplicacion");
+    expect(validated.capabilities).toEqual(["save"]);
+    expect(validated.permissions).toEqual([]);
     expect(validated.history.some((entry) => entry.version === validated.version)).toBe(true);
   });
 });

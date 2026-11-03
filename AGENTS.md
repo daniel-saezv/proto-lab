@@ -44,7 +44,7 @@ TypeScript, Vite 8 y pnpm 12 (workspaces). El laboratorio usa Three.js 0.187 (ge
 
 El service worker cachea la shell y los assets del mundo. No intercepta `/protos/` ni `/api/`.
 
-Cada aplicación se abre en un iframe del mismo origen, `src="/protos/<slug>/"`, dentro del overlay del arcade. No hay `sandbox`, ni documento `blob:`, ni script clásico inyectado. Antes de montarlo, el laboratorio pide la página con la cookie de la sesión y rechaza otro origen, una ruta fuera de `/protos/`, una respuesta que no sea HTML o el HTML de login de Access: en ese caso no hay iframe y se muestra el aviso con Volver. La CSP del sitio usa `frame-src 'self'` y `frame-ancestors 'self'`. `X-Frame-Options: DENY` cubre el laboratorio; en `/protos/*` se quita, porque si no el iframe no cargaría. La aplicación es código de confianza del mismo origen: pide sus propios archivos bajo `/protos/<slug>/` con `window.__protoLabData` (imagen, audio o JSON, por ruta relativa). El guardado de una persona va a `localStorage` del laboratorio, en la bolsa `proto-lab:app:<slug>`. La aplicación deja `localStorage` y `sessionStorage` en manos del laboratorio y no navega la ventana superior.
+Cada aplicación se abre en un iframe del mismo origen, `src="/protos/<slug>/"`, dentro del overlay del arcade. No hay `sandbox`, ni documento `blob:`, ni script clásico inyectado. Antes de montarlo, el laboratorio pide la página con la cookie de la sesión y rechaza otro origen, una ruta fuera de `/protos/`, una respuesta que no sea HTML o el HTML de login de Access: en ese caso no hay iframe y se muestra el aviso con Volver. La CSP del sitio usa `frame-src 'self'` y `frame-ancestors 'self'`. `X-Frame-Options: DENY` cubre el laboratorio; en `/protos/*` se quita, porque si no el iframe no cargaría. La aplicación es código de confianza del mismo origen: pide sus propios archivos bajo `/protos/<slug>/` con `window.__protoLabData` (imagen, audio o JSON, por ruta relativa). El guardado de una persona va a `localStorage` del laboratorio, en la bolsa `proto-lab:app:<slug>`, solo si `capabilities` incluye `save`. La aplicación deja `localStorage` y `sessionStorage` en manos del laboratorio y no navega la ventana superior.
 
 En producción y en las previews, Cloudflare Access tiene que permitir que la aplicación se enmarque (`allow_iframe` en la aplicación de Access). Eso lo configura el dueño en el dashboard; sin ello el iframe puede caer en el PIN aunque el laboratorio ya haya pasado Access. El e2e local no pasa por Access.
 
@@ -68,7 +68,7 @@ Las plantillas exponen `window.__protoLabData` para el mismo cupo (64 rutas, 4�
 - `get(clave)` / `set(clave, valor)` / `remove(clave)` — el valor es un string
 - `revoke()` — lo llama `stop()`
 
-El guardado lo escribe el laboratorio, no la aplicación. Mensaje `{ source: "proto-lab", type: "save", id, op: "get"|"set"|"delete", key, value? }` y respuesta `save-result`. El slug sale del iframe abierto. Cupo por slug: 32 claves, clave de hasta 64 caracteres (`A-Za-z0-9._-`), 32 KiB por valor y 256 KiB en total.
+El guardado lo escribe el laboratorio, no la aplicación, y solo si `proto.json` declara `save`. Mensaje `{ source: "proto-lab", type: "save", id, op: "get"|"set"|"delete", key, value? }` y respuesta `save-result`. Sin esa capacidad el mensaje se ignora. El slug sale del iframe abierto. Cupo por slug: 32 claves, clave de hasta 64 caracteres (`A-Za-z0-9._-`), 32 KiB por valor y 256 KiB en total. `wasm` añade `wasm-unsafe-eval` a la CSP de `/protos/<slug>/`. El atributo `allow` del iframe sale solo de los permisos de dispositivo declarados.
 
 El catálogo no se edita a mano. `apps/world/src/generated/catalog.json` y `functions/_lib/slugs.json` los regenera `pnpm generate` y no se versionan.
 
@@ -112,9 +112,9 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Cada prototipo declara sus dependencias en su `package.json`. Phaser no entra en el bundle del laboratorio.
 - Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB).
 - Opcional en `proto.json`: `"assets": ["ruta/relativa.png", …]` (puente heredado; ver arriba). Una aplicación nueva pide imágenes, audio y JSON con `window.__protoLabData` y una ruta relativa bajo `/protos/<slug>/`.
-- Opcional en `proto.json`: `"permissions"` (lista cerrada) y `"readyMs"` (plazo de `ready`; ver el contrato).
+- Opcional en `proto.json`: `"capabilities"` (`save`, `wasm` y permisos de dispositivo) y `"readyMs"` (plazo de `ready`; ver el contrato). `"permissions"` sigue aceptándose como lista de dispositivos.
 - Opcional en `proto.json`: `"hidden": true` excluye el prototipo del selector, la pizarra y el fallback HTML (sigue en el catálogo, build y `/protos/<slug>/` para pruebas).
-- El guardado de una persona pasa por `__protoLabData`. El laboratorio lo escribe en `localStorage` bajo `proto-lab:app:<slug>`. La aplicación deja `localStorage` y `sessionStorage` sin tocar.
+- El guardado de una persona pasa por `__protoLabData` si `capabilities` incluye `save`. El laboratorio lo escribe en `localStorage` bajo `proto-lab:app:<slug>`. La aplicación deja `localStorage` y `sessionStorage` sin tocar.
 - Las pistas del lobby (`/protos/audio/*.m4a`) se sirven con caché larga e inmutable. `pnpm build` copia cada archivo a un nombre con hash de contenido y reescribe el bundle para que un cambio de pista cambie la URL. El service worker sigue sin interceptar `/protos/`.
 - Al implementar una iteración, el manifiesto y su historial forman parte del cambio, no un extra opcional.
 
@@ -137,13 +137,16 @@ El iframe es del mismo origen: `src="/protos/<slug>/"`, sin `sandbox` y sin docu
 - Cuando el primer fotograma ya es visible (no una pantalla en blanco), envía `{ source: "proto-lab", type: "ready" }`. El laboratorio quita la capa y da la apertura por buena.
 - `readyMs` en `proto.json` es el plazo en milisegundos (por defecto 8000, mínimo 1000, máximo 60000). Si vence sin `ready`, se quita el iframe y queda el aviso con Volver, aunque `alive` hubiera llegado.
 - `window.__protoLabApp.stop()` es obligatorio. El laboratorio lo llama al cerrar, luego navega el iframe a `about:blank` y lo elimina. La aplicación también lo llama en `pagehide`.
-- `permissions` es opcional y de lista cerrada: `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope`, `magnetometer`. Sin duplicados. El laboratorio escribe el atributo `allow` del iframe con esa lista. La `Permissions-Policy` del sitio sigue denegando esas funciones: el atributo no las concede hasta que las cabeceras se partan en una fase posterior.
+- `capabilities` es opcional y de lista cerrada, sin duplicados: `save`, `wasm`, `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope`, `magnetometer`. Cualquier otro valor falla el validador del catálogo (CI). `permissions` sigue aceptándose como lista solo de dispositivos; si convive con `capabilities`, se unen.
+- `save`: el laboratorio atiende el mensaje `save` solo si está declarado. Sin él, `__protoLabData.get` / `set` / `remove` no reciben respuesta.
+- `wasm`: la CSP de `/protos/<slug>/` añade `'wasm-unsafe-eval'` a `script-src` solo en ese slug. El resto del sitio no lo lleva. Lo escribe el ensamblado en `dist/_headers`.
+- Permisos de dispositivo: el cargador escribe el atributo `allow` del iframe solo con `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope` y `magnetometer`, en ese orden. `save` y `wasm` no entran en `allow`. La `Permissions-Policy` del sitio sigue denegando esas funciones: el atributo no las concede hasta que las cabeceras se partan en una fase posterior.
 - La aplicación servida cabe en **64** archivos, **4 MiB** por archivo y **16 MiB** en total. Un JS de más de **1,5 MiB** avisa; uno de más de **4 MiB** falla el build. El HTML o el JS servidos tienen que mencionar `__protoLabApp` y la señal `ready`. Lo comprueba `scripts/app-budget.mjs` dentro de `pnpm build` (ensamblado) y del atajo de aplicaciones (`.github/scripts/ci-protos.sh`).
-- Sin hilos ni `SharedArrayBuffer`. Sin navegar la ventana superior.
+- Sin hilos ni `SharedArrayBuffer`: no hay `Cross-Origin-Opener-Policy` ni `Cross-Origin-Embedder-Policy`. Los formularios no se envían (`form-action 'none'`). Sin navegar la ventana superior.
 - Imágenes, audio y JSON van por `window.__protoLabData` y una ruta relativa del slug, con el cupo de 64 rutas, 4 MiB, 16 MiB y 128 peticiones. El puente `asset-request` sigue disponible para la lista `assets`, con el mismo cupo. El laboratorio no inyecta `__protoLabAssets`.
-- Guardado: `get` / `set` / `remove` de `__protoLabData`. El laboratorio escribe `proto-lab:app:<slug>` (32 claves, 32 KiB por valor, 256 KiB por slug).
+- Guardado, si `save` está declarado: `get` / `set` / `remove` de `__protoLabData`. El laboratorio escribe `proto-lab:app:<slug>` (32 claves, 32 KiB por valor, 256 KiB por slug).
 
-`proto.json`: `slug` igual a la carpeta, `title` (hasta 80), `description` (hasta 2000), `author`, `date` (`AAAA-MM-DD`), `tags`, `version` semver e `history` que incluya la versión actual (`version`, `date`, `note`). Opcionales: `cover`, `preview`, `assets`, `permissions`, `readyMs`, `hidden: true`. En la variante de código, el `base` de Vite es `/protos/<slug>/`.
+`proto.json`: `slug` igual a la carpeta, `title` (hasta 80), `description` (hasta 2000), `author`, `date` (`AAAA-MM-DD`), `tags`, `version` semver e `history` que incluya la versión actual (`version`, `date`, `note`). Opcionales: `cover`, `preview`, `assets`, `capabilities`, `permissions`, `readyMs`, `hidden: true`. En la variante de código, el `base` de Vite es `/protos/<slug>/`.
 
 ### `stop()`
 

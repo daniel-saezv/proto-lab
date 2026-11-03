@@ -141,11 +141,12 @@ export function replyToSave(save: AppSave, data: unknown): SaveResult | null {
   }
 }
 
-export function createSaveBridge(slug: string, storage: Storage) {
-  const save = createAppSave(storage, slug);
+export function createSaveBridge(slug: string, storage: Storage, options?: { enabled?: boolean }) {
+  const enabled = options?.enabled !== false;
+  const save = enabled ? createAppSave(storage, slug) : null;
   return {
     onMessage(event: MessageEvent, frame: HTMLIFrameElement | null) {
-      if (!frame || event.source !== frame.contentWindow) return;
+      if (!enabled || !save || !frame || event.source !== frame.contentWindow) return;
       const response = replyToSave(save, event.data);
       if (!response) return;
       frame.contentWindow?.postMessage(response, "*");

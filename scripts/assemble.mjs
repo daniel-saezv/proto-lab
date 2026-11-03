@@ -3,6 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertServedApp } from "./app-budget.mjs";
 import { resolveProtoOutput, STATIC_SKIP } from "./proto-publish.mjs";
+import { writeCapabilityHeaders } from "./proto-csp.mjs";
 import { isShellPath, renderServiceWorker } from "./sw.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -56,4 +57,5 @@ function walk(dir) {
 }
 walk(out);
 writeFileSync(join(out, "sw.js"), renderServiceWorker(shell));
+writeCapabilityHeaders(root, join(out, "_headers"));
 console.log(`Sitio en dist/ con ${shell.length} archivos de shell.`);

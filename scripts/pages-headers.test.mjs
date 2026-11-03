@@ -28,6 +28,10 @@ describe("cabeceras de Pages", () => {
     expect(csp).toContain("frame-ancestors 'self'");
     expect(csp).not.toContain("frame-ancestors 'none'");
     expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+    expect(csp).not.toContain("wasm-unsafe-eval");
+    expect(csp).toContain("form-action 'none'");
+    expect(source.toLowerCase()).not.toContain("cross-origin-opener-policy");
+    expect(source.toLowerCase()).not.toContain("cross-origin-embedder-policy");
     expect(csp).toContain("media-src 'self' blob:");
     expect(csp).not.toContain("connect-src 'none'");
     expect(home.get("x-content-type-options")?.value).toBe("nosniff");

@@ -299,7 +299,8 @@ export function createOverlay(
         if (mine !== generation) return;
         const next = document.createElement("iframe");
         next.title = entry.title;
-        const allow = iframeAllow(entry.permissions ?? []);
+        const declared = entry.capabilities ?? entry.permissions ?? [];
+        const allow = iframeAllow(declared);
         if (allow) next.allow = allow;
         next.addEventListener("load", () => {
           if (mine !== generation || frame !== next) return;
@@ -313,7 +314,7 @@ export function createOverlay(
           attachFrameGuards(next);
         });
         assetHost = createPrototypeAssetHost({ slug: entry.slug, allowedPaths: entry.assets });
-        saveBridge = createSaveBridge(entry.slug, localStorage);
+        saveBridge = createSaveBridge(entry.slug, localStorage, { enabled: declared.includes("save") });
         frame = next;
         slot.append(next);
         next.src = entry.href;

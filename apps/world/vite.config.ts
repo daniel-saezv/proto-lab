@@ -2,7 +2,8 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { defineConfig, type Plugin, type HtmlTagDescriptor } from "vite";
-import { headersForPath, parsePagesHeaders, sealPagesHeaders } from "../../scripts/pages-headers.mjs";
+import { headersForPath, sealPagesHeaders } from "../../scripts/pages-headers.mjs";
+import { pagesHeaderRules } from "../../scripts/proto-csp.mjs";
 
 const worldDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(worldDir, "../..");
@@ -22,14 +23,20 @@ const MIME: Record<string, string> = {
   ".md": "text/plain; charset=utf-8",
 };
 
+const headerRules = pagesHeaderRules(repoRoot);
+
+function applyDevCsp(res: { setHeader(name: string, value: string): void }, pathname: string) {
+  const csp = headersForPath(headerRules, pathname).get("content-security-policy");
+  if (csp) res.setHeader(csp.name, csp.value);
+}
+
 function applyPagesHeaders(): Plugin {
-  const rules = parsePagesHeaders(readFileSync(resolve(worldDir, "public/_headers"), "utf8"));
   return {
     name: "proto-lab-pages-headers",
     configurePreviewServer(server) {
       server.middlewares.use((req, res, next) => {
         const pathname = (req.url ?? "/").split("?")[0] || "/";
-        sealPagesHeaders(res, headersForPath(rules, pathname));
+        sealPagesHeaders(res, headersForPath(headerRules, pathname));
         next();
       });
     },
@@ -84,6 +91,7 @@ function serveProtos(): Plugin {
           const ext = file.slice(file.lastIndexOf("."));
           res.setHeader("content-type", MIME[ext] ?? "application/octet-stream");
           res.setHeader("cache-control", "public, max-age=86400");
+          applyDevCsp(res, url);
           createReadStream(file).pipe(res);
           return;
         }
@@ -99,6 +107,7 @@ function serveProtos(): Plugin {
         res.setHeader("content-type", MIME[ext] ?? "application/octet-stream");
         res.setHeader("cache-control", "no-cache");
         res.setHeader("access-control-allow-origin", "*");
+        applyDevCsp(res, url);
         createReadStream(file).pipe(res);
       });
     },

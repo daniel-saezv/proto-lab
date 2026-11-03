@@ -3,6 +3,9 @@
 # sigue en 'self' para que solo este sitio pueda enmarcarlas.
 # X-Frame-Options: DENY cubre el laboratorio. En `/protos/*` se suelta:
 # DENY impediría el iframe aunque la CSP lo permita.
+# script-src no lleva wasm-unsafe-eval. El ensamblado lo añade solo en
+# `/protos/<slug>/` si proto.json declara `wasm`. No hay COOP ni COEP
+# (sin hilos ni SharedArrayBuffer). form-action 'none': los formularios no se envían.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
