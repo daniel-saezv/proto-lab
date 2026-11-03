@@ -202,6 +202,49 @@
     else entry.reject(new Error(data.error || "invalid"));
   });
 
+  function pageSlug() {
+    var page;
+    try {
+      page = new URL(window.location.href);
+    } catch (error) {
+      return null;
+    }
+    var match = page.pathname.match(/^\/protos\/([a-z0-9]+(?:-[a-z0-9]+)*)(\/|$)/);
+    return match ? match[1] : null;
+  }
+
+  function requestShared(op, key, value) {
+    var slug = pageSlug();
+    if (!slug) return Promise.reject(new Error("not-allowed"));
+    var body = { op: op, key: key };
+    if (op === "set") body.value = value;
+    return fetch("/api/apps/" + slug + "/shared", {
+      method: "POST",
+      credentials: "same-origin",
+      redirect: "manual",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+    }).then(
+      function (response) {
+        if (response.status >= 300 && response.status < 400) throw new Error("unauthorized");
+        return response.json().then(
+          function (payload) {
+            if (!payload || payload.ok !== true) throw new Error((payload && payload.error) || "unavailable");
+            if (payload.value == null) return null;
+            if (typeof payload.value !== "string") throw new Error("unavailable");
+            return payload.value;
+          },
+          function () {
+            throw new Error("unavailable");
+          },
+        );
+      },
+      function () {
+        throw new Error("unavailable");
+      },
+    );
+  }
+
   window.__protoLabData = {
     load: load,
     json: function (path) {
@@ -232,6 +275,15 @@
     },
     remove: function (key) {
       return requestSave("delete", key).then(function () {});
+    },
+    sharedGet: function (key) {
+      return requestShared("get", key);
+    },
+    sharedSet: function (key, value) {
+      return requestShared("set", key, value).then(function () {});
+    },
+    sharedRemove: function (key) {
+      return requestShared("delete", key).then(function () {});
     },
     revoke: revoke,
   };

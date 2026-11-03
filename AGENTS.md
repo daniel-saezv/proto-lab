@@ -65,7 +65,8 @@ Las plantillas exponen `window.__protoLabData` para el mismo cupo (64 rutas, 4�
 - `load(ruta)` → `{ mime, buffer }`
 - `json(ruta)` → valor JSON
 - `blobUrl(ruta)` → URL de objeto para imagen o audio
-- `get(clave)` / `set(clave, valor)` / `remove(clave)` — el valor es un string
+- `get(clave)` / `set(clave, valor)` / `remove(clave)` — el valor es un string, guardado de una persona
+- `sharedGet(clave)` / `sharedSet(clave, valor)` / `sharedRemove(clave)` — dato compartido entre sesiones, solo si `capabilities` incluye `shared`
 - `revoke()` — lo llama `stop()`
 
 El guardado lo escribe el laboratorio, no la aplicación, y solo si `proto.json` declara `save`. Mensaje `{ source: "proto-lab", type: "save", id, op: "get"|"set"|"delete", key, value? }` y respuesta `save-result`. Sin esa capacidad el mensaje se ignora. El slug sale del iframe abierto. Cupo por slug: 32 claves, clave de hasta 64 caracteres (`A-Za-z0-9._-`), 32 KiB por valor y 256 KiB en total. `wasm` añade `wasm-unsafe-eval` a la CSP de `/protos/<slug>/`. El atributo `allow` del iframe sale solo de los permisos de dispositivo declarados.
@@ -112,7 +113,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - Cada prototipo declara sus dependencias en su `package.json`. Phaser no entra en el bundle del laboratorio.
 - Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB).
 - Opcional en `proto.json`: `"assets": ["ruta/relativa.png", …]` (puente heredado; ver arriba). Una aplicación nueva pide imágenes, audio y JSON con `window.__protoLabData` y una ruta relativa bajo `/protos/<slug>/`.
-- Opcional en `proto.json`: `"capabilities"` (`save`, `wasm` y permisos de dispositivo) y `"readyMs"` (plazo de `ready`; ver el contrato). `"permissions"` sigue aceptándose como lista de dispositivos.
+- Opcional en `proto.json`: `"capabilities"` (`save`, `wasm`, `shared` y permisos de dispositivo) y `"readyMs"` (plazo de `ready`; ver el contrato). `"permissions"` sigue aceptándose como lista de dispositivos.
 - Opcional en `proto.json`: `"hidden": true` excluye el prototipo del selector, la pizarra y el fallback HTML (sigue en el catálogo, build y `/protos/<slug>/` para pruebas).
 - El guardado de una persona pasa por `__protoLabData` si `capabilities` incluye `save`. El laboratorio lo escribe en `localStorage` bajo `proto-lab:app:<slug>`. La aplicación deja `localStorage` y `sessionStorage` sin tocar.
 - Las pistas del lobby (`/protos/audio/*.m4a`) se sirven con caché larga e inmutable. `pnpm build` copia cada archivo a un nombre con hash de contenido y reescribe el bundle para que un cambio de pista cambie la URL. El service worker sigue sin interceptar `/protos/`.
@@ -137,14 +138,15 @@ El iframe es del mismo origen: `src="/protos/<slug>/"`, sin `sandbox` y sin docu
 - Cuando el primer fotograma ya es visible (no una pantalla en blanco), envía `{ source: "proto-lab", type: "ready" }`. El laboratorio quita la capa y da la apertura por buena.
 - `readyMs` en `proto.json` es el plazo en milisegundos (por defecto 8000, mínimo 1000, máximo 60000). Si vence sin `ready`, se quita el iframe y queda el aviso con Volver, aunque `alive` hubiera llegado.
 - `window.__protoLabApp.stop()` es obligatorio. El laboratorio lo llama al cerrar, luego navega el iframe a `about:blank` y lo elimina. La aplicación también lo llama en `pagehide`.
-- `capabilities` es opcional y de lista cerrada, sin duplicados: `save`, `wasm`, `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope`, `magnetometer`. Cualquier otro valor falla el validador del catálogo (CI). `permissions` sigue aceptándose como lista solo de dispositivos; si convive con `capabilities`, se unen.
+- `capabilities` es opcional y de lista cerrada, sin duplicados: `save`, `wasm`, `shared`, `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope`, `magnetometer`. Cualquier otro valor falla el validador del catálogo (CI). `permissions` sigue aceptándose como lista solo de dispositivos; si convive con `capabilities`, se unen.
 - `save`: el laboratorio atiende el mensaje `save` solo si está declarado. Sin él, `__protoLabData.get` / `set` / `remove` no reciben respuesta.
 - `wasm`: la CSP de `/protos/<slug>/` añade `'wasm-unsafe-eval'` a `script-src` solo en ese slug. El resto del sitio no lo lleva. Lo escribe el ensamblado en `dist/_headers`.
-- Permisos de dispositivo: el cargador escribe el atributo `allow` del iframe solo con `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope` y `magnetometer`, en ese orden. `save` y `wasm` no entran en `allow`. La `Permissions-Policy` de `/` y de `/index.html` los abre para `self` para poder delegarlos. En `/protos/<slug>/` el ensamblado deja en `(self)` solo los que declara ese manifiesto; el resto del sitio sigue en `()`. `payment` y `usb` siguen cerrados.
+- Permisos de dispositivo: el cargador escribe el atributo `allow` del iframe solo con `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope` y `magnetometer`, en ese orden. `save`, `wasm` y `shared` no entran en `allow`. La `Permissions-Policy` de `/` y de `/index.html` los abre para `self` para poder delegarlos. En `/protos/<slug>/` el ensamblado deja en `(self)` solo los que declara ese manifiesto; el resto del sitio sigue en `()`. `payment` y `usb` siguen cerrados.
 - La aplicación servida cabe en **64** archivos, **4 MiB** por archivo y **16 MiB** en total. Un JS de más de **1,5 MiB** avisa; uno de más de **4 MiB** falla el build. El HTML o el JS servidos tienen que mencionar `__protoLabApp` y la señal `ready`. Lo comprueba `scripts/app-budget.mjs` dentro de `pnpm build` (ensamblado) y del atajo de aplicaciones (`.github/scripts/ci-protos.sh`).
 - Sin hilos ni `SharedArrayBuffer`: no hay `Cross-Origin-Opener-Policy` ni `Cross-Origin-Embedder-Policy`. Los formularios no se envían (`form-action 'none'`). Sin navegar la ventana superior.
 - Imágenes, audio y JSON van por `window.__protoLabData` y una ruta relativa del slug, con el cupo de 64 rutas, 4 MiB, 16 MiB y 128 peticiones. El puente `asset-request` sigue disponible para la lista `assets`, con el mismo cupo. El laboratorio no inyecta `__protoLabAssets`.
 - Guardado, si `save` está declarado: `get` / `set` / `remove` de `__protoLabData`. El laboratorio escribe `proto-lab:app:<slug>` (32 claves, 32 KiB por valor, 256 KiB por slug).
+- Datos compartidos, si `shared` está declarado: `sharedGet` / `sharedSet` / `sharedRemove`. La Function `POST /api/apps/<slug>/shared` lee el slug de la ruta, la identidad del JWT de Access y escribe en D1 con sentencias fijas. Mismo cupo: 32 claves, 32 KiB por valor, 256 KiB por slug. No es un sondeo: cada llamada gasta una petición de Workers. Si D1 pasa el cupo gratuito, la API responde `quota` y no reintenta.
 
 `proto.json`: `slug` igual a la carpeta, `title` (hasta 80), `description` (hasta 2000), `author`, `date` (`AAAA-MM-DD`), `tags`, `version` semver e `history` que incluya la versión actual (`version`, `date`, `note`). Opcionales: `cover`, `preview`, `assets`, `capabilities`, `permissions`, `readyMs`, `hidden: true`. En la variante de código, el `base` de Vite es `/protos/<slug>/`.
 
@@ -201,6 +203,24 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 - Binding opcional: KV `PROPOSALS`. Sin él no hay límite diario al crear propuestas ni caché del tablón; la Function de estado sigue respondiendo.
 - No definir `ALLOW_DEV_AUTH` en Pages.
 
+**Datos compartidos (D1).** Una sola tabla, `shared_entries`, en la migración [`migrations/0001_shared_entries.sql`](migrations/0001_shared_entries.sql). La Function es `POST /api/apps/<slug>/shared` con `{ "op": "get"|"set"|"delete", "key", "value"? }`. No hay SQL desde la aplicación. El binding se llama `DB` (`env.DB`). Si falta, la API responde 503 `config` y lo dice. Los datos de una persona siguen en `localStorage`; D1 es solo lo que ven todas las sesiones de ese slug. La lista de slugs que declaran `shared` la genera `pnpm generate` en `functions/_lib/shared-slugs.json` (no se versiona).
+
+El binding aún no está en Cloudflare. Hasta que el dueño lo cree, la API responde ese 503. Hay que crear dos bases, para que una preview no escriba en producción, y aplicar la migración en las dos:
+
+| | Producción | Previews |
+| --- | --- | --- |
+| Base D1 | `proto-lab-shared` | `proto-lab-shared-preview` |
+| Variable del binding | `DB` | `DB` |
+
+`wrangler.toml` es la fuente de verdad de Pages (ya lleva el KV). No pongas un `database_id` inventado. Cuando las bases existan, añade el bloque comentado en ese archivo: `[[d1_databases]]` con el id de producción y `[[env.preview.d1_databases]]` con el id de preview. En preview hay que repetir también el KV `PROPOSALS`, porque al sobreescribir un binding no heredable hay que repetir los demás. Luego:
+
+```sh
+npx wrangler d1 execute proto-lab-shared --remote --file=migrations/0001_shared_entries.sql
+npx wrangler d1 execute proto-lab-shared-preview --remote --file=migrations/0001_shared_entries.sql
+```
+
+Workers Free: al pasar el cupo diario de filas leídas o escritas, o el de almacenamiento, D1 falla y no cobra. La Function traduce ese error a `quota` y no reintenta. No actives un plan de pago para saltarte el cupo.
+
 **Limpieza de previews (GitHub Actions):** el workflow [`.github/workflows/cleanup-pages-previews.yml`](.github/workflows/cleanup-pages-previews.yml) borra despliegues *preview* en Cloudflare Pages (API `DELETE …/deployments/{id}?force=true`). Al cerrar un PR elimina todos los previews de esa rama. Un cron semanal y un barrido manual (`sweep`) quitan previews cuya rama ya no existe en el remoto o con más de 14 días (configurable). El modo manual `purge-all-previews` (vía `workflow_dispatch`) sirve para una limpieza inicial: borra todos los previews salvo los de ramas con PR abierta; no toca producción ni la rama `main`. Secretos del repositorio (Actions): `CLOUDFLARE_API_TOKEN` (permiso Account → Cloudflare Pages → **Edit**) y `CLOUDFLARE_ACCOUNT_ID`. Si faltan, el job avisa y termina en verde sin borrar nada. En `workflow_dispatch`, usa primero `dry_run: true` (sobre todo con `purge-all-previews`) y luego repite con `dry_run: false`.
 
 El único workflow que mira issues es el aviso al Grok Bot (arriba): al crear una issue y al etiquetar `aprobado` por el dueño. No implementa la propuesta ni lee el título o el cuerpo. Hacen falta dos secretos del repositorio, sin valores en el código: `GROKBOT_WEBHOOK_URL` y `GROKBOT_WEBHOOK_AUTH` (el valor entero de `Authorization`, sin que el workflow le anteponga `Bearer`). Si faltan, el job termina en aviso y no falla.
@@ -233,4 +253,5 @@ Secretos en Cursor, sin valores:
 - `GITHUB_TOKEN` solo si se quiere probar la creación real de issues desde la nube. Mismo alcance que en Pages: fine-grained, solo Issues de este repositorio.
 - `GITHUB_STATUS_TOKEN`, `CF_PAGES_READ_TOKEN`, `CF_ACCOUNT_ID` y `CF_PAGES_PROJECT` solo si quieres probar el tablón contra GitHub/Cloudflare reales en la nube.
 - `CF_ACCESS_AUD` solo si quieres probar las Functions con un JWT real de Access. No pongas el valor en el repo.
-- No añadas `ALLOW_DEV_AUTH` como secreto de Cursor ni de Pages. En local se exporta en la shell únicamente para esa prueba.
+- No añadas `ALLOW_DEV_AUTH` como secreto de Cursor ni de Pages. En local se exporta en la shell únicamente para esa prueba. La API de datos compartidos no lo acepta: solo el JWT de Access.
+- La D1 no es un secreto de Cursor. Los tests usan un mock en memoria. El binding `DB` lo crea el dueño en Cloudflare, como dice **Datos compartidos (D1)**.

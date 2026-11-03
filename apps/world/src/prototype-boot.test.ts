@@ -21,6 +21,6 @@ describe("arranque de la aplicación", () => {
     expect([...DEVICE_PERMISSIONS]).toEqual(APP_PERMISSIONS);
     expect(iframeAllow([])).toBe("");
     expect(iframeAllow(["camera", "geolocation"])).toBe("camera; geolocation");
-    expect(iframeAllow(["geolocation", "camera", "save", "wasm", "usb", "payment"])).toBe("camera; geolocation");
+    expect(iframeAllow(["geolocation", "camera", "save", "wasm", "shared", "usb", "payment"])).toBe("camera; geolocation");
   });
 });

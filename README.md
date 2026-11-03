@@ -44,14 +44,14 @@ El `proto.json` lleva:
 - `title`, `description`, `author` (email o alias), `date` (`AAAA-MM-DD`)
 - `tags`, `cover` (archivo en la misma carpeta, o `null`)
 - `version` y `history` (la versión actual tiene que aparecer en el historial)
-- opcional: `"readyMs"` (plazo de arranque, por defecto 8000 ms) y `"capabilities"` (`save`, `wasm` y permisos de dispositivo; ver [`AGENTS.md`](AGENTS.md)). `"permissions"` sigue valiendo como lista de dispositivos.
+- opcional: `"readyMs"` (plazo de arranque, por defecto 8000 ms) y `"capabilities"` (`save`, `wasm`, `shared` y permisos de dispositivo; ver [`AGENTS.md`](AGENTS.md)). `"permissions"` sigue valiendo como lista de dispositivos.
 - opcional: `"assets": ["media/foo.png", …]` — puente heredado de recursos declarados (64 rutas, 4 MiB, 16 MiB; ver [`AGENTS.md`](AGENTS.md))
 
 No hace falta registrar la carpeta en la raíz. `pnpm build` lee los manifiestos que hay en `protos/`, publica el laboratorio en `/` y cada aplicación en `/protos/<slug>/`. El mundo coloca una máquina por manifiesto. Crea también la etiqueta de GitHub con el slug para que las iteraciones puedan llevarla.
 
 Al abrirla, el laboratorio carga `/protos/<slug>/` en un iframe del mismo origen, sin `sandbox` y sin documento `blob:`. La aplicación avisa `alive` al cargar y `ready` cuando el primer fotograma ya se ve; hasta entonces una capa tapa el iframe. `window.__protoLabApp.stop()` es obligatorio: al cerrar, el laboratorio lo llama, pasa el iframe a `about:blank` y lo quita. El contrato (señales, permisos, topes de la aplicación servida y las dos plantillas) está en [`AGENTS.md`](AGENTS.md).
 
-Si Access devuelve la página del PIN en vez de la aplicación, no se monta el iframe y queda el aviso con Volver. En producción y en las previews, la aplicación de Access tiene que permitir iframes (`allow_iframe`); lo activa el dueño en el dashboard. En local no hay Access. La aplicación pide imágenes, audio y JSON bajo `/protos/<slug>/` con `window.__protoLabData`. Si declara `save`, guarda los datos de una persona en el `localStorage` del laboratorio (`proto-lab:app:<slug>`). Si declara `wasm`, la CSP de esa ruta permite instanciar WebAssembly. El atributo `allow` del iframe solo lleva permisos de dispositivo de la lista cerrada. No hay hilos ni `SharedArrayBuffer`, y los formularios no se envían. Abrir `/protos/<slug>/` en una pestaña sigue funcionando.
+Si Access devuelve la página del PIN en vez de la aplicación, no se monta el iframe y queda el aviso con Volver. En producción y en las previews, la aplicación de Access tiene que permitir iframes (`allow_iframe`); lo activa el dueño en el dashboard. En local no hay Access. La aplicación pide imágenes, audio y JSON bajo `/protos/<slug>/` con `window.__protoLabData`. Si declara `save`, guarda los datos de una persona en el `localStorage` del laboratorio (`proto-lab:app:<slug>`). Si declara `wasm`, la CSP de esa ruta permite instanciar WebAssembly. El atributo `allow` del iframe solo lleva permisos de dispositivo de la lista cerrada. Si declara `shared`, `sharedGet` / `sharedSet` / `sharedRemove` leen y escriben un dato común a todas las sesiones, en D1, por `POST /api/apps/<slug>/shared`. No hay hilos ni `SharedArrayBuffer`, y los formularios no se envían. Abrir `/protos/<slug>/` en una pestaña sigue funcionando.
 
 `pnpm previews` captura la vista de cada aplicación, con canvas o sin él, y no depende de un gancho concreto. Si existe `window.__protoLabPreview`, lo llama antes de la foto.
 
@@ -75,6 +75,8 @@ Hostnames:
 - Previews: `*.proto-lab-3k6.pages.dev`
 
 Access con PIN de un solo uso cubre los dos. La Function valida el JWT `Cf-Access-Jwt-Assertion` con las claves de `ancient-waterfall-b3eb.cloudflareaccess.com` y la variable `CF_ACCESS_AUD` (etiqueta AUD de la aplicación). No basta la cabecera de email. No definas `ALLOW_DEV_AUTH` en Pages: es solo para probar la Function en local, y solo en loopback.
+
+Los datos compartidos usan el binding D1 `DB`. Todavía no está creado: hasta entonces `POST /api/apps/<slug>/shared` responde que falta. El dueño crea las bases `proto-lab-shared` (producción) y `proto-lab-shared-preview` (previews), aplica [`migrations/0001_shared_entries.sql`](migrations/0001_shared_entries.sql) en las dos y rellena los ids en el bloque comentado de `wrangler.toml`. El nombre del binding es `DB` en los dos entornos. En el plan Free, pasar el cupo de D1 hace fallar la petición y no genera cargo. El detalle está en [`AGENTS.md`](AGENTS.md).
 
 La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/protos/*` no basta para saltarse Access: sin la cookie, el PIN sigue delante. El iframe es del mismo origen, así que viaja con la cookie de quien ya entró. Además, la aplicación de Access tiene que permitir enmarcar (`allow_iframe`); si no, producción y las previews pueden mostrar el PIN dentro del arcade.
 

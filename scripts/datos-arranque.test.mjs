@@ -113,4 +113,22 @@ describe("arranque del export", () => {
     notify();
     expect(sent.at(-1)).toMatchObject({ source: "proto-lab", type: "ready" });
   });
+
+  it("pide datos compartidos al slug de la página", async () => {
+    const calls = [];
+    const { api } = boot(async (href, init) => {
+      calls.push({ href: String(href), init });
+      return {
+        status: 200,
+        json: async () => ({ ok: true, value: "norte" }),
+      };
+    });
+    await expect(api.sharedGet("mesa")).resolves.toBe("norte");
+    await api.sharedSet("mesa", "sur");
+    expect(calls[0].href).toBe("/api/apps/demo/shared");
+    expect(calls[0].init.credentials).toBe("same-origin");
+    expect(calls[0].init.method).toBe("POST");
+    expect(JSON.parse(calls[0].init.body)).toEqual({ op: "get", key: "mesa" });
+    expect(JSON.parse(calls[1].init.body)).toEqual({ op: "set", key: "mesa", value: "sur" });
+  });
 });
