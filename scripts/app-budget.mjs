@@ -1,11 +1,29 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { SERVED_APP_LIMITS } from "./app-contract.mjs";
+import { assertGodotTree } from "./godot-web.mjs";
 import { STATIC_SKIP } from "./proto-publish.mjs";
 import { assertSingleThreadWasm, decodeServedWasm } from "./wasm-module.mjs";
 
-const TEXT_EXT = new Set([".js", ".mjs", ".html", ".htm"]);
+const TEXT_EXT = new Set([".js", ".mjs", ".css", ".html", ".htm"]);
+const MEDIA_EXT = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".avif",
+  ".svg",
+  ".ico",
+  ".mp3",
+  ".m4a",
+  ".ogg",
+  ".wav",
+  ".aac",
+  ".flac",
+  ".opus",
+]);
 
 /** Vite/esbuild emite la cadena entre comillas invertidas. */
 function hasReadySignal(text) {
@@ -20,6 +38,12 @@ function hasReadySignal(text) {
 function extensionOf(name) {
   const dot = name.lastIndexOf(".");
   return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+}
+
+/** @param {string} html */
+function hasDeviceViewport(html) {
+  const tags = html.match(/<meta\b[^>]*>/gi) ?? [];
+  return tags.some((tag) => /name\s*=\s*["']viewport["']/i.test(tag) && /width\s*=\s*device-width/i.test(tag));
 }
 
 /**
@@ -58,6 +82,9 @@ export function inspectServedApp(dir, label, options = {}) {
   const files = listServedFiles(dir, { staticProto: options.staticProto === true });
   const errors = [];
   const warnings = [];
+  let sawHtml = false;
+  let viewport = false;
+  let touch = false;
   if (files.length > limits.maxFiles) {
     errors.push(`${label}: ${files.length} archivos (máximo ${limits.maxFiles})`);
   }
@@ -98,14 +125,29 @@ export function inspectServedApp(dir, label, options = {}) {
         }
       }
     }
+    if (MEDIA_EXT.has(ext) && size > limits.mediaFailBytes) {
+      errors.push(`${label}: ${name} supera ${limits.mediaFailBytes} bytes (imagen o audio)`);
+    }
     if (TEXT_EXT.has(ext)) {
       const text = readFileSync(file, "utf8");
       if (text.includes("__protoLabApp")) hasStop = true;
       if (hasReadySignal(text)) hasReady = true;
-      if (/\.html?$/.test(ext) && /GODOT_THREADS_ENABLED\s*=\s*true\b/.test(text)) {
-        errors.push(`${label}: ${name} activa los hilos de Godot`);
+      if (/touch-action\s*:\s*none\b/.test(text)) touch = true;
+      if (ext === ".html" || ext === ".htm") {
+        sawHtml = true;
+        if (hasDeviceViewport(text)) viewport = true;
+        if (/GODOT_THREADS_ENABLED\s*=\s*true\b/.test(text)) {
+          errors.push(`${label}: ${name} activa los hilos de Godot`);
+        }
       }
     }
+  }
+  if (!sawHtml || !viewport) {
+    errors.push(`${label}: falta un meta viewport con width=device-width`);
+  }
+  if (!touch) errors.push(`${label}: falta touch-action: none`);
+  if (options.staticProto && existsSync(join(dir, "godot", "project.godot"))) {
+    for (const line of assertGodotTree(dir)) errors.push(`${label}: ${line}`);
   }
   if (total > limits.maxBytesTotal) {
     errors.push(`${label}: tamaño total ${total} bytes (máximo ${limits.maxBytesTotal})`);

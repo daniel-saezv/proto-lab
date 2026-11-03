@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { assertGodotProject, compareServed, packsMatch, prepareServedFiles } from "./godot-web.mjs";
+import { assertGodotProject, compareServed, godotSlugsInDiff, listGodotProjects, packsMatch, prepareServedFiles } from "./godot-web.mjs";
 import { compressWasmBrotli } from "./wasm-module.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -21,6 +21,10 @@ describe("export web de Godot", () => {
     const project = readFileSync(join(root, "protos/toque/godot/project.godot"), "utf8");
     const preset = readFileSync(join(root, "protos/toque/godot/export_presets.cfg"), "utf8");
     expect(assertGodotProject(project, preset)).toEqual([]);
+    const estrecho = project.replace("window/size/viewport_width=390", "window/size/viewport_width=1280");
+    expect(assertGodotProject(estrecho, preset).some((line) => line.includes("viewport_width"))).toBe(true);
+    const escritorio = preset.replace("vram_texture_compression/for_desktop=false", "vram_texture_compression/for_desktop=true");
+    expect(assertGodotProject(project, escritorio).some((line) => line.includes("for_desktop"))).toBe(true);
     const shell = readFileSync(join(root, "protos/toque/godot/shell.html"));
     const template = readFileSync(join(root, "templates/export-estatico/godot-shell.html"));
     expect(shell.equals(template)).toBe(true);
@@ -93,6 +97,17 @@ describe("disparadores de Godot", () => {
     expect(block).not.toMatch(/^ {2}push:/m);
     expect(block).not.toMatch(/^ {2}schedule:/m);
     expect(block).toContain("protos/**/godot/**");
-    expect(source).toContain("protos/toque/godot");
+    expect(source).toContain("node scripts/godot-web.mjs --list-changed");
+    expect(source).toContain("protos/${{ matrix.slug }}/godot");
+    expect(source).toContain("name: godot-export-${{ matrix.slug }}");
+    expect(source).toContain("actions/upload-artifact@v7.0.2");
+    expect(source).not.toContain("contents: write");
+    expect(source).not.toMatch(/relative_project_path: \.\/protos\/toque\/godot/);
+  });
+
+  it("el diff nombra solo los proyectos Godot que toca", () => {
+    expect(godotSlugsInDiff(["protos/toque/godot/project.godot", "protos/chispa/src/main.ts", "README.md"])).toEqual(["toque"]);
+    expect(godotSlugsInDiff(["scripts/godot-web.mjs"])).toEqual([]);
+    expect(listGodotProjects(join(root, "protos"))).toEqual(["toque"]);
   });
 });

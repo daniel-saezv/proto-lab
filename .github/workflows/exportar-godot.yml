@@ -1,6 +1,7 @@
 # Export web de Godot 4.7.2 en un solo hilo y Brotli q11.
 # No publica el sitio, no usa secretos y no habla con R2.
-# Solo corre en un pull request si el diff toca un proyecto Godot, o a mano.
+# Descubre protos/*/godot/ y exporta solo el proyecto que toca el diff.
+# Sube el árbol servido como artefacto. No hace push: el agente lo commitea.
 # No hay push a main ni schedule: al fusionar no se vuelve a exportar.
 name: Exportar Godot web
 
@@ -24,10 +25,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  descubrir:
+    name: Proyectos del diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      slugs: ${{ steps.lista.outputs.slugs }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+      - name: Listar proyectos Godot
+        id: lista
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: node scripts/godot-web.mjs --list-changed
+
   exportar:
-    name: Export de un hilo
+    name: Export de ${{ matrix.slug }}
+    needs: descubrir
+    if: needs.descubrir.outputs.slugs != '[]' && needs.descubrir.outputs.slugs != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        slug: ${{ fromJSON(needs.descubrir.outputs.slugs) }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -42,18 +70,27 @@ jobs:
           sudo apt-get install -y libx11-6 libxcursor1 libxinerama1 libxrandr2 libxi6 libgl1 libfontconfig1
 
       - name: Carpeta del preset
-        run: mkdir -p protos/toque/godot/build
+        run: mkdir -p "protos/${{ matrix.slug }}/godot/build"
 
-      - name: Exportar Toque
+      - name: Exportar
         uses: firebelley/godot-export@615a6f7afc22d6266bf55c17748fb07447e8bdab
         with:
           godot_executable_download_url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
           godot_export_templates_download_url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
-          relative_project_path: ./protos/toque/godot
-          relative_export_path: ./protos/toque/godot/salida
+          relative_project_path: ./protos/${{ matrix.slug }}/godot
+          relative_export_path: ./protos/${{ matrix.slug }}/godot/salida
           cache: true
           verbose: true
           presets_to_export: Web
 
-      - name: Comprobar el wasm publicado
-        run: node scripts/godot-web.mjs --check protos/toque --export protos/toque/godot/salida
+      - name: Comprobar y preparar el árbol servido
+        run: node scripts/godot-web.mjs --check "protos/${{ matrix.slug }}" --export "protos/${{ matrix.slug }}/godot/salida" --stage "protos/${{ matrix.slug }}/godot/publicable"
+
+      - name: Subir el export
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: godot-export-${{ matrix.slug }}
+          path: protos/${{ matrix.slug }}/godot/publicable/*
+          retention-days: 14
+          if-no-files-found: warn

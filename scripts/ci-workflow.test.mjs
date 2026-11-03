@@ -36,8 +36,13 @@ describe("workflow de CI", () => {
   it("mantiene tres shards de Chromium y la imagen fijada", () => {
     expect(workflow).toContain("shard: [1, 2, 3]");
     expect(workflow.match(/mcr\.microsoft\.com\/playwright:v1\.64\.1-noble/g)).toHaveLength(2);
-    expect(jobBlock("e2e-chromium")).toContain("needs.playwright-version.outputs.lab == 'true'");
-    expect(jobBlock("e2e-webkit")).toContain("needs.playwright-version.outputs.lab == 'true'");
+    expect(workflow).not.toContain("Versión Playwright");
+    expect(workflow).not.toContain("playwright-version:");
+    expect(jobBlock("verificar")).toContain("lab: ${{ steps.clasificar.outputs.lab }}");
+    expect(jobBlock("e2e-chromium")).toContain("needs.verificar.outputs.lab == 'true'");
+    expect(jobBlock("e2e-webkit")).toContain("needs.verificar.outputs.lab == 'true'");
+    expect(jobBlock("e2e-chromium-gate")).toContain("No se pudo clasificar el diff.");
+    expect(jobBlock("e2e-webkit-gate")).toContain("No se pudo clasificar el diff.");
     expect(jobBlock("e2e-webkit")).toContain("name: E2E (webkit-iphone trabajo)");
   });
 

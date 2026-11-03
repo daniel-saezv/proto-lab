@@ -9,7 +9,7 @@ En [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
 - Chromium pasa de 6 a 3 shards (`E2E (chromium 1/3)` … `3/3`). La misma suite; Playwright reparte los tests. El grupo en serie de recursos privados no se parte entre shards.
 - La imagen de Chromium y WebKit queda escrita en el workflow: `mcr.microsoft.com/playwright:v1.64.1-noble`. Los e2e ya no esperan al job que leía la versión del lockfile.
 - La compuerta sigue llamándose `E2E (chromium)`. Los checks obligatorios no cambian de nombre: `Typecheck, tests y build`, `E2E (chromium)` y `E2E (webkit-iphone)`.
-- El job **Versión Playwright (lockfile)** se queda. Su salida ya no elige la imagen: es redundante y sigue costando 1 minuto facturable por run. No se quita hasta confirmar si el check es obligatorio en la protección de `main`.
+- El job **Versión Playwright (lockfile)** se queda en esta nota como estaba el 1 de noviembre. El 3 de noviembre de 2026 se quitó: `lab` sale de `verificar` y los e2e esperan a ese job. No lo vuelvas a añadir. La API de protección de `main` no se pudo leer (403); si el check sigue exigido, queda pendiente hasta que el dueño lo quite de la protección.
 
 Al subir `@playwright/test` hay que actualizar el tag. La acción de e2e exige que el CLI del contenedor coincida con el lockfile, y `verificar` sigue comprobando que exista la imagen `-noble` de la versión del lockfile.
 

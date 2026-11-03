@@ -17,11 +17,12 @@ function plant(dir, name, body) {
   writeFileSync(abs, body);
 }
 
-const contract = `<script>window.__protoLabApp={stop:function(){}};parent.postMessage({source:"proto-lab",type:"ready"},"*");</script>`;
+const contract = `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{touch-action:none}</style><script>window.__protoLabApp={stop:function(){}};parent.postMessage({source:"proto-lab",type:"ready"},"*");</script>`;
 
 describe("presupuesto de la aplicación servida", () => {
   it("acepta ready entre comillas invertidas, como lo emite el minificador", () => {
     const dir = fixture();
+    plant(dir, "index.html", `<!doctype html><meta name="viewport" content="width=device-width"><style>body{touch-action:none}</style>`);
     plant(
       dir,
       "assets/index.js",
@@ -115,10 +116,43 @@ describe("presupuesto de la aplicación servida", () => {
   it("un export estático no cuenta la carpeta godot", () => {
     const dir = fixture();
     plant(dir, "index.html", contract);
-    plant(dir, "godot/project.godot", "config_version=5\n");
+    plant(dir, "godot/nota.txt", "no es el proyecto");
     const result = inspectServedApp(dir, "demo", { staticProto: true });
     expect(result.errors).toEqual([]);
     expect(result.files).toBe(1);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("exige viewport, touch-action y un tope de imagen y audio", () => {
+    const dir = fixture();
+    plant(dir, "index.html", `<!doctype html>${contract.replace(/<meta\b[^>]*>/, "")}`);
+    const sinViewport = inspectServedApp(dir, "demo");
+    expect(sinViewport.errors.some((line) => line.includes("viewport"))).toBe(true);
+
+    const tactil = fixture();
+    plant(tactil, "index.html", contract.replace("touch-action:none", "touch-action:manipulation"));
+    const sinToque = inspectServedApp(tactil, "demo");
+    expect(sinToque.errors.some((line) => line.includes("touch-action"))).toBe(true);
+
+    const pesada = fixture();
+    plant(pesada, "index.html", contract);
+    plant(pesada, "foto.png", Buffer.alloc(SERVED_APP_LIMITS.mediaFailBytes + 1));
+    const media = inspectServedApp(pesada, "demo");
+    expect(media.errors.some((line) => line.includes("imagen o audio"))).toBe(true);
+
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(tactil, { recursive: true, force: true });
+    rmSync(pesada, { recursive: true, force: true });
+  });
+
+  it("un export estático con preset Godot incompleto falla", () => {
+    const dir = fixture();
+    plant(dir, "index.html", contract);
+    plant(dir, "godot/project.godot", "config_version=5\n");
+    plant(dir, "godot/export_presets.cfg", "variant/thread_support=false\n");
+    const result = inspectServedApp(dir, "demo", { staticProto: true });
+    expect(result.files).toBe(1);
+    expect(result.errors.some((line) => line.includes("viewport_width"))).toBe(true);
     rmSync(dir, { recursive: true, force: true });
   });
 
