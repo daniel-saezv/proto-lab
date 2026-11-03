@@ -22,8 +22,9 @@ describe("salida de una aplicación", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("no publica la carpeta db", () => {
+  it("no publica la carpeta db ni el proyecto Godot", () => {
     expect(STATIC_SKIP.has("db")).toBe(true);
+    expect(STATIC_SKIP.has("godot")).toBe(true);
   });
 
   it("el export estático tiene que traer index.html", () => {

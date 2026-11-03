@@ -1,4 +1,5 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { brotliCompressSync, constants } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -73,6 +74,51 @@ describe("presupuesto de la aplicación servida", () => {
     const result = inspectServedApp(dir, "demo");
     expect(result.errors).toEqual([]);
     expect(result.warnings.some((line) => line.includes("aviso"))).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("falla a 12 MiB por archivo y a 25 MiB de Pages, y rechaza un wasm con hilos", () => {
+    const shared = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x05, 0x04, 0x01, 0x03, 0x01, 0x02]);
+    const plain = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x05, 0x03, 0x01, 0x00, 0x01]);
+    const dir = fixture();
+    plant(dir, "index.html", contract);
+    plant(dir, "index.wasm", brotliCompressSync(shared, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }));
+    plant(dir, "hilos.html", `${contract}<script>const GODOT_THREADS_ENABLED = true;</script>`);
+    const threaded = inspectServedApp(dir, "demo");
+    expect(threaded.errors.some((line) => line.includes("memoria compartida"))).toBe(true);
+    expect(threaded.errors.some((line) => line.includes("hilos de Godot"))).toBe(true);
+
+    const heavy = fixture();
+    plant(heavy, "index.html", contract);
+    plant(heavy, "grande.bin", Buffer.alloc(SERVED_APP_LIMITS.maxBytesPerFile + 1));
+    const overFile = inspectServedApp(heavy, "demo");
+    expect(overFile.errors.some((line) => line.includes(String(SERVED_APP_LIMITS.maxBytesPerFile)))).toBe(true);
+    expect(overFile.errors.some((line) => line.includes("Pages"))).toBe(false);
+
+    const pages = fixture();
+    plant(pages, "index.html", contract);
+    plant(pages, "pagina.bin", Buffer.alloc(SERVED_APP_LIMITS.pagesMaxBytes + 1));
+    const overPages = inspectServedApp(pages, "demo");
+    expect(overPages.errors.some((line) => line.includes("Pages"))).toBe(true);
+
+    const ok = fixture();
+    plant(ok, "index.html", contract);
+    plant(ok, "index.wasm", brotliCompressSync(plain, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }));
+    expect(inspectServedApp(ok, "demo").errors).toEqual([]);
+
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(heavy, { recursive: true, force: true });
+    rmSync(pages, { recursive: true, force: true });
+    rmSync(ok, { recursive: true, force: true });
+  });
+
+  it("un export estático no cuenta la carpeta godot", () => {
+    const dir = fixture();
+    plant(dir, "index.html", contract);
+    plant(dir, "godot/project.godot", "config_version=5\n");
+    const result = inspectServedApp(dir, "demo", { staticProto: true });
+    expect(result.errors).toEqual([]);
+    expect(result.files).toBe(1);
     rmSync(dir, { recursive: true, force: true });
   });
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readCatalog } from "./catalog-lib.mjs";
 import { headersForPath, parsePagesHeaders } from "./pages-headers.mjs";
-import { appendCapabilityHeaders, cspWithWasm, permissionsPolicy } from "./proto-csp.mjs";
+import { appendBrotliWasmHeaders, appendCapabilityHeaders, cspWithWasm, headerSource, permissionsPolicy } from "./proto-csp.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(join(root, "apps/world/public/_headers"), "utf8");
@@ -60,6 +60,27 @@ describe("CSP por capacidades", () => {
     expect(headersForPath(rules, "/protos/demo-wasm/").get("permissions-policy")?.value).not.toContain("(self)");
     expect(augmented.toLowerCase()).not.toContain("cross-origin-opener-policy");
     expect(augmented.toLowerCase()).not.toContain("cross-origin-embedder-policy");
+  });
+
+  it("el ejemplo Toque sirve el wasm en Brotli y con wasm-unsafe-eval", () => {
+    const rules = parsePagesHeaders(headerSource(root));
+    const wasm = headersForPath(rules, "/protos/toque/index.wasm");
+    expect(wasm.get("content-type")?.value).toBe("application/wasm");
+    expect(wasm.get("content-encoding")?.value).toBe("br");
+    expect(headersForPath(rules, "/protos/toque/index.js").has("content-encoding")).toBe(false);
+    expect(headersForPath(rules, "/protos/toque/").get("content-security-policy")?.value).toContain("'wasm-unsafe-eval'");
+    expect(headersForPath(rules, "/").get("content-security-policy")?.value ?? "").not.toContain("wasm-unsafe-eval");
+  });
+
+  it("marca el wasm en Brotli y no lo aplica a otro slug", () => {
+    const augmented = appendBrotliWasmHeaders(source, ["toque"]);
+    const rules = parsePagesHeaders(augmented);
+    const wasm = headersForPath(rules, "/protos/toque/index.wasm");
+    expect(wasm.get("content-type")?.value).toBe("application/wasm");
+    expect(wasm.get("content-encoding")?.value).toBe("br");
+    expect(headersForPath(rules, "/protos/toque/index.js").has("content-encoding")).toBe(false);
+    expect(headersForPath(rules, "/protos/chispa/index.wasm").has("content-encoding")).toBe(false);
+    expect(augmented.toLowerCase()).not.toContain("cross-origin-opener-policy");
   });
 
   it("rechaza un slug que no puede ir en la ruta", () => {

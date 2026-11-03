@@ -22,11 +22,17 @@ export const READY_MS = {
   max: 60000,
 };
 
-/** Topes de la aplicación ya servida (decisión 4). El cargador de rutas usa las mismas cifras y 128 peticiones. */
+/**
+ * Topes de la aplicación ya servida (fase 4, 2026-11-03).
+ * El cargador de rutas sigue en 4 MiB / 16 MiB: esas cifras viven en
+ * `scripts/asset-path.mjs` y en las plantillas, no aquí.
+ * `pagesMaxBytes` es el fallo duro de Cloudflare Pages, aparte del tope por archivo.
+ */
 export const SERVED_APP_LIMITS = {
   maxFiles: 64,
-  maxBytesPerFile: 4 * 1024 * 1024,
-  maxBytesTotal: 16 * 1024 * 1024,
+  maxBytesPerFile: 12 * 1024 * 1024,
+  maxBytesTotal: 32 * 1024 * 1024,
+  pagesMaxBytes: 25 * 1024 * 1024,
   jsWarnBytes: Math.round(1.5 * 1024 * 1024),
   jsFailBytes: 4 * 1024 * 1024,
 };

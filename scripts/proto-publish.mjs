@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /** Nombres que no se publican desde un export estático. */
-export const STATIC_SKIP = new Set(["proto.json", "node_modules", "dist", "db"]);
+export const STATIC_SKIP = new Set(["proto.json", "node_modules", "dist", "db", "godot"]);
 
 /**
  * De dónde sale lo que se sirve en `/protos/<slug>/`.

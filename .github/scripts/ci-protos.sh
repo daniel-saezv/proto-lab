@@ -25,7 +25,7 @@ for slug in "${slugs[@]}"; do
     if [[ -f "${dir}/proto.json" && ! -f "${dir}/package.json" ]]; then
       echo "export estático ${slug}"
       if [[ "${CI_PROTOS_DRY:-}" != "1" ]]; then
-        node scripts/app-budget.mjs "$dir"
+        node scripts/app-budget.mjs --static "$dir"
       fi
       continue
     fi
