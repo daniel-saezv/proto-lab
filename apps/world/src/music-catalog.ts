@@ -19,6 +19,13 @@ export const MUSIC_CATALOG: readonly MusicTrack[] = [
     src: "/protos/audio/luanda.m4a",
     file: "luanda.m4a",
   },
+  {
+    id: "firefly-in-a-fairytale",
+    title: "Firefly in a Fairytale",
+    artist: "Gareth Coker",
+    src: "/protos/audio/firefly-in-a-fairytale.m4a",
+    file: "firefly-in-a-fairytale.m4a",
+  },
 ];
 
 export function trackById(id: string | null | undefined): MusicTrack {

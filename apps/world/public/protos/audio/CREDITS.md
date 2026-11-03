@@ -1,7 +1,7 @@
 # Music credits — proto-lab lobby
 
-The lobby loops one track from the Infraction catalogue (sold via inaudio.org).
-File: AAC-LC ~96 kbps stereo 44.1 kHz, loudness-normalized to -16 LUFS (two-pass loudnorm), faststart.
+The lobby radio loops one track at a time from this catalog.
+Files: AAC-LC ~64–96 kbps stereo 44.1 kHz, loudness-normalized to -16 LUFS (two-pass loudnorm), faststart, no embedded artwork.
 
 ## luanda.m4a
 
@@ -18,9 +18,17 @@ File: AAC-LC ~96 kbps stereo 44.1 kHz, loudness-normalized to -16 LUFS (two-pass
   > About using the music: you can NOT claim the music as your own. You can NOT sell the music anywhere.
 - Credit line for this app: `Music: "Luanda" by Infraction & MORAI — https://inaudio.org/track/luanda-afrobeat/`
 
+## firefly-in-a-fairytale.m4a
+
+- Title: Firefly in a Fairytale
+- File: `firefly-in-a-fairytale.m4a`
+- Artist: Gareth Coker
+- Licencia: aportada por el propietario del laboratorio (@daniel-saezv) para uso privado y no comercial dentro de proto-lab. No redistribuir el archivo fuera del sitio ni usarlo en proyectos comerciales sin permiso del titular de los derechos.
+- Credit line for this app: `Music: "Firefly in a Fairytale" by Gareth Coker`
+
 ## Caveats
 
-- The description does not name a formal license (no Creative Commons). "No copyright" here means royalty-free with conditions.
-- Terms are written for video creators; embedding the audio inside an app is not addressed explicitly.
+- Luanda: the description does not name a formal license (no Creative Commons). "No copyright" here means royalty-free with conditions.
+- Luanda terms are written for video creators; embedding the audio inside an app is not addressed explicitly.
 - "You can NOT sell the music anywhere": shipping the file inside a public web app is redistribution. Fine for a private, non-commercial lab.
-- Commercial use requires an inaudio.org subscription.
+- Luanda commercial use requires an inaudio.org subscription.
