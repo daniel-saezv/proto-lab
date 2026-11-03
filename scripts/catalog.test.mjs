@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -28,6 +29,8 @@ describe("catálogo", () => {
     expect(assetLab?.permissions).toEqual(["geolocation"]);
     const sharedFile = JSON.parse(readFileSync(join(root, "functions/_lib/shared-slugs.json"), "utf8"));
     expect(sharedFile).toEqual(sharedCapabilitySlugs(entries));
+    const tableQueries = JSON.parse(readFileSync(join(root, "functions/_lib/table-queries.json"), "utf8"));
+    expect(tableQueries).toEqual({});
   });
 
   it("rechaza un permiso fuera de la lista y un readyMs imposible", () => {
@@ -70,6 +73,33 @@ describe("catálogo", () => {
     expect(shared.permissions).toEqual(["camera"]);
     const plain = assertManifest("demo", base, root);
     expect(sharedCapabilitySlugs([shared, plain, legacy])).toEqual(["demo"]);
+  });
+
+  it("ordena tables con el resto de capacidades si hay db/", () => {
+    const dir = mkdtempSync(join(tmpdir(), "catalog-tables-"));
+    mkdirSync(join(dir, "db"));
+    writeFileSync(
+      join(dir, "db", "0001_notas.sql"),
+      "CREATE TABLE IF NOT EXISTS demo__notas (\n  nombre TEXT NOT NULL,\n  PRIMARY KEY (nombre)\n);",
+    );
+    writeFileSync(
+      join(dir, "db", "queries.json"),
+      JSON.stringify({ listar: { sql: "SELECT nombre FROM demo__notas LIMIT 10", params: [] } }),
+    );
+    const manifest = {
+      slug: "demo",
+      title: "Demo",
+      description: "Una aplicación de prueba.",
+      author: "proto-lab",
+      date: "2026-11-02",
+      tags: ["prueba"],
+      cover: null,
+      version: "0.1.0",
+      history: [{ version: "0.1.0", date: "2026-11-02", note: "Alta." }],
+      capabilities: ["camera", "tables", "shared", "save"],
+    };
+    expect(assertManifest("demo", manifest, dir).capabilities).toEqual(["save", "shared", "tables", "camera"]);
+    rmSync(dir, { recursive: true, force: true });
   });
 
   it("la plantilla tiene un manifiesto válido y no entra en el catálogo", () => {

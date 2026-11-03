@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveProtoOutput } from "./proto-publish.mjs";
+import { resolveProtoOutput, STATIC_SKIP } from "./proto-publish.mjs";
 
 describe("salida de una aplicación", () => {
   it("un export estático no necesita package.json ni dist", () => {
@@ -20,6 +20,10 @@ describe("salida de una aplicación", () => {
     mkdirSync(join(dir, "dist"));
     expect(resolveProtoOutput(dir)).toEqual({ kind: "build", dir: join(dir, "dist") });
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("no publica la carpeta db", () => {
+    expect(STATIC_SKIP.has("db")).toBe(true);
   });
 
   it("el export estático tiene que traer index.html", () => {

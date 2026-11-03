@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { APP_CAPABILITIES, APP_PERMISSIONS, READY_MS } from "./app-contract.mjs";
 import { parseManifestAssets } from "./asset-path.mjs";
+import { assertAppDatabase } from "./table-sql.mjs";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -61,6 +62,7 @@ export function assertManifest(dirName, manifest, protoDir) {
     fail(`${dirName}: hidden solo puede ser true u omitirse`);
   }
   const declared = parseCapabilities(dirName, manifest);
+  assertAppDatabase(dirName, protoDir, declared.capabilities);
   const readyMs = parseReadyMs(dirName, manifest.readyMs);
   const assets = parseManifestAssets(dirName, manifest.assets, protoDir);
   return { ...manifest, assets, capabilities: declared.capabilities, permissions: declared.permissions, readyMs };
@@ -82,7 +84,7 @@ function parseTokenList(dirName, field, value, allowed) {
 }
 
 /**
- * `capabilities` es la lista cerrada (save, wasm, shared y permisos de dispositivo).
+ * `capabilities` es la lista cerrada (save, wasm, shared, tables y permisos de dispositivo).
  * `permissions` sigue valiendo como lista solo de dispositivos. Si aparecen
  * los dos, se unen y el orden de salida es el canónico.
  */

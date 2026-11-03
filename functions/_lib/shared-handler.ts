@@ -136,7 +136,7 @@ export async function handleShared(request: Request, env: SharedEnv, options: Sh
     return json(503, {
       ok: false,
       error: "config",
-      message: `Falta el binding D1 «${D1_BINDING}». Hay que crearlo en Pages, en producción y en las previews.`,
+      message: `Falta el binding D1 «${D1_BINDING}» en este despliegue. wrangler.toml lo declara en producción y en preview.`,
     });
   }
 

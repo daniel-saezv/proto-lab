@@ -285,6 +285,35 @@
     sharedRemove: function (key) {
       return requestShared("delete", key).then(function () {});
     },
+    query: function (name, params) {
+      var slug = pageSlug();
+      if (!slug) return Promise.reject(new Error("not-allowed"));
+      return fetch("/api/apps/" + slug + "/query", {
+        method: "POST",
+        credentials: "same-origin",
+        redirect: "manual",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ name: name, params: params || {} }),
+      }).then(
+        function (response) {
+          if (response.status >= 300 && response.status < 400) throw new Error("unauthorized");
+          return response.json().then(
+            function (payload) {
+              if (!payload || payload.ok !== true || !Array.isArray(payload.rows)) {
+                throw new Error((payload && payload.error) || "unavailable");
+              }
+              return payload.rows;
+            },
+            function () {
+              throw new Error("unavailable");
+            },
+          );
+        },
+        function () {
+          throw new Error("unavailable");
+        },
+      );
+    },
     revoke: revoke,
   };
 

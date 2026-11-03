@@ -1,7 +1,7 @@
 /** Contrato de una aplicación servida. Lo leen el catálogo y el validador. */
 
 /** Capacidades que no son un permiso de dispositivo. */
-export const APP_FEATURES = ["save", "wasm", "shared"];
+export const APP_FEATURES = ["save", "wasm", "shared", "tables"];
 
 /** Permisos de dispositivo. Lista cerrada: el atributo `allow` solo sale de aquí. */
 export const APP_PERMISSIONS = [

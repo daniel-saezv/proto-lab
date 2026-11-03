@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAppSave, replyToSave } from "../../../apps/world/src/app-save";
-import { DATA_LIMITS, appSlugFromHref, createFileLoader, createSaveClient, createSharedClient, installLabData, resolveAppFile, type DataLimits } from "./datos";
+import { DATA_LIMITS, appSlugFromHref, createFileLoader, createQueryClient, createSaveClient, createSharedClient, installLabData, resolveAppFile, type DataLimits } from "./datos";
 
 const page = "http://127.0.0.1:4173/protos/demo/";
 
@@ -206,6 +206,34 @@ describe("datos compartidos", () => {
     const outside = createSharedClient({ pageHref: "http://127.0.0.1:4173/", fetchImpl: fetchImpl as unknown as typeof fetch });
     await expect(outside.get("mesa")).rejects.toThrow("not-allowed");
     expect(calls).toHaveLength(4);
+  });
+});
+
+describe("consultas de tablas", () => {
+  it("manda el nombre y los parámetros, nunca SQL", async () => {
+    const calls: Array<{ href: string; init: RequestInit | undefined }> = [];
+    const fetchImpl = vi.fn(async (href: string | URL, init?: RequestInit) => {
+      calls.push({ href: String(href), init });
+      const body = JSON.parse(String(init?.body)) as { name?: string };
+      if (body.name === "lleno") {
+        return new Response(JSON.stringify({ ok: false, error: "quota", message: "cupo" }), { status: 400 });
+      }
+      return new Response(JSON.stringify({ ok: true, rows: [{ nombre: "ana", puntos: 3 }] }), { status: 200 });
+    });
+    const query = createQueryClient({ pageHref: "http://127.0.0.1:4173/protos/demo/", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(query("top10")).resolves.toEqual([{ nombre: "ana", puntos: 3 }]);
+    await expect(query("guardarPuntuacion", { nombre: "ana", puntos: 3 })).resolves.toEqual([{ nombre: "ana", puntos: 3 }]);
+    expect(calls.map((call) => call.href)).toEqual(["/api/apps/demo/query", "/api/apps/demo/query"]);
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(calls[0]?.init?.credentials).toBe("same-origin");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ name: "top10", params: {} });
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ name: "guardarPuntuacion", params: { nombre: "ana", puntos: 3 } });
+    expect(JSON.stringify(calls[1]?.init?.body)).not.toContain("SELECT");
+    await expect(query("lleno")).rejects.toThrow("quota");
+    expect(calls).toHaveLength(3);
+    const outside = createQueryClient({ pageHref: "http://127.0.0.1:4173/", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(outside("top10")).rejects.toThrow("not-allowed");
+    expect(calls).toHaveLength(3);
   });
 });
 

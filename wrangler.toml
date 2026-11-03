@@ -7,21 +7,23 @@ compatibility_date = "2026-10-30"
 
 # Bindings (KV, etc.) van en este archivo; los secretos siguen en el panel de Pages.
 # Sin PROPOSALS la función acepta propuestas y no aplica el límite diario ni caché del tablón.
-# D1 de datos compartidos: el binding fijo es DB y todavía no está creado.
-# No declares aquí un database_id inventado: Pages usa este archivo como fuente de verdad.
-# Cuando existan las bases, el bloque (con el KV repetido en preview) es:
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "proto-lab-shared"
-# database_id = "<id de proto-lab-shared>"
-# [[env.preview.kv_namespaces]]
-# binding = "PROPOSALS"
-# id = "80ac94ce81e8459fb3882e9fe2a68330"
-# [[env.preview.d1_databases]]
-# binding = "DB"
-# database_name = "proto-lab-shared-preview"
-# database_id = "<id de proto-lab-shared-preview>"
+# D1 compartida. El binding fijo es DB. Las bases ya existen; este archivo no las crea.
+# Producción usa el bloque de arriba. Preview repite el KV porque los bindings no se heredan.
+# Las migraciones las aplica .github/workflows/d1-app-tables.yml (no wrangler d1 migrations).
 # Workers Free: al pasar el cupo de D1 la consulta falla y no hay cargo.
+[[d1_databases]]
+binding = "DB"
+database_name = "proto-lab-shared"
+database_id = "7f6608b2-bb75-44ba-b240-60d6cff51794"
+
+[[env.preview.kv_namespaces]]
+binding = "PROPOSALS"
+id = "80ac94ce81e8459fb3882e9fe2a68330"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "proto-lab-shared-preview"
+database_id = "797b147d-e5c7-4198-a20e-fe378758217a"
 # Variable de Pages (no secreta, en el panel): CF_ACCESS_AUD = etiqueta AUD de la aplicación Access.
 # Si producción y las previews son dos aplicaciones, pon las dos separadas por comas.
 # El equipo ya está en el código: ancient-waterfall-b3eb.cloudflareaccess.com.

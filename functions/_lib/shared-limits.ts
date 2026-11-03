@@ -22,5 +22,5 @@ export const BANNED_SHARED_KEYS = new Set(["__proto__", "constructor", "prototyp
  */
 export function isFreeTierQuota(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /exceeded D1's free tier|exceeded D1's maximum account storage|Exceeded maximum DB size/i.test(message);
+  return /exceeded D1's free tier|exceeded D1's maximum account storage|Exceeded maximum DB size|maximum response size limit/i.test(message);
 }

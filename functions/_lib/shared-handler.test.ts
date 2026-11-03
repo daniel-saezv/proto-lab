@@ -11,7 +11,7 @@ import { SHARED_SQL } from "./shared-sql";
 
 const EMAIL = "amigo@example.com";
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const migration = readFileSync(join(root, "migrations/0001_shared_entries.sql"), "utf8");
+const migration = readFileSync(join(root, "migrations/0001_lab_shared_entries.sql"), "utf8");
 
 let fixture: AccessFixture;
 let token = "";
@@ -128,7 +128,7 @@ describe("datos compartidos", () => {
     expect(forbidden.status).toBe(403);
     expect(queries).toHaveLength(0);
 
-    const extra = await handleShared(request({ op: "get", key: "mesa", sql: "DROP TABLE shared_entries" }, { headers }), env, { sharedSlugs: slugs });
+    const extra = await handleShared(request({ op: "get", key: "mesa", sql: "DROP TABLE lab_shared_entries" }, { headers }), env, { sharedSlugs: slugs });
     expect(extra.status).toBe(400);
     expect((await extra.json()).error).toBe("invalid");
 
@@ -142,7 +142,7 @@ describe("datos compartidos", () => {
     const env = { CF_ACCESS_AUD: fixture.aud, DB: database };
     const headers = authed();
     const now = new Date("2026-11-03T12:00:00.000Z");
-    const evil = "'; DROP TABLE shared_entries;--";
+    const evil = "'; DROP TABLE lab_shared_entries;--";
 
     const missing = await handleShared(request({ op: "get", key: "mesa" }, { headers }), env, { sharedSlugs: slugs, now });
     expect(await missing.json()).toEqual({ ok: true, value: null });
@@ -165,9 +165,9 @@ describe("datos compartidos", () => {
 
     const injected = await handleShared(request({ op: "set", key: "nota", value: evil }, { headers }), env, { sharedSlugs: slugs, now });
     expect(injected.status).toBe(200);
-    const kept = db.prepare("SELECT value FROM shared_entries WHERE key = ?").get("nota") as { value: string };
+    const kept = db.prepare("SELECT value FROM lab_shared_entries WHERE key = ?").get("nota") as { value: string };
     expect(kept.value).toBe(evil);
-    expect(db.prepare("SELECT count(*) AS n FROM shared_entries").get()).toMatchObject({ n: 2 });
+    expect(db.prepare("SELECT count(*) AS n FROM lab_shared_entries").get()).toMatchObject({ n: 2 });
     expect(queries.every((sql) => sql === SHARED_SQL.get || sql === SHARED_SQL.upsert || sql === SHARED_SQL.delete)).toBe(true);
     expect(queries.some((sql) => sql.includes(evil) || sql.includes("norte"))).toBe(false);
     expect(bound.some((values) => values.includes(evil))).toBe(true);
@@ -230,11 +230,15 @@ describe("datos compartidos", () => {
   });
 
   it("la migración fija el tope por valor y no trae datos", () => {
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS lab_shared_entries");
+    expect(migration).not.toMatch(/(?<!lab_)shared_entries/);
     expect(migration).toContain(`bytes <= ${SHARED_LIMITS.maxValueBytes}`);
     expect(migration).toContain(`length(slug) BETWEEN 1 AND ${SHARED_LIMITS.maxSlugLength}`);
     expect(migration).toContain(`length(key) BETWEEN 1 AND ${SHARED_LIMITS.maxKeyLength}`);
     expect(migration).not.toMatch(/\bINSERT\b/i);
     expect(migration).not.toMatch(/\bATTACH\b/i);
+    expect(migration).not.toMatch(/\bCREATE\s+INDEX\b/i);
+    expect(migration).not.toMatch(/\bDROP\b/i);
     const source = readFileSync(join(root, "functions/_lib/shared-handler.ts"), "utf8");
     expect(source).not.toMatch(/prepare\(`[^`]*\$\{/);
     expect(source).not.toContain("ALLOW_DEV_AUTH");
