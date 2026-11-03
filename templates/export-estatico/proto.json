@@ -6,7 +6,7 @@
   "date": "2026-11-02",
   "tags": ["plantilla"],
   "cover": null,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "capabilities": ["save"],
   "readyMs": 20000,
   "history": [
@@ -29,6 +29,11 @@
       "version": "0.4.0",
       "date": "2026-11-03",
       "note": "sharedGet, sharedSet y sharedRemove si capabilities incluye shared."
+    },
+    {
+      "version": "0.5.0",
+      "date": "2026-11-03",
+      "note": "query(nombre, params) si capabilities incluye tables."
     }
   ]
 }

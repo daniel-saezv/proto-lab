@@ -27,7 +27,7 @@ export const DEVICE_PERMISSIONS = [
 
 /**
  * Atributo `allow` del iframe. Solo salen permisos de dispositivo, en el
- * orden canónico. `save`, `wasm`, `shared` y cualquier otro valor se descartan.
+ * orden canónico. `save`, `wasm`, `shared`, `tables` y cualquier otro valor se descartan.
  */
 export function iframeAllow(declared: readonly string[]): string {
   const wanted = new Set(declared);

@@ -32,9 +32,10 @@ window.__protoLabData.remove("partida");
 window.__protoLabData.sharedSet("mesa", "norte");
 window.__protoLabData.sharedGet("mesa").then(function (puesta) {});
 window.__protoLabData.sharedRemove("mesa");
+window.__protoLabData.query("top10", {}).then(function (mejores) {});
 ```
 
-Las rutas son relativas y tienen que quedarse dentro de `/protos/<slug>/`. Entran imágenes, audio y JSON. Cupo por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. El guardado de una persona vive en `localStorage` del laboratorio (`proto-lab:app:<slug>`): 32 claves, 32 KiB por valor y 256 KiB por slug. Los datos compartidos (`sharedGet`, `sharedSet`, `sharedRemove`) usan el mismo cupo y solo responden si `proto.json` declara `"capabilities": ["shared"]`. El export no usa `localStorage` ni `sessionStorage` por su cuenta, ni sondea la API compartida.
+Las rutas son relativas y tienen que quedarse dentro de `/protos/<slug>/`. Entran imágenes, audio y JSON. Cupo por apertura: 64 rutas, 4 MiB por archivo, 16 MiB en total y 128 peticiones. El guardado de una persona vive en `localStorage` del laboratorio (`proto-lab:app:<slug>`): 32 claves, 32 KiB por valor y 256 KiB por slug. Los datos compartidos (`sharedGet`, `sharedSet`, `sharedRemove`) usan el mismo cupo y solo responden si `proto.json` declara `shared`. `query(nombre, params)` ejecuta una consulta de `db/queries.json` y solo responde si `capabilities` incluye `tables`. El export no usa `localStorage` ni `sessionStorage` por su cuenta, ni sondea esas APIs. Cómo crear, cambiar y borrar tablas está en `docs/contrato-tablas.md`.
 
 La carpeta no necesita `package.json`. El build del laboratorio copia los archivos tal cual. El validador de la aplicación servida sigue aplicando: 64 archivos, 4 MiB por archivo, 16 MiB en total, aviso de JS a 1,5 MiB y fallo a 4 MiB.
 

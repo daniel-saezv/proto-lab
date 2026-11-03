@@ -63,6 +63,10 @@ export function inspectServedApp(dir, label) {
     if (size > limits.maxBytesPerFile) {
       errors.push(`${label}: ${name} supera ${limits.maxBytesPerFile} bytes`);
     }
+    const rel = name.replaceAll("\\", "/");
+    if (rel === "db" || rel.startsWith("db/") || rel.endsWith(".sql")) {
+      errors.push(`${label}: ${rel} no se publica; el SQL no sale al navegador`);
+    }
     const ext = extensionOf(name);
     if (ext === ".js" || ext === ".mjs") {
       if (size > limits.jsFailBytes) {

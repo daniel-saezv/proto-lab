@@ -57,6 +57,15 @@ describe("presupuesto de la aplicación servida", () => {
     rmSync(heavy, { recursive: true, force: true });
   });
 
+  it("rechaza SQL publicado", () => {
+    const dir = fixture();
+    plant(dir, "index.html", contract);
+    plant(dir, "db/0001_notas.sql", "CREATE TABLE IF NOT EXISTS demo__notas (nombre TEXT);");
+    const result = inspectServedApp(dir, "demo");
+    expect(result.errors.some((line) => line.includes("no se publica"))).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("avisa a 1,5 MiB de JS y no lo trata como fallo", () => {
     const dir = fixture();
     plant(dir, "index.html", contract);

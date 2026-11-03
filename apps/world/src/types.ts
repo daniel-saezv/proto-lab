@@ -19,7 +19,7 @@ export type CatalogEntry = {
   href: string;
   /** Rutas relativas declaradas en proto.json para el puente de recursos privados. */
   assets: string[];
-  /** Lista cerrada: `save`, `wasm`, `shared` y permisos de dispositivo. */
+  /** Lista cerrada: `save`, `wasm`, `shared`, `tables` y permisos de dispositivo. */
   capabilities: string[];
   /** Permisos de dispositivo (subconjunto de capabilities). Lista cerrada. */
   permissions: string[];

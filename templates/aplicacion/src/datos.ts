@@ -28,6 +28,7 @@ export type LabData = {
   sharedGet(key: string): Promise<string | null>;
   sharedSet(key: string, value: string): Promise<void>;
   sharedRemove(key: string): Promise<void>;
+  query(name: string, params?: Record<string, string | number | null>): Promise<Array<Record<string, unknown>>>;
   revoke(): void;
 };
 
@@ -349,6 +350,41 @@ export function createSharedClient(options: { pageHref: string; fetchImpl?: type
   };
 }
 
+type QueryResponse = { ok?: boolean; rows?: unknown; error?: unknown };
+
+/** El navegador manda el nombre y los parámetros. El SQL se queda en la Function. */
+export function createQueryClient(options: { pageHref: string; fetchImpl?: typeof fetch }) {
+  const fetchImpl = options.fetchImpl ?? fetch;
+
+  return async function query(name: string, params?: Record<string, string | number | null>): Promise<Array<Record<string, unknown>>> {
+    const slug = appSlugFromHref(options.pageHref);
+    if (!slug) throw new Error("not-allowed");
+    let response: Response;
+    try {
+      response = await fetchImpl(`/api/apps/${slug}/query`, {
+        method: "POST",
+        credentials: "same-origin",
+        redirect: "manual",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ name, params: params ?? {} }),
+      });
+    } catch {
+      throw new Error("unavailable");
+    }
+    if (response.status >= 300 && response.status < 400) throw new Error("unauthorized");
+    let payload: QueryResponse | null = null;
+    try {
+      payload = (await response.json()) as QueryResponse;
+    } catch {
+      throw new Error("unavailable");
+    }
+    if (!payload || payload.ok !== true || !Array.isArray(payload.rows)) {
+      throw new Error(typeof payload?.error === "string" && payload.error ? payload.error : "unavailable");
+    }
+    return payload.rows as Array<Record<string, unknown>>;
+  };
+}
+
 declare global {
   interface Window {
     __protoLabData?: LabData;
@@ -383,6 +419,10 @@ export function installLabData(
     pageHref: target.location.href,
     fetchImpl: options?.fetchImpl ?? target.fetch.bind(target),
   });
+  const query = createQueryClient({
+    pageHref: target.location.href,
+    fetchImpl: options?.fetchImpl ?? target.fetch.bind(target),
+  });
   const api: LabData = {
     load: (path) => files.load(path),
     json: (path) => files.json(path),
@@ -393,6 +433,7 @@ export function installLabData(
     sharedGet: (key) => shared.get(key),
     sharedSet: (key, value) => shared.set(key, value),
     sharedRemove: (key) => shared.remove(key),
+    query: (name, params) => query(name, params),
     revoke: () => files.revoke(),
   };
   target.__protoLabData = api;

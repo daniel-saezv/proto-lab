@@ -47,6 +47,7 @@ function boot(fetchImpl, onParent) {
     setTimeout,
     clearTimeout,
     Object,
+    Array,
     JSON,
     decodeURIComponent,
     parseInt,
@@ -130,5 +131,22 @@ describe("arranque del export", () => {
     expect(calls[0].init.method).toBe("POST");
     expect(JSON.parse(calls[0].init.body)).toEqual({ op: "get", key: "mesa" });
     expect(JSON.parse(calls[1].init.body)).toEqual({ op: "set", key: "mesa", value: "sur" });
+  });
+
+  it("pide una consulta por nombre y parámetros", async () => {
+    const calls = [];
+    const { api } = boot(async (href, init) => {
+      calls.push({ href: String(href), init });
+      return {
+        status: 200,
+        json: async () => ({ ok: true, rows: [{ nombre: "ana" }] }),
+      };
+    });
+    await expect(api.query("top10", { limite: 10 })).resolves.toEqual([{ nombre: "ana" }]);
+    expect(calls[0].href).toBe("/api/apps/demo/query");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.credentials).toBe("same-origin");
+    expect(JSON.parse(calls[0].init.body)).toEqual({ name: "top10", params: { limite: 10 } });
+    expect(calls[0].init.body).not.toContain("SELECT");
   });
 });
