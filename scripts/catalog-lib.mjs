@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { APP_PERMISSIONS, READY_MS } from "./app-contract.mjs";
+import { APP_CAPABILITIES, APP_PERMISSIONS, READY_MS } from "./app-contract.mjs";
 import { parseManifestAssets } from "./asset-path.mjs";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -60,26 +60,42 @@ export function assertManifest(dirName, manifest, protoDir) {
   if (manifest.hidden != null && manifest.hidden !== true) {
     fail(`${dirName}: hidden solo puede ser true u omitirse`);
   }
-  const permissions = parsePermissions(dirName, manifest.permissions);
+  const declared = parseCapabilities(dirName, manifest);
   const readyMs = parseReadyMs(dirName, manifest.readyMs);
   const assets = parseManifestAssets(dirName, manifest.assets, protoDir);
-  return { ...manifest, assets, permissions, readyMs };
+  return { ...manifest, assets, capabilities: declared.capabilities, permissions: declared.permissions, readyMs };
 }
 
-function parsePermissions(dirName, value) {
-  if (value == null) return [];
-  if (!Array.isArray(value)) fail(`${dirName}: permissions tiene que ser una lista`);
+function parseTokenList(dirName, field, value, allowed) {
+  if (!Array.isArray(value)) fail(`${dirName}: ${field} tiene que ser una lista`);
   const seen = new Set();
   const accepted = [];
   for (const item of value) {
-    if (typeof item !== "string" || !APP_PERMISSIONS.includes(item)) {
-      fail(`${dirName}: permiso no permitido (${String(item)})`);
+    if (typeof item !== "string" || !allowed.includes(item)) {
+      fail(`${dirName}: ${field} no permitido (${String(item)})`);
     }
-    if (seen.has(item)) fail(`${dirName}: permiso duplicado (${item})`);
+    if (seen.has(item)) fail(`${dirName}: ${field} duplicado (${item})`);
     seen.add(item);
     accepted.push(item);
   }
   return accepted;
+}
+
+/**
+ * `capabilities` es la lista cerrada (save, wasm y permisos de dispositivo).
+ * `permissions` sigue valiendo como lista solo de dispositivos. Si aparecen
+ * los dos, se unen y el orden de salida es el canónico.
+ */
+function parseCapabilities(dirName, manifest) {
+  const fromCapabilities =
+    manifest.capabilities == null ? [] : parseTokenList(dirName, "capabilities", manifest.capabilities, APP_CAPABILITIES);
+  const fromPermissions =
+    manifest.permissions == null ? [] : parseTokenList(dirName, "permissions", manifest.permissions, APP_PERMISSIONS);
+  const wanted = new Set([...fromCapabilities, ...fromPermissions]);
+  return {
+    capabilities: APP_CAPABILITIES.filter((item) => wanted.has(item)),
+    permissions: APP_PERMISSIONS.filter((item) => wanted.has(item)),
+  };
 }
 
 function parseReadyMs(dirName, value) {
@@ -114,6 +130,7 @@ export function readCatalog(repoRoot) {
       history: validated.history,
       href: `/protos/${validated.slug}/`,
       assets: validated.assets ?? [],
+      capabilities: validated.capabilities ?? [],
       permissions: validated.permissions ?? [],
       readyMs: validated.readyMs,
       hidden: validated.hidden === true,

@@ -24,6 +24,7 @@ describe("plantilla de export estático", () => {
     const manifest = JSON.parse(readFileSync(join(dir, "proto.json"), "utf8"));
     const validated = assertManifest(manifest.slug, manifest, dir);
     expect(validated.readyMs).toBe(20000);
+    expect(validated.capabilities).toEqual(["save"]);
     expect(validated.permissions).toEqual([]);
   });
 });

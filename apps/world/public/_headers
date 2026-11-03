@@ -3,6 +3,13 @@
 # sigue en 'self' para que solo este sitio pueda enmarcarlas.
 # X-Frame-Options: DENY cubre el laboratorio. En `/protos/*` se suelta:
 # DENY impediría el iframe aunque la CSP lo permita.
+# script-src no lleva wasm-unsafe-eval. El ensamblado lo añade solo en
+# `/protos/<slug>/` si proto.json declara `wasm`. No hay COOP ni COEP
+# (sin hilos ni SharedArrayBuffer). form-action 'none': los formularios no se envían.
+# Permissions-Policy niega cámara, micrófono, geolocalización y sensores en
+# todo el sitio. `/` e `/index.html` los abren para self: ese documento tiene
+# que poder delegarlos al iframe. El ensamblado reescribe la cabecera de cada
+# `/protos/<slug>/` y deja en `(self)` solo los permisos que declara el manifiesto.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
@@ -27,9 +34,13 @@
 
 /
   Cache-Control: no-cache
+  ! Permissions-Policy
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), accelerometer=(self), gyroscope=(self), magnetometer=(self), payment=(), usb=()
 
 /index.html
   Cache-Control: no-cache
+  ! Permissions-Policy
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), accelerometer=(self), gyroscope=(self), magnetometer=(self), payment=(), usb=()
 
 # HTML y el resto de /protos/ se revalidan. El JS/CSS con hash va aparte.
 # Sin X-Frame-Options: el laboratorio enmarca estas páginas.

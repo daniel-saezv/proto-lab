@@ -173,6 +173,7 @@
     blobUrls = Object.create(null);
   }
 
+  // El laboratorio ignora el mensaje si capabilities no incluye save.
   function requestSave(op, key, value) {
     var id = nextId;
     nextId += 1;

@@ -21,7 +21,7 @@ window.__protoLabApp.onStop(function () {
 
 `window.__protoLabApp.stop()` ejecuta esos ganchos y revoca las URL de objeto. El laboratorio lo llama y después navega el iframe a `about:blank`.
 
-`arranque.js` también deja `window.__protoLabData` para archivos propios y para el guardado de una persona:
+`arranque.js` también deja `window.__protoLabData` para archivos propios y para el guardado de una persona. El guardado solo llega si `proto.json` declara `save` en `capabilities`:
 
 ```js
 window.__protoLabData.json("datos/nota.json").then(function (nota) {});
@@ -35,4 +35,4 @@ Las rutas son relativas y tienen que quedarse dentro de `/protos/<slug>/`. Entra
 
 La carpeta no necesita `package.json`. El build del laboratorio copia los archivos tal cual. El validador de la aplicación servida sigue aplicando: 64 archivos, 4 MiB por archivo, 16 MiB en total, aviso de JS a 1,5 MiB y fallo a 4 MiB.
 
-Esta plantilla no abre WASM ni cambia la CSP. Un export que instancie WebAssembly sigue necesitando esa decisión aparte.
+Para instanciar WebAssembly, añade `"wasm"` a `capabilities`. El ensamblado pone `wasm-unsafe-eval` en la CSP de `/protos/<slug>/` y en ningún otro sitio. Sigue sin hilos y sin `SharedArrayBuffer`: no hay COOP ni COEP. Los formularios no se envían (`form-action 'none'`). Los permisos de dispositivo (`camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope`, `magnetometer`) rellenan el atributo `allow` del iframe y la `Permissions-Policy` de este slug. `permissions` sigue valiendo como lista de esos dispositivos.

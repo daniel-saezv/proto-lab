@@ -239,6 +239,7 @@ type SaveTarget = {
   addEventListener(type: "message", listener: (event: MessageEvent) => void): void;
 };
 
+/** El laboratorio solo responde si `capabilities` incluye `save`. Si no, la promesa acaba en timeout. */
 export function createSaveClient(target: SaveTarget, timeoutMs = 8000) {
   const pending = new Map<number, { resolve: (value: string | null) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   let nextId = 1;

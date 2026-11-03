@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { headersForPath, parsePagesHeaders, sealPagesHeaders } from "./pages-headers.mjs";
+import { permissionsPolicy } from "./proto-csp.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(join(root, "apps/world/public/_headers"), "utf8");
@@ -28,11 +29,25 @@ describe("cabeceras de Pages", () => {
     expect(csp).toContain("frame-ancestors 'self'");
     expect(csp).not.toContain("frame-ancestors 'none'");
     expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+    expect(csp).not.toContain("wasm-unsafe-eval");
+    expect(csp).toContain("form-action 'none'");
+    expect(source.toLowerCase()).not.toContain("cross-origin-opener-policy");
+    expect(source.toLowerCase()).not.toContain("cross-origin-embedder-policy");
     expect(csp).toContain("media-src 'self' blob:");
     expect(csp).not.toContain("connect-src 'none'");
     expect(home.get("x-content-type-options")?.value).toBe("nosniff");
     expect(home.get("referrer-policy")?.value).toBe("no-referrer");
-    expect(home.get("permissions-policy")?.value).toContain("camera=()");
+    const delegated = permissionsPolicy({ delegateAll: true });
+    expect(home.get("permissions-policy")?.value).toBe(delegated);
+    expect(headersForPath(rules, "/index.html").get("permissions-policy")?.value).toBe(delegated);
+    expect(delegated).toContain("camera=(self)");
+    expect(delegated).toContain("payment=()");
+    expect(delegated).not.toContain("camera=()");
+    for (const path of ["/sw.js", "/manifest.webmanifest", "/assets/index-Abcd1234.js", "/api/proposals", "/protos/chispa/", "/protos/audio/luanda.m4a"]) {
+      const policy = headersForPath(rules, path).get("permissions-policy")?.value ?? "";
+      expect(policy, path).toContain("camera=()");
+      expect(policy, path).not.toContain("(self)");
+    }
     expect(home.get("x-frame-options")?.value).toBe("DENY");
     expect(cacheOf("/")).toMatch(/no-cache/);
     expect(cacheOf("/index.html")).toMatch(/no-cache/);

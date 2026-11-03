@@ -6,7 +6,8 @@
   "date": "2026-11-02",
   "tags": ["plantilla"],
   "cover": null,
-  "version": "0.2.0",
+  "version": "0.3.0",
+  "capabilities": ["save"],
   "readyMs": 20000,
   "history": [
     {
@@ -18,6 +19,11 @@
       "version": "0.2.0",
       "date": "2026-11-02",
       "note": "El shell expone archivos relativos y el guardado por slug."
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-11-03",
+      "note": "Declara la capacidad save. wasm y los permisos de dispositivo se añaden aparte."
     }
   ]
 }

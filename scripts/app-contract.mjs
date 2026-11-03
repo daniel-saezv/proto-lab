@@ -1,5 +1,9 @@
 /** Contrato de una aplicación servida. Lo leen el catálogo y el validador. */
 
+/** Capacidades que no son un permiso de dispositivo. */
+export const APP_FEATURES = ["save", "wasm"];
+
+/** Permisos de dispositivo. Lista cerrada: el atributo `allow` solo sale de aquí. */
 export const APP_PERMISSIONS = [
   "camera",
   "microphone",
@@ -8,6 +12,9 @@ export const APP_PERMISSIONS = [
   "gyroscope",
   "magnetometer",
 ];
+
+/** Lista cerrada de `capabilities`. El orden es el canónico del catálogo y de `allow`. */
+export const APP_CAPABILITIES = [...APP_FEATURES, ...APP_PERMISSIONS];
 
 export const READY_MS = {
   default: 8000,

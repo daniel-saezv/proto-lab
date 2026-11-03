@@ -15,7 +15,21 @@ export function bootFailureMessage(phase: BootPhase): string {
   return "No he podido abrir la aplicación. Pulsa Volver para volver al laboratorio.";
 }
 
-/** Atributo `allow` del iframe. La lista ya viene cerrada por el catálogo. */
-export function iframeAllow(permissions: readonly string[]): string {
-  return permissions.filter((item) => item.length > 0).join("; ");
+/** Permisos de dispositivo. Tiene que coincidir con `APP_PERMISSIONS`. */
+export const DEVICE_PERMISSIONS = [
+  "camera",
+  "microphone",
+  "geolocation",
+  "accelerometer",
+  "gyroscope",
+  "magnetometer",
+] as const;
+
+/**
+ * Atributo `allow` del iframe. Solo salen permisos de dispositivo, en el
+ * orden canónico. `save`, `wasm` y cualquier otro valor se descartan.
+ */
+export function iframeAllow(declared: readonly string[]): string {
+  const wanted = new Set(declared);
+  return DEVICE_PERMISSIONS.filter((item) => wanted.has(item)).join("; ");
 }
