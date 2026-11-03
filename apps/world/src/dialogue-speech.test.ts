@@ -41,6 +41,39 @@ describe("inventorSpeech", () => {
     expect(INVENTOR_RESULT_OK).not.toMatch(/máquinas/i);
   });
 
+  it("la confirmación ofrece el escritorio y conserva la nota", () => {
+    const draft = { kind: "propuesta" as const, title: "Farol", description: "Una app para anotar turnos." };
+    const text = inventorSpeech({ name: "confirm" }, draft, []);
+    expect(text).toContain("¿Lo envío así?");
+    expect(text).toContain("Farol");
+    expect(text).toContain("Una app para anotar turnos.");
+    expect(text).toContain("escritorio");
+    expect(text).not.toMatch(/juego/i);
+    const iteration = inventorSpeech(
+      { name: "confirm" },
+      { kind: "iteracion", title: "Farol", description: "Que el botón quepa en el pulgar.", slug: "chispa" },
+      [chispa],
+    );
+    expect(iteration).toContain("mejora");
+    expect(iteration).toContain("1.0.0");
+    expect(iteration).not.toMatch(/juego/i);
+  });
+
+  it("el marcador del escritorio repite la nota y habla de apps", () => {
+    const text = inventorSpeech(
+      { name: "workshop" },
+      { kind: "propuesta", title: "Farol", description: "Una app para anotar turnos." },
+      [],
+    );
+    expect(text).toContain("Farol");
+    expect(text).toContain("Una app para anotar turnos.");
+    expect(text).toContain("app");
+    expect(text).not.toMatch(/juego/i);
+    const { plain, runs } = lineRuns(text);
+    expect(runs.filter((run) => run.kind).length).toBeLessThanOrEqual(1);
+    expect(plain).not.toMatch(/[{}]/);
+  });
+
   it("el énfasis no se come las frases fijas y cabe en una marca por línea", () => {
     const draft = { kind: "propuesta" as const, title: "", description: "" };
     const samples = [

@@ -19,6 +19,7 @@ interface Window {
     visibleApps?: () => string[];
     playerPose?: () => { x: number; z: number; yaw: number };
     rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
+    frameWorkMs?: () => number;
     batchStats?: () => {
       meshesBefore: number;
       meshesAfter: number;
@@ -26,6 +27,17 @@ interface Window {
       mergedSets: number;
       shadowCasters: number;
     } | null;
+    workshopView?: () => {
+      place: string;
+      x: number;
+      y: number;
+      z: number;
+      yaw: number;
+      sit: number;
+      camX: number;
+      camY: number;
+      camZ: number;
+    };
   };
   __chispa?: {
     drop: (x?: number) => void;

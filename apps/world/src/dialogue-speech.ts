@@ -6,12 +6,16 @@ export type DialoguePhase =
   | { name: "body"; mode: "propuesta" | "iteracion" }
   | { name: "pick" }
   | { name: "confirm" }
+  | { name: "workshop" }
   | { name: "sending" };
 
 export const INVENTOR_RESULT_OK =
   "Apuntado. Ya está en el tablón del taller. El dueño lo leerá y, si le convence, lo marcará como aprobado. Hasta entonces no cambia lo que hay en la máquina.";
 
 const ITERATION_FALLBACK = "ese mundo";
+
+const DESK_OFFER =
+  "\n\nSi te apetece, la afinamos juntos en el {em}escritorio{/em}. Tú traes la idea y yo el banco; no la envío hasta que lo digas.";
 
 export function inventorSpeech(
   phase: DialoguePhase,
@@ -35,9 +39,14 @@ export function inventorSpeech(
         ? "Todavía no hay mundos encendidos que retocar. Cuando alguien deje uno en la máquina, volvemos a hablar."
         : "¿Cuál de estos mundos, apps o juegos quieres {em}retocar{/em}? Elígelo de la lista.";
     case "confirm":
-      return draft.kind === "iteracion"
-        ? `Anotaría una {em}mejora{/em} de «${proto?.title ?? draft.slug}», que va por la versión ${proto?.version ?? "?"}.\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`
-        : `A ver si lo he entendido. Dejaría esto en el {em}tablón{/em}, como petición tuya, para que el dueño lo lea:\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`;
+      return (
+        (draft.kind === "iteracion"
+          ? `Anotaría una {em}mejora{/em} de «${proto?.title ?? draft.slug}», que va por la versión ${proto?.version ?? "?"}.\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`
+          : `A ver si lo he entendido. Dejaría esto en el {em}tablón{/em}, como petición tuya, para que el dueño lo lea:\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`) +
+        DESK_OFFER
+      );
+    case "workshop":
+      return `Ya estoy en el escritorio. Tu nota sigue igual, palabra por palabra: es tu {em}app{/em}, no le he dado ni una vuelta.\n\n«${draft.title}»\n${draft.description}\n\n¿Volvemos a tu nota o la dejo en el tablón tal cual?`;
     case "sending":
       return "Un momento, que mojo la {em}pluma{/em}…";
   }

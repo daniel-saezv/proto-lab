@@ -4,6 +4,7 @@ import {
   Color,
   CylinderGeometry,
   Group,
+  InstancedMesh,
   Mesh,
   MeshBasicMaterial,
   Object3D,
@@ -20,6 +21,8 @@ import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { blinkOpen, breathScale, windowPaintSlot } from "./graphics-idle";
 import { fuseMeshes } from "./mesh-fuse";
 import { CEILING_UNDERSIDE, LAYOUT } from "./navigation";
+import { WORKSHOP_SEAT } from "./workshop-cinematic";
+import { paintWorkshopMural } from "./workshop-mural";
 import {
   FLOOR_GLOW,
   FLOOR_LAMPS,
@@ -139,6 +142,9 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
 
   const cat = addCatOnCrates(f);
   const dog = addSleepingDog(f);
+  addWorkshopSeat(f);
+  addDeskGlassware(f);
+  addDeskTools(f);
   return {
     catHead: cat.head,
     catEyes: cat.eyes,
@@ -184,32 +190,101 @@ function addNeonAndPizza(f: AmbientFactories, neonMat: MeshBasicMaterial) {
 }
 
 function addWhiteboardDoodles(f: AmbientFactories) {
+  const width = 768;
+  const height = 384;
   const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 160;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#f4efe4";
-  ctx.fillRect(0, 0, 256, 160);
-  ctx.strokeStyle = "#465270";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(80, 70, 28, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.fillStyle = "#ffb703";
-  ctx.font = "700 22px sans-serif";
-  ctx.fillText("idea???", 120, 60);
-  ctx.strokeStyle = "#1f8a80";
-  ctx.beginPath();
-  ctx.moveTo(30, 120);
-  ctx.lineTo(220, 100);
-  ctx.stroke();
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  paintWorkshopMural(ctx, width, height);
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   const material = new MeshBasicMaterial({ map: texture });
   f.materials.push(material);
-  const board = new Mesh(f.geo(new PlaneGeometry(1.1, 0.72)), material);
-  board.position.set(7.55, 1.55, -7.34);
+  const board = new Mesh(f.geo(new PlaneGeometry(2.56, 1.28)), material);
+  board.position.set(6.4, 1.78, -7.32);
+  board.castShadow = false;
+  board.receiveShadow = false;
   f.scene.add(board);
+}
+
+/** Silla del banco. Mismas maderas que el escritorio, para que el batch se las quede. */
+function addWorkshopSeat(f: AmbientFactories) {
+  const { x, z } = WORKSHOP_SEAT;
+  f.box(f.scene, 0.48, 0.08, 0.4, x, 0.32, z, PAL.desk, false);
+  f.box(f.scene, 0.48, 0.58, 0.06, x, 0.64, z - 0.28, PAL.desk, false);
+  const feet: Array<[number, number]> = [
+    [-0.18, -0.14],
+    [0.18, -0.14],
+    [-0.18, 0.14],
+    [0.18, 0.14],
+  ];
+  for (const [ox, oz] of feet) {
+    f.box(f.scene, 0.05, 0.28, 0.05, x + ox, 0.14, z + oz, PAL.deskDark, false);
+  }
+}
+
+/** Tubos de ensayo sobre el tablero. Una sola malla; el del medio es café. */
+function addDeskGlassware(f: AmbientFactories) {
+  const dx = LAYOUT.desk.x;
+  const dz = LAYOUT.desk.z;
+  const geo = f.geo(new CylinderGeometry(0.03, 0.036, 0.24, 8));
+  const material = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+  f.materials.push(material);
+  const spots = [
+    { x: dx - 0.55, z: dz - 0.22, h: 1, color: 0x8fd8ff },
+    { x: dx - 0.42, z: dz - 0.24, h: 0.85, color: 0x8fd8ff },
+    { x: dx - 0.3, z: dz - 0.2, h: 1.05, color: 0xc46b3a },
+    { x: dx - 0.18, z: dz - 0.24, h: 0.75, color: 0x8fd8ff },
+    { x: dx - 0.06, z: dz - 0.21, h: 0.95, color: 0xd7f4ff },
+  ];
+  const mesh = new InstancedMesh(geo, material, spots.length);
+  mesh.userData.noBatch = true;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  const dummy = new Object3D();
+  const tint = new Color();
+  spots.forEach((spot, index) => {
+    dummy.position.set(spot.x, 0.72 + 0.12 * spot.h, spot.z);
+    dummy.scale.set(1, spot.h, 1);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(index, dummy.matrix);
+    mesh.setColorAt(index, tint.setHex(spot.color));
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.computeBoundingSphere();
+  f.scene.add(mesh);
+}
+
+/** Herramientas del banco, un solo lote, sin sombra propia. */
+function addDeskTools(f: AmbientFactories) {
+  const dx = LAYOUT.desk.x;
+  const dz = LAYOUT.desk.z;
+  const geo = f.geo(new BoxGeometry(0.2, 0.025, 0.05));
+  const mesh = new InstancedMesh(geo, f.mat(PAL.tool), 4);
+  mesh.userData.noBatch = true;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  const dummy = new Object3D();
+  const tools = [
+    { x: dx - 0.5, z: dz + 0.08, ry: 1.15 },
+    { x: dx + 0.08, z: dz + 0.26, ry: 0.45 },
+    { x: dx + 0.28, z: dz + 0.24, ry: -0.55 },
+    { x: dx + 0.5, z: dz + 0.18, ry: 0.2 },
+  ];
+  tools.forEach((tool, index) => {
+    dummy.position.set(tool.x, 0.78, tool.z);
+    dummy.rotation.set(0, tool.ry, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(index, dummy.matrix);
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.computeBoundingSphere();
+  f.scene.add(mesh);
 }
 
 function addExtraPlants(f: AmbientFactories, sway: SwayPlant[]) {
