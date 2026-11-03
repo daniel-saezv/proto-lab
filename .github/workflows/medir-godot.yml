@@ -1,0 +1,131 @@
+# Medición desechable del export web de Godot 4.7.2 en un solo hilo.
+# No fusionar. No publica el sitio, no usa secretos y no habla con R2.
+# Solo se dispara en esta rama, y solo si cambia la muestra o este archivo.
+name: Medición Godot web
+
+on:
+  push:
+    branches:
+      - cursor/medir-godot-web-da18
+    paths:
+      - "medida/**"
+      - ".github/workflows/medir-godot.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: medir-godot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exportar:
+    name: Export web de un hilo
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+
+      - name: Herramientas de medición
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y brotli zstd binutils libx11-6 libxcursor1 libxinerama1 libxrandr2 libxi6 libgl1 libfontconfig1
+
+      - name: Autocomprobación del medidor
+        run: node medida/medir-export.mjs --selftest
+
+      - name: Exportar Godot 4.7.2 sin hilos
+        uses: firebelley/godot-export@615a6f7afc22d6266bf55c17748fb07447e8bdab
+        with:
+          godot_executable_download_url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          godot_export_templates_download_url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
+          relative_project_path: ./medida/godot-minimo
+          relative_export_path: ./medida/godot-minimo/salida
+          cache: true
+          verbose: true
+          presets_to_export: Web
+
+      - name: Medir tamaños y compresión
+        run: |
+          set -euo pipefail
+          html=$(find medida/godot-minimo/salida -name index.html -print -quit)
+          test -n "$html"
+          dir=$(dirname "$html")
+          node medida/medir-export.mjs "$dir" --out medida-tamanos.json
+          {
+            echo "## Export"
+            echo
+            echo "Directorio: \`$dir\`"
+            echo
+            find "$dir" -type f -printf "%s %p\n" | sort -n
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir export y tamaños
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: medicion-godot-tamanos
+          path: |
+            medida-tamanos.json
+            medida/godot-minimo/salida
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Instalar Chromium
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/medir-browser
+          cd /tmp/medir-browser
+          npm init -y
+          npm install --no-package-lock playwright@1.64.1
+          npx playwright install --with-deps chromium
+          node -p "require.resolve('playwright')" > /tmp/medir-playwright-entry
+
+      - name: Medir arranque con la CSP del laboratorio
+        run: |
+          set -euo pipefail
+          html=$(find medida/godot-minimo/salida -name index.html -print -quit)
+          export PLAYWRIGHT_MODULE="$(cat /tmp/medir-playwright-entry)"
+          node medida/medir-carga.mjs "$(dirname "$html")" --out medida-carga.json
+
+      - name: Subir arranque
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: medicion-godot-arranque
+          path: |
+            medida-carga.json
+            medida-arranque.png
+            medida-toque.png
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Probar wasm-opt
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          sudo apt-get install -y binaryen
+          wasm=$(find medida/godot-minimo/salida -name '*.wasm' -print -quit)
+          wasm-opt -Oz --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-simd --enable-reference-types --enable-multivalue -o /tmp/opt.wasm "$wasm" > medida-wasm-opt.txt 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then
+            echo "original=$(stat -c %s "$wasm") opt=$(stat -c %s /tmp/opt.wasm)" | tee -a medida-wasm-opt.txt
+          else
+            echo "wasm-opt terminó con código $code" | tee -a medida-wasm-opt.txt
+            exit "$code"
+          fi
+
+      - name: Subir wasm-opt
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: medicion-godot-wasm-opt
+          path: medida-wasm-opt.txt
+          retention-days: 14
+          if-no-files-found: ignore
