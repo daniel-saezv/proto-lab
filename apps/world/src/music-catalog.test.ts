@@ -19,10 +19,11 @@ import {
 const audioDir = join(dirname(fileURLToPath(import.meta.url)), "../public/protos/audio");
 
 describe("catálogo de la radio", () => {
-  it("solo publica Luanda, como literal y por debajo de 4 MiB", () => {
-    expect(MUSIC_CATALOG.map((track) => track.id)).toEqual(["luanda"]);
+  it("publica el catálogo como literal y por debajo de 4 MiB", () => {
+    expect(MUSIC_CATALOG.map((track) => track.id)).toEqual(["luanda", "firefly-in-a-fairytale"]);
     const source = readFileSync(new URL("./music-catalog.ts", import.meta.url), "utf8");
     expect(source).toContain('src: "/protos/audio/luanda.m4a"');
+    expect(source).toContain('src: "/protos/audio/firefly-in-a-fairytale.m4a"');
     for (const track of MUSIC_CATALOG) {
       const file = join(audioDir, track.file);
       const bytes = statSync(file).size;
@@ -30,7 +31,9 @@ describe("catálogo de la radio", () => {
       expect(bytes).toBeLessThanOrEqual(MUSIC_TRACK_MAX_BYTES);
       expect(track.src).toBe(`/protos/audio/${track.file}`);
     }
-    const chalk = readdirSync(audioDir).filter((name) => name.endsWith(".m4a") && name !== "luanda.m4a");
+    const chalk = readdirSync(audioDir).filter(
+      (name) => name.endsWith(".m4a") && !MUSIC_CATALOG.some((track) => track.file === name),
+    );
     expect(chalk.every((name) => !MUSIC_CATALOG.some((track) => track.file === name))).toBe(true);
   });
 
@@ -54,7 +57,8 @@ describe("catálogo de la radio", () => {
     expect(nextInCatalog(dos, "una").id).toBe("dos");
     expect(nextInCatalog(dos, "dos").id).toBe("una");
     expect(nextInCatalog(dos, "no-esta").id).toBe("una");
-    expect(nextTrack("luanda").id).toBe("luanda");
+    expect(nextTrack("luanda").id).toBe("firefly-in-a-fairytale");
+    expect(nextTrack("firefly-in-a-fairytale").id).toBe("luanda");
     expect(trackById("otra").id).toBe("luanda");
     expect(musicNowLabel("Luanda")).toBe("Música: Luanda");
     const data = new Map<string, string>();
