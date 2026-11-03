@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readCatalog } from "./catalog-lib.mjs";
 import { headersForPath, parsePagesHeaders } from "./pages-headers.mjs";
-import { appendCapabilityHeaders, cspWithWasm } from "./proto-csp.mjs";
+import { appendCapabilityHeaders, cspWithWasm, permissionsPolicy } from "./proto-csp.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(join(root, "apps/world/public/_headers"), "utf8");
@@ -20,6 +20,13 @@ describe("CSP por capacidades", () => {
       expect(csp, path).not.toContain("wasm-unsafe-eval");
       expect(csp, path).toContain("form-action 'none'");
     }
+    const labPolicy = permissionsPolicy({ granted: ["geolocation"] });
+    expect(headersForPath(rules, "/").get("permissions-policy")?.value).toBe(permissionsPolicy({ delegateAll: true }));
+    expect(headersForPath(rules, "/protos/asset-lab/").get("permissions-policy")?.value).toBe(labPolicy);
+    expect(headersForPath(rules, "/protos/asset-lab/assets/app.js").get("permissions-policy")?.value).toBe(labPolicy);
+    expect(headersForPath(rules, "/protos/chispa/").get("permissions-policy")?.value).toContain("geolocation=()");
+    expect(headersForPath(rules, "/protos/chispa/").get("permissions-policy")?.value).not.toContain("(self)");
+    expect(headersForPath(rules, "/sw.js").get("permissions-policy")?.value).not.toContain("(self)");
   });
 
   it("añade wasm-unsafe-eval solo en el slug que lo declara", () => {
@@ -47,11 +54,35 @@ describe("CSP por capacidades", () => {
     expect(plain).not.toContain("wasm-unsafe-eval");
     expect(home).not.toContain("wasm-unsafe-eval");
     expect(headersForPath(rules, "/protos/otro/").get("content-security-policy")?.value ?? "").not.toContain("wasm-unsafe-eval");
+    expect(headersForPath(rules, "/protos/otro/index.html").get("permissions-policy")?.value).toBe(
+      permissionsPolicy({ granted: ["camera"] }),
+    );
+    expect(headersForPath(rules, "/protos/demo-wasm/").get("permissions-policy")?.value).not.toContain("(self)");
     expect(augmented.toLowerCase()).not.toContain("cross-origin-opener-policy");
     expect(augmented.toLowerCase()).not.toContain("cross-origin-embedder-policy");
   });
 
   it("rechaza un slug que no puede ir en la ruta", () => {
     expect(() => appendCapabilityHeaders(source, [{ slug: "../x", capabilities: ["wasm"] }])).toThrow(/slug/);
+    expect(() => appendCapabilityHeaders(source, [{ slug: "camara/extra", capabilities: ["camera"] }])).toThrow(/slug/);
+  });
+
+  it("abre en el slug solo los permisos de dispositivo declarados", () => {
+    const augmented = appendCapabilityHeaders(source, [
+      { slug: "con-sensor", capabilities: ["save", "gyroscope", "camera", "wasm"] },
+      { slug: "sin-sensor", capabilities: ["save"] },
+    ]);
+    const rules = parsePagesHeaders(augmented);
+    const granted = permissionsPolicy({ granted: ["camera", "gyroscope"] });
+    expect(headersForPath(rules, "/protos/con-sensor/").get("permissions-policy")?.value).toBe(granted);
+    expect(granted).toContain("camera=(self)");
+    expect(granted).toContain("gyroscope=(self)");
+    expect(granted).toContain("microphone=()");
+    expect(granted).toContain("payment=()");
+    expect(granted).not.toContain("microphone=(self)");
+    expect(headersForPath(rules, "/protos/con-sensor/").get("content-security-policy")?.value).toContain("'wasm-unsafe-eval'");
+    expect(headersForPath(rules, "/protos/sin-sensor/").get("permissions-policy")?.value).not.toContain("(self)");
+    expect(headersForPath(rules, "/assets/app.js").get("permissions-policy")?.value).not.toContain("(self)");
+    expect(headersForPath(rules, "/").get("permissions-policy")?.value).toBe(permissionsPolicy({ delegateAll: true }));
   });
 });

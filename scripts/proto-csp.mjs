@@ -1,10 +1,40 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { APP_PERMISSIONS } from "./app-contract.mjs";
 import { readCatalog } from "./catalog-lib.mjs";
 import { headersForPath, parsePagesHeaders } from "./pages-headers.mjs";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SCRIPT_SRC = "script-src 'self' 'unsafe-inline'";
+const DENIED_FEATURES = ["payment", "usb"];
+
+/**
+ * `delegateAll` abre los seis permisos de dispositivo para `self` (el documento
+ * del laboratorio tiene que poder delegarlos). `granted` abre solo los que
+ * declara el slug. `payment` y `usb` siguen cerrados.
+ * @param {{ delegateAll?: boolean, granted?: readonly string[] }} [options]
+ */
+export function permissionsPolicy(options = {}) {
+  const granted = new Set(options.granted ?? []);
+  const delegateAll = options.delegateAll === true;
+  return [...APP_PERMISSIONS, ...DENIED_FEATURES]
+    .map((name) => {
+      const open = APP_PERMISSIONS.includes(name) && (delegateAll || granted.has(name));
+      return `${name}=${open ? "(self)" : "()"}`;
+    })
+    .join(", ");
+}
+
+function declaredTokens(entry) {
+  if (Array.isArray(entry?.capabilities)) return entry.capabilities;
+  if (Array.isArray(entry?.permissions)) return entry.permissions;
+  return [];
+}
+
+function deviceGrants(entry) {
+  const tokens = new Set(declaredTokens(entry));
+  return APP_PERMISSIONS.filter((name) => tokens.has(name));
+}
 
 function fail(message) {
   throw new Error(`CSP de aplicaciones: ${message}`);
@@ -43,19 +73,26 @@ export function cspWithWasm(baseCsp) {
  */
 export function appendCapabilityHeaders(source, entries) {
   const base = baseContentSecurityPolicy(source);
-  const wasmSlugs = [];
+  const blocks = [];
   for (const entry of entries) {
-    const capabilities = entry?.capabilities ?? [];
-    if (!capabilities.includes("wasm")) continue;
-    if (typeof entry.slug !== "string" || !SLUG.test(entry.slug)) fail(`slug no válido (${String(entry?.slug)})`);
-    wasmSlugs.push(entry.slug);
+    const tokens = declaredTokens(entry);
+    const wasm = tokens.includes("wasm");
+    const grants = deviceGrants(entry);
+    if (!wasm && grants.length === 0) continue;
+    if (typeof entry?.slug !== "string" || !SLUG.test(entry.slug)) fail(`slug no válido (${String(entry?.slug)})`);
+    const lines = [
+      `# ${entry.slug} declara capacidades en proto.json. Sin COOP/COEP: sigue sin hilos ni SharedArrayBuffer.`,
+      `/protos/${entry.slug}/*`,
+    ];
+    if (wasm) {
+      lines.push("  ! Content-Security-Policy", `  Content-Security-Policy: ${cspWithWasm(base)}`);
+    }
+    if (grants.length > 0) {
+      lines.push("  ! Permissions-Policy", `  Permissions-Policy: ${permissionsPolicy({ granted: grants })}`);
+    }
+    blocks.push(`${lines.join("\n")}\n`);
   }
-  if (wasmSlugs.length === 0) return source.endsWith("\n") ? source : `${source}\n`;
-  const policy = cspWithWasm(base);
-  const blocks = wasmSlugs.map(
-    (slug) =>
-      `# ${slug} declara wasm en proto.json. Sin COOP/COEP: sigue sin hilos ni SharedArrayBuffer.\n/protos/${slug}/*\n  ! Content-Security-Policy\n  Content-Security-Policy: ${policy}\n`,
-  );
+  if (blocks.length === 0) return source.endsWith("\n") ? source : `${source}\n`;
   return `${source.replace(/\s*$/, "\n")}\n${blocks.join("\n")}`;
 }
 

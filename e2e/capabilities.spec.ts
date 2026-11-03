@@ -1,6 +1,25 @@
 import { expect, test } from "@playwright/test";
 
 test("allow sale de la lista y save sin declarar se ignora", async ({ page }) => {
+  const home = await page.request.get("/");
+  expect(home.headers()["permissions-policy"] ?? "").toContain("camera=(self)");
+  expect(home.headers()["permissions-policy"] ?? "").toContain("magnetometer=(self)");
+  const index = await page.request.get("/index.html");
+  expect(index.headers()["permissions-policy"] ?? "").toBe(home.headers()["permissions-policy"] ?? "");
+  const assetLab = await page.request.get("/protos/asset-lab/");
+  const assetPolicy = assetLab.headers()["permissions-policy"] ?? "";
+  expect(assetPolicy).toContain("geolocation=(self)");
+  expect(assetPolicy).toContain("camera=()");
+  expect(assetPolicy).not.toContain("camera=(self)");
+  expect(assetPolicy).toContain("payment=()");
+  const chispaPage = await page.request.get("/protos/chispa/");
+  const chispaPolicy = chispaPage.headers()["permissions-policy"] ?? "";
+  expect(chispaPolicy).toContain("geolocation=()");
+  expect(chispaPolicy).not.toContain("(self)");
+  const sw = await page.request.get("/sw.js");
+  expect(sw.headers()["permissions-policy"] ?? "").toContain("camera=()");
+  expect(sw.headers()["permissions-policy"] ?? "").not.toContain("(self)");
+
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await page.evaluate(() => {

@@ -1116,7 +1116,14 @@ test("CSP, audio y el JS con hash del prototipo no se pisan", async ({ page }) =
   expect(csp).toContain("media-src 'self'");
   expect(home.headers()["x-content-type-options"]).toBe("nosniff");
   expect(home.headers()["referrer-policy"]).toBe("no-referrer");
-  expect(home.headers()["permissions-policy"] ?? "").toContain("camera=()");
+  const homePolicy = home.headers()["permissions-policy"] ?? "";
+  expect(homePolicy).toContain("camera=(self)");
+  expect(homePolicy).toContain("geolocation=(self)");
+  expect(homePolicy).toContain("payment=()");
+  expect(homePolicy).not.toContain("camera=()");
+  const shell = await page.request.get("/manifest.webmanifest");
+  expect(shell.headers()["permissions-policy"] ?? "").toContain("camera=()");
+  expect(shell.headers()["permissions-policy"] ?? "").not.toContain("(self)");
   expect(home.headers()["cache-control"] ?? "").toMatch(/no-cache/);
 
   const manifest = await page.request.get("/manifest.webmanifest");

@@ -26,8 +26,11 @@ const MIME: Record<string, string> = {
 const headerRules = pagesHeaderRules(repoRoot);
 
 function applyDevCsp(res: { setHeader(name: string, value: string): void }, pathname: string) {
-  const csp = headersForPath(headerRules, pathname).get("content-security-policy");
+  const headers = headersForPath(headerRules, pathname);
+  const csp = headers.get("content-security-policy");
   if (csp) res.setHeader(csp.name, csp.value);
+  const policy = headers.get("permissions-policy");
+  if (policy) res.setHeader(policy.name, policy.value);
 }
 
 function applyPagesHeaders(): Plugin {
