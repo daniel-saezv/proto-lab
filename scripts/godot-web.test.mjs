@@ -1,9 +1,20 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { assertGodotProject, compareServed, godotSlugsInDiff, listGodotProjects, packsMatch, prepareServedFiles } from "./godot-web.mjs";
+import { inspectServedApp } from "./app-budget.mjs";
+import { assertSharedEngines, GODOT_ENGINE_BASE } from "./godot-engine.mjs";
+import {
+  assertGodotProject,
+  compareEngine,
+  compareServed,
+  decodeServedPack,
+  godotSlugsInDiff,
+  listGodotProjects,
+  packsMatch,
+  prepareServedFiles,
+} from "./godot-web.mjs";
 import { compressWasmBrotli } from "./wasm-module.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,8 +49,10 @@ describe("export web de Godot", () => {
     const arranque = Buffer.from("window.__protoLabApp={stop(){}};");
     const prepared = prepareServedFiles(dir, arranque);
     expect(prepared.errors).toEqual([]);
-    const wasm = prepared.files.get("index.wasm");
+    const wasm = prepared.engine.get("index.wasm");
     expect(wasm.equals(compressWasmBrotli(plain))).toBe(true);
+    expect(prepared.files.has("index.wasm")).toBe(false);
+    expect(prepared.engine.get("index.js").equals(Buffer.from("var engine = {};"))).toBe(true);
     expect(prepared.files.get("arranque.js").equals(arranque)).toBe(true);
 
     writeFileSync(join(dir, "index.wasm"), shared);
@@ -51,27 +64,49 @@ describe("export web de Godot", () => {
   it("exige que lo publicado coincida con el export", () => {
     const exportDir = mkdtempSync(join(tmpdir(), "godot-src-"));
     const protoDir = mkdtempSync(join(tmpdir(), "godot-pub-"));
+    const engineDir = mkdtempSync(join(tmpdir(), "godot-engine-"));
     writeFileSync(join(exportDir, "index.html"), html);
     writeFileSync(join(exportDir, "index.wasm"), plain);
     const arranque = Buffer.from("arranque");
     const prepared = prepareServedFiles(exportDir, arranque);
     expect(prepared.errors).toEqual([]);
     for (const [name, buf] of prepared.files) writeFileSync(join(protoDir, name), buf);
+    for (const [name, buf] of prepared.engine) writeFileSync(join(engineDir, name), buf);
     expect(compareServed(protoDir, prepared.files)).toEqual([]);
-    writeFileSync(join(protoDir, "index.wasm"), plain);
-    expect(compareServed(protoDir, prepared.files).some((line) => line.includes("Brotli"))).toBe(true);
+    expect(compareEngine(engineDir, prepared.engine)).toEqual([]);
+    writeFileSync(join(engineDir, "index.wasm"), plain);
+    expect(compareEngine(engineDir, prepared.engine).some((line) => line.includes("Brotli"))).toBe(true);
     rmSync(exportDir, { recursive: true, force: true });
     rmSync(protoDir, { recursive: true, force: true });
+    rmSync(engineDir, { recursive: true, force: true });
   });
 
   it("tolera los node_ids del pck y detecta un cambio de escena", () => {
-    const pck = readFileSync(join(root, "protos/toque/index.pck"));
-    expect(packsMatch(pck, pck)).toBe(true);
+    const stored = readFileSync(join(root, "protos/toque/index.pck"));
+    const decoded = decodeServedPack(stored);
+    expect(decoded?.brotli).toBe(true);
+    const pck = decoded.pack;
+    expect(packsMatch(stored, pck)).toBe(true);
     const changed = Buffer.from(pck);
     const at = changed.indexOf("Toca la pantalla");
     expect(at).toBeGreaterThan(0);
     changed[at] ^= 1;
     expect(packsMatch(pck, changed)).toBe(false);
+  });
+
+  it("Toque deja el motor fuera de la app y el paquete en Brotli", () => {
+    const protoDir = join(root, "protos/toque");
+    expect(existsSync(join(protoDir, "index.wasm"))).toBe(false);
+    expect(existsSync(join(protoDir, "index.js"))).toBe(false);
+    const html = readFileSync(join(protoDir, "index.html"), "utf8");
+    expect(html).toContain(GODOT_ENGINE_BASE);
+    expect(html).toContain("mainPack: 'index.pck'");
+    const app = inspectServedApp(protoDir, "toque", { staticProto: true });
+    expect(app.errors).toEqual([]);
+    expect(app.total).toBeLessThan(1024 * 1024);
+    const engines = assertSharedEngines(root);
+    expect(engines.versions.map((item) => item.id)).toEqual(["4.7.2-stable-nothreads"]);
+    expect(engines.versions[0].total).toBeGreaterThan(1024 * 1024);
   });
 });
 

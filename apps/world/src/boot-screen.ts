@@ -3,11 +3,12 @@
  * es una animación CSS y el avance real solo reescribe un porcentaje.
  * `loaded` y `total` son bytes. `total` 0 significa que el tamaño no se conoce.
  */
-export function bootProgress(loaded: unknown, total: unknown): { percent: number; ratio: number } | null {
+export function bootProgress(loaded: unknown, total: unknown): { percent: number; ratio: number; label: string } | null {
   if (typeof loaded !== "number" || typeof total !== "number") return null;
   if (!Number.isFinite(loaded) || !Number.isFinite(total) || total <= 0 || loaded < 0) return null;
   const ratio = Math.min(1, loaded / total);
-  return { ratio, percent: Math.round(ratio * 100) };
+  const percent = Math.round(ratio * 100);
+  return { ratio, percent, label: percent >= 100 ? "Preparando" : `${percent} %` };
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -75,6 +76,7 @@ export function paintBootProgress(status: HTMLElement, loaded: unknown, total: u
   if (!next) {
     if (!status.hasAttribute("data-progress")) return;
     delete status.dataset.progress;
+    delete status.dataset.boot;
     status.style.removeProperty("--boot-ratio");
     status.removeAttribute("aria-valuenow");
     status.removeAttribute("aria-valuetext");
@@ -82,10 +84,12 @@ export function paintBootProgress(status: HTMLElement, loaded: unknown, total: u
     return;
   }
   const shown = String(next.percent);
-  if (status.dataset.progress === shown) return;
+  const phase = next.percent >= 100 ? "preparing" : "download";
+  if (status.dataset.progress === shown && status.dataset.boot === phase) return;
   status.dataset.progress = shown;
+  status.dataset.boot = phase;
   status.style.setProperty("--boot-ratio", next.ratio.toFixed(4));
   status.setAttribute("aria-valuenow", shown);
-  status.setAttribute("aria-valuetext", `${shown} %`);
-  if (label) label.textContent = `${shown} %`;
+  status.setAttribute("aria-valuetext", next.label);
+  if (label) label.textContent = next.label;
 }

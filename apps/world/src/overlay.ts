@@ -1,3 +1,4 @@
+import { bootTimeoutReason, bootWaitMs, createBootClock, noteBootProgress, type BootClock } from "./boot-deadline";
 import { createBootScreen, paintBootProgress } from "./boot-screen";
 import { advanceBoot, bootFailureMessage, iframeAllow, type BootPhase } from "./prototype-boot";
 import { assertPrototypePage } from "./prototype-document";
@@ -31,6 +32,8 @@ export function createOverlay(
   let opened = false;
   let frame: HTMLIFrameElement | null = null;
   let readyTimer = 0;
+  let bootClock: BootClock = createBootClock(0);
+  let bootReadyMs = 8000;
   let boot: BootPhase = "opening";
   let assetHost: ReturnType<typeof createPrototypeAssetHost> | null = null;
   let saveBridge: ReturnType<typeof createSaveBridge> | null = null;
@@ -142,6 +145,7 @@ export function createOverlay(
     opened = false;
     const mine = ++generation;
     window.clearTimeout(readyTimer);
+    readyTimer = 0;
     exitFullscreenModes();
     await discardFrame();
     if (mine !== generation) return;
@@ -157,6 +161,7 @@ export function createOverlay(
   async function showFailure(banner: HTMLElement, message: string) {
     const mine = ++generation;
     window.clearTimeout(readyTimer);
+    readyTimer = 0;
     await discardFrame();
     if (mine !== generation || !banner.isConnected) return;
     root.querySelector(".prototype-status")?.remove();
@@ -167,6 +172,7 @@ export function createOverlay(
 
   function markReady(status: HTMLElement | null) {
     window.clearTimeout(readyTimer);
+    readyTimer = 0;
     boot = "ready";
     root.dataset.prototypeReady = "1";
     status?.remove();
@@ -208,6 +214,12 @@ export function createOverlay(
       if (boot === "ready") return;
       const status = root.querySelector<HTMLElement>(".prototype-status");
       if (!status) return;
+      const nextClock = noteBootProgress(bootClock, data.loaded, data.total, performance.now());
+      if (nextClock !== bootClock) {
+        bootClock = nextClock;
+        const banner = root.querySelector<HTMLElement>(".prototype-banner");
+        if (banner) armBootTimer(generation, banner);
+      }
       paintBootProgress(status, data.loaded, data.total);
       return;
     }
@@ -229,6 +241,26 @@ export function createOverlay(
   }
   window.addEventListener("message", onMessage);
 
+  function armBootTimer(mine: number, banner: HTMLElement) {
+    window.clearTimeout(readyTimer);
+    readyTimer = 0;
+    const wait = bootWaitMs(bootClock, performance.now(), bootReadyMs);
+    const fire = () => {
+      readyTimer = 0;
+      if (mine !== generation || boot === "ready") return;
+      if (bootTimeoutReason(bootClock, performance.now(), bootReadyMs)) {
+        void showFailure(banner, bootFailureMessage(boot));
+        return;
+      }
+      armBootTimer(mine, banner);
+    };
+    if (wait <= 0) {
+      fire();
+      return;
+    }
+    readyTimer = window.setTimeout(fire, wait);
+  }
+
   function open(entry: CatalogEntry) {
     generation += 1;
     const mine = generation;
@@ -237,6 +269,7 @@ export function createOverlay(
     assetHost = null;
     saveBridge = null;
     window.clearTimeout(readyTimer);
+    readyTimer = 0;
     clearBootMarks();
     exitFullscreenModes();
     document.body.classList.add("prototype-open");
@@ -298,7 +331,7 @@ export function createOverlay(
 
     hooks?.onOpenEntry?.(entry);
 
-    const deadline = entry.readyMs > 0 ? entry.readyMs : 8000;
+    bootReadyMs = entry.readyMs > 0 ? entry.readyMs : 8000;
     void assertPrototypePage(entry.href, { pageOrigin: location.origin })
       .then(() => {
         if (mine !== generation) return;
@@ -323,10 +356,8 @@ export function createOverlay(
         frame = next;
         slot.append(next);
         next.src = entry.href;
-        readyTimer = window.setTimeout(() => {
-          if (mine !== generation || boot === "ready") return;
-          void showFailure(banner, bootFailureMessage(boot));
-        }, deadline);
+        bootClock = createBootClock(performance.now());
+        armBootTimer(mine, banner);
       })
       .catch(() => {
         if (mine !== generation) return;

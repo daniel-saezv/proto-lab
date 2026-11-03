@@ -2,6 +2,8 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statS
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertServedApp } from "./app-budget.mjs";
+import { CATALOG_SKIP } from "./catalog-lib.mjs";
+import { assertSharedEngines } from "./godot-engine.mjs";
 import { assertGodotTree } from "./godot-web.mjs";
 import { resolveProtoOutput, STATIC_SKIP } from "./proto-publish.mjs";
 import { writeCapabilityHeaders } from "./proto-csp.mjs";
@@ -19,6 +21,10 @@ const protosDir = join(root, "protos");
 for (const slug of readdirSync(protosDir)) {
   const protoDir = join(protosDir, slug);
   if (!statSync(protoDir).isDirectory()) continue;
+  if (CATALOG_SKIP.has(slug)) {
+    cpSync(protoDir, join(out, "protos", slug), { recursive: true });
+    continue;
+  }
   const output = resolveProtoOutput(protoDir);
   const target = join(out, "protos", slug);
   if (output.kind === "build") {
@@ -46,6 +52,7 @@ for (const slug of readdirSync(protosDir)) {
     throw new Error(godotErrors.map((line) => `protos/${slug}: ${line}`).join("\n"));
   }
 }
+assertSharedEngines(root);
 
 const shell = [];
 function walk(dir) {

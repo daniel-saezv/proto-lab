@@ -2,9 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCatalog, sharedCapabilitySlugs } from "./catalog-lib.mjs";
+import { assertSharedEngines } from "./godot-engine.mjs";
 import { assertLabMigrations, readTableQueries } from "./table-sql.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+assertSharedEngines(root);
 const entries = readCatalog(root);
 const catalogPath = join(root, "apps/world/src/generated/catalog.json");
 const slugsPath = join(root, "functions/_lib/slugs.json");

@@ -50,6 +50,13 @@ test("la apertura muestra el avance y desaparece con ready", async ({ page }) =>
   await expect(status.locator(".prototype-boot-label")).toHaveText("30 %");
 
   await frame.locator("body").evaluate(() => {
+    parent.postMessage({ source: "proto-lab", type: "progress", loaded: 100, total: 100 }, "*");
+  });
+  await expect(status).toHaveAttribute("aria-valuenow", "100");
+  await expect(status).toHaveAttribute("data-boot", "preparing");
+  await expect(status.locator(".prototype-boot-label")).toHaveText("Preparando");
+
+  await frame.locator("body").evaluate(() => {
     parent.postMessage({ source: "proto-lab", type: "ready" }, "*");
   });
   await expect(status).toHaveCount(0);

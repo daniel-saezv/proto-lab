@@ -6,9 +6,9 @@ import { bootProgress } from "./boot-screen";
 
 describe("avance de la apertura", () => {
   it("traduce bytes a un porcentaje y deja el tamaño desconocido sin cifra", () => {
-    expect(bootProgress(0, 100)).toEqual({ percent: 0, ratio: 0 });
-    expect(bootProgress(30, 100)).toEqual({ percent: 30, ratio: 0.3 });
-    expect(bootProgress(150, 100)).toEqual({ percent: 100, ratio: 1 });
+    expect(bootProgress(0, 100)).toEqual({ percent: 0, ratio: 0, label: "0 %" });
+    expect(bootProgress(30, 100)).toEqual({ percent: 30, ratio: 0.3, label: "30 %" });
+    expect(bootProgress(150, 100)).toEqual({ percent: 100, ratio: 1, label: "Preparando" });
     expect(bootProgress(10, 0)).toBeNull();
     expect(bootProgress(-1, 100)).toBeNull();
     expect(bootProgress(Number.NaN, 100)).toBeNull();

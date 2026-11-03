@@ -8,10 +8,13 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { brotliDecompressSync } from "node:zlib";
+import { GODOT_ENGINE_FILES, godotEngineDir } from "./godot-engine.mjs";
 import { assertSingleThreadWasm, compressWasmBrotli, decodeServedWasm } from "./wasm-module.mjs";
 
 const PCK_MAGIC = Buffer.from("GDPC");
 const NODE_IDS = Buffer.from("node_ids\0");
+const ENGINE_FILES = new Set(GODOT_ENGINE_FILES);
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLISHED_SKIP = new Set(["proto.json", "preview.webp", "godot"]);
@@ -127,7 +130,19 @@ function assertHtmlContract(name, text) {
   if (text.includes("onProgress") && !text.includes("type: 'progress'")) {
     errors.push(`${name} no reenvía el avance de la descarga`);
   }
+  if (text.includes("GODOT_CONFIG")) {
+    const base = engineBaseFromHtml(text);
+    if (!base) errors.push(`${name} no apunta al motor compartido`);
+    if (!text.includes("mainPack")) errors.push(`${name} no separa el paquete del motor`);
+  }
   return errors;
+}
+
+/** Ruta pública del motor, sin el sufijo `.js` / `.wasm`. */
+export function engineBaseFromHtml(html) {
+  const match = String(html).match(/\/protos\/engines\/godot\/([A-Za-z0-9][A-Za-z0-9._-]*)\/index\b/);
+  if (!match) return null;
+  return `/protos/engines/godot/${match[1]}/index`;
 }
 
 /**
@@ -139,10 +154,19 @@ function assertHtmlContract(name, text) {
 export function prepareServedFiles(exportDir, arranque) {
   const htmlDir = findHtmlDir(exportDir);
   const files = new Map();
+  const engine = new Map();
   const errors = [];
   for (const abs of walkFiles(htmlDir)) {
     const rel = relative(htmlDir, abs).replaceAll("\\", "/");
     let buf = readFileSync(abs);
+    if (rel.endsWith(".pck")) {
+      const decoded = decodeServedPack(buf);
+      if (!decoded) {
+        errors.push(`${rel} no es un paquete Godot`);
+        continue;
+      }
+      buf = decoded.brotli ? buf : compressWasmBrotli(decoded.pack);
+    }
     if (rel.endsWith(".wasm")) {
       const decoded = decodeServedWasm(buf);
       if (!decoded) {
@@ -156,14 +180,15 @@ export function prepareServedFiles(exportDir, arranque) {
       }
       buf = decoded.brotli ? buf : compressWasmBrotli(decoded.module);
     }
-    files.set(rel, buf);
+    if (ENGINE_FILES.has(rel)) engine.set(rel, buf);
+    else files.set(rel, buf);
     if (rel.endsWith(".html") || rel.endsWith(".htm")) {
       errors.push(...assertHtmlContract(rel, buf.toString("utf8")));
     }
   }
-  if (!files.has("index.wasm")) errors.push("falta index.wasm");
+  if (!engine.has("index.wasm")) errors.push("falta index.wasm");
   files.set("arranque.js", arranque);
-  return { files, errors };
+  return { files, engine, errors };
 }
 
 /** Godot reescribe `node_ids` en cada export. El resto de la escena tiene que coincidir. */
@@ -183,6 +208,22 @@ export function normalizeGodotScene(buf) {
     at = idsEnd;
   }
   return out;
+}
+
+/**
+ * Un `.pck` servido puede ir en claro o en Brotli q11.
+ * @param {Buffer} buf
+ * @returns {{ brotli: boolean, pack: Buffer } | null}
+ */
+export function decodeServedPack(buf) {
+  if (buf.length >= 4 && buf.subarray(0, 4).equals(PCK_MAGIC)) return { brotli: false, pack: buf };
+  try {
+    const pack = brotliDecompressSync(buf);
+    if (pack.length >= 4 && pack.subarray(0, 4).equals(PCK_MAGIC)) return { brotli: true, pack };
+  } catch {
+    /* No es Brotli. */
+  }
+  return null;
 }
 
 /** @param {Buffer} buf */
@@ -214,8 +255,8 @@ export function readGodotPack(buf) {
 }
 
 export function packsMatch(left, right) {
-  const a = readGodotPack(left);
-  const b = readGodotPack(right);
+  const a = readGodotPack(decodeServedPack(left)?.pack ?? Buffer.alloc(0));
+  const b = readGodotPack(decodeServedPack(right)?.pack ?? Buffer.alloc(0));
   if (!a || !b || a.size !== b.size) return false;
   for (const [name, bytes] of a) {
     const other = b.get(name);
@@ -247,19 +288,62 @@ export function compareServed(protoDir, expected) {
       errors.push(`falta ${name} publicado`);
       continue;
     }
+    if (ENGINE_FILES.has(name)) {
+      errors.push(`${name} es del motor compartido y no se publica en la app`);
+      actual.delete(name);
+      continue;
+    }
     if (name.endsWith(".wasm")) {
       const published = decodeServedWasm(got);
       const fresh = decodeServedWasm(buf);
       if (!published?.brotli) errors.push(`${name} publicado no está en Brotli`);
       else if (!fresh || !published.module.equals(fresh.module)) errors.push(`${name} no coincide con el export`);
     } else if (name.endsWith(".pck")) {
-      if (!packsMatch(got, buf)) errors.push(`${name} no coincide con el export`);
+      if (!decodeServedPack(got)?.brotli) errors.push(`${name} publicado no está en Brotli`);
+      else if (!packsMatch(got, buf)) errors.push(`${name} no coincide con el export`);
     } else if (!got.equals(buf)) {
       errors.push(`${name} no coincide con el export`);
     }
     actual.delete(name);
   }
   for (const name of actual.keys()) errors.push(`${name} publicado no sale del export`);
+  return errors;
+}
+
+/** El motor publicado tiene que ser el del export, una sola vez. */
+export function compareEngine(engineDir, expected) {
+  const errors = [];
+  if (!existsSync(engineDir)) {
+    errors.push(`falta el motor en ${engineDir}`);
+    return errors;
+  }
+  const actual = new Map();
+  for (const name of readdirSync(engineDir)) {
+    const abs = join(engineDir, name);
+    if (!statSync(abs).isFile()) continue;
+    actual.set(name, readFileSync(abs));
+  }
+  for (const [name, buf] of expected) {
+    const got = actual.get(name);
+    if (!got) {
+      errors.push(`falta ${name} en el motor compartido`);
+      continue;
+    }
+    if (name.endsWith(".wasm")) {
+      const published = decodeServedWasm(got);
+      const fresh = decodeServedWasm(buf);
+      if (!published?.brotli) errors.push(`${name} del motor no está en Brotli`);
+      else if (!fresh || !published.module.equals(fresh.module)) {
+        errors.push(`${name} del motor no coincide con el export`);
+      }
+    } else if (!got.equals(buf)) {
+      errors.push(`${name} del motor no coincide con el export`);
+    }
+    actual.delete(name);
+  }
+  for (const name of actual.keys()) {
+    if (!ENGINE_FILES.has(name)) errors.push(`${name} no forma parte del motor`);
+  }
   return errors;
 }
 
@@ -334,8 +418,11 @@ if (invokedDirectly() && process.argv.includes("--check")) {
   const prepared = prepareServedFiles(exportDir, arranque);
   const stage = argValue("--stage");
   if (stage) stageServed(stage, prepared.files);
+  const html = prepared.files.get("index.html");
+  const engineId = engineBaseFromHtml(html?.toString("utf8") ?? "")?.split("/")[4] ?? "";
   const published = compareServed(protoDir, prepared.files);
-  const errors = [...projectErrors, ...prepared.errors, ...published];
+  const engine = compareEngine(godotEngineDir(root, engineId || "desconocido"), prepared.engine);
+  const errors = [...projectErrors, ...prepared.errors, ...published, ...engine];
   if (errors.length > 0) {
     console.error(errors.join("\n"));
     process.exit(1);

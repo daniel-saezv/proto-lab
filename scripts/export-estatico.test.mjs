@@ -27,6 +27,9 @@ describe("plantilla de export estático", () => {
     expect(godotShell).not.toContain("installServiceWorker");
     expect(godotShell).toContain("onProgress");
     expect(godotShell).toContain("type: 'progress'");
+    expect(godotShell).toContain("/protos/engines/godot/4.7.2-stable-nothreads/index.js");
+    expect(godotShell).toContain("mainPack: 'index.pck'");
+    expect(godotShell).toContain("$GODOT_URL");
   });
 
   it("el manifiesto de ejemplo pasa el lector", () => {

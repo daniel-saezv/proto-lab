@@ -111,7 +111,8 @@ body {
 		</div>
 
 		<script src="./arranque.js"></script>
-		<script src="$GODOT_URL"></script>
+		<script src="/protos/engines/godot/4.7.2-stable-nothreads/index.js"></script>
+		<!-- $GODOT_URL -->
 		<script>
 const GODOT_CONFIG = $GODOT_CONFIG;
 const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
@@ -183,7 +184,15 @@ if (window.__protoLabApp) {
 		displayFailureNotice(missingMsg + missing.join('\n'));
 	} else {
 		setStatusMode('progress');
+		const engineBase = '/protos/engines/godot/4.7.2-stable-nothreads/index';
+		const publishedSizes = GODOT_CONFIG.fileSizes || {};
 		const started = engine.startGame({
+			executable: engineBase,
+			mainPack: 'index.pck',
+			fileSizes: {
+				[engineBase + '.wasm']: publishedSizes['index.wasm'],
+				'index.pck': publishedSizes['index.pck'],
+			},
 			'onProgress': function (current, total) {
 				if (current > 0 && total > 0) {
 					statusProgress.value = current;
