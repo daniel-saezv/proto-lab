@@ -18,6 +18,13 @@ describe("plantilla de export estático", () => {
     expect(shell).not.toContain('addEventListener("load"');
     const html = readFileSync(join(dir, "index.html"), "utf8");
     expect(html).toContain("./arranque.js");
+    const godotShell = readFileSync(join(dir, "godot-shell.html"), "utf8");
+    expect(godotShell).toContain("./arranque.js");
+    expect(godotShell).toContain("startGame");
+    expect(godotShell).toContain("__protoLabNotifyReady");
+    expect(godotShell).toContain("requestQuit");
+    expect(godotShell).not.toContain("eval(");
+    expect(godotShell).not.toContain("installServiceWorker");
   });
 
   it("el manifiesto de ejemplo pasa el lector", () => {
