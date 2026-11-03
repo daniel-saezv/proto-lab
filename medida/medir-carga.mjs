@@ -117,20 +117,42 @@ try {
       waitUntil: "domcontentloaded",
       timeout: 120_000,
     });
-    await page.waitForFunction(() => window.__medidaLista === true, { timeout: 120_000 });
+    // El segundo argumento es el valor de la función, no las opciones.
+    await page.waitForFunction(
+      () => {
+        const notice = document.getElementById("status-notice");
+        if (notice && notice.textContent && getComputedStyle(notice).display !== "none") {
+          window.__medidaFallo = notice.textContent.slice(0, 500);
+          return true;
+        }
+        return document.getElementById("status") == null;
+      },
+      null,
+      { timeout: 120_000 },
+    );
   } catch (error) {
     bootError = String(error).slice(0, 800);
   }
   const bootMs = Date.now() - started;
+  const fallo = await page.evaluate(() => window.__medidaFallo || "").catch(() => "");
+  if (fallo) bootError = fallo;
   await page.screenshot({ path: "medida-arranque.png" }).catch(() => {});
 
   let touch = { ok: false };
   if (!bootError) {
     try {
       await page.touchscreen.tap(195, 420);
-      await page.waitForFunction(() => window.__medidaToques >= 1, { timeout: 8_000 });
-      touch = { ok: true, toques: await page.evaluate(() => window.__medidaToques) };
-      await page.screenshot({ path: "medida-toque.png" }).catch(() => {});
+      await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined)));
+          }),
+      );
+      await page.screenshot({ path: "medida-toque.png" });
+      const { readFileSync } = await import("node:fs");
+      const before = readFileSync("medida-arranque.png");
+      const after = readFileSync("medida-toque.png");
+      touch = { ok: !before.equals(after), comparedScreenshots: true };
     } catch (error) {
       touch = { ok: false, error: String(error).slice(0, 500) };
       await page.screenshot({ path: "medida-toque.png" }).catch(() => {});

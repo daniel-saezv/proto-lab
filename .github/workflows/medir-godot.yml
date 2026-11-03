@@ -112,7 +112,7 @@ jobs:
           set +e
           sudo apt-get install -y binaryen
           wasm=$(find medida/godot-minimo/salida -name '*.wasm' -print -quit)
-          wasm-opt -Oz --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-simd --enable-reference-types --enable-multivalue -o /tmp/opt.wasm "$wasm" > medida-wasm-opt.txt 2>&1
+          wasm-opt -Oz --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-simd --enable-reference-types --enable-multivalue --enable-exception-handling -o /tmp/opt.wasm "$wasm" > medida-wasm-opt.txt 2>&1
           code=$?
           if [ "$code" -eq 0 ]; then
             echo "original=$(stat -c %s "$wasm") opt=$(stat -c %s /tmp/opt.wasm)" | tee -a medida-wasm-opt.txt
