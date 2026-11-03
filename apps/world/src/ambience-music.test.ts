@@ -73,7 +73,6 @@ describe("música ambiental", () => {
     expect(credits).toContain("luanda.m4a");
     expect(credits).toContain("Infraction");
     expect(credits).toContain("MORAI");
-    expect(credits.match(/\.m4a/g)).toEqual([".m4a"]);
     const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../index.html"), "utf8");
     expect(html.toLowerCase()).not.toContain("credit");
     expect(html.toLowerCase()).not.toContain("crédito");

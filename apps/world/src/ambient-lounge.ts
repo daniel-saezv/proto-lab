@@ -1,6 +1,5 @@
 import {
   BoxGeometry,
-  CanvasTexture,
   CylinderGeometry,
   Group,
   Mesh,
@@ -8,9 +7,9 @@ import {
   PlaneGeometry,
   PointLight,
   SphereGeometry,
-  SRGBColorSpace,
   type Material,
 } from "three";
+import { createTvScreen } from "./tv-screen";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { createNameplateElement } from "./nameplates";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
@@ -75,6 +74,10 @@ export type LoungeGroup = {
   nameplates: LoungePlate[];
   bubble: HTMLElement;
   tick: (time: number, dt: number, beatMid: number, glanceCtx?: SofaGlanceContext) => void;
+  syncTv: (playerX: number, playerZ: number, dt: number, reduced: boolean) => void;
+  setTvSources: (still: string | null, clip: string) => void;
+  setTvSuspended: (suspended: boolean) => void;
+  disposeTv: () => void;
   setDialogueCue: (cue: DialogueCue | null) => void;
   pulseDialogue: () => void;
 };
@@ -156,10 +159,23 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
       pipe.tick(time);
       cards.tick(time);
       sketch.tick(time);
-      tv.tick(time, dt, beatMid);
+      tv.tick(time, beatMid);
       // Idle de cara. El humo, las cartas y el lápiz siguen en los tick de arriba.
       for (const idle of faceIdles) idle(time);
       if (glanceCtx) tickSofaGlances(glances, time, dt, glanceCtx);
+    },
+    syncTv(playerX, playerZ, dt, reduced) {
+      const distance = Math.hypot(playerX - TV_SET.x, playerZ - TV_SET.z);
+      tv.screen.sync({ distance, reduced, dt });
+    },
+    setTvSources(still, clip) {
+      tv.screen.setSources(still, clip);
+    },
+    setTvSuspended(suspended) {
+      tv.screen.setSuspended(suspended);
+    },
+    disposeTv() {
+      tv.screen.dispose();
     },
     setDialogueCue(cue) {
       act.cue = cue;
@@ -218,7 +234,10 @@ function addTable(parent: Group, f: AmbientFactories) {
   poster.rotation.x = -0.12;
 }
 
-function addTelevision(parent: Group, f: AmbientFactories): { tick: (time: number, dt: number, beatMid: number) => void } {
+function addTelevision(parent: Group, f: AmbientFactories): {
+  tick: (time: number, beatMid: number) => void;
+  screen: ReturnType<typeof createTvScreen>;
+} {
   const tv = new Group();
   tv.position.set(TV_SET.x, 0, TV_SET.z);
   tv.rotation.y = TV_SET.yaw;
@@ -226,25 +245,19 @@ function addTelevision(parent: Group, f: AmbientFactories): { tick: (time: numbe
   f.box(tv, 0.16, 0.28, 0.16, 0, 0.16, 0, PALETTE.tv, false);
   f.box(tv, 0.7, 0.46, 0.12, 0, 0.56, 0, PALETTE.tv);
   f.box(tv, 0.78, 0.08, 0.16, 0, 0.84, 0, PALETTE.tv);
-  const { canvas, ctx, material } = createTvTexture(f.materials);
-  const screen = new Mesh(f.geo(new PlaneGeometry(0.58, 0.36)), material);
+  const screenCtrl = createTvScreen(f.materials);
+  const screen = new Mesh(f.geo(new PlaneGeometry(0.58, 0.36)), screenCtrl.material);
   screen.position.set(0, 0.56, 0.08);
   tv.add(screen);
   const tvLight = new PointLight(PALETTE.tvGlow, 4.2, 3.4, 2);
   tvLight.position.set(0, 0.58, 0.42);
   tv.add(tvLight);
 
-  let tvTimer = 0;
   return {
-    tick(time, dt, beatMid) {
-      tvTimer += dt;
-      if (tvTimer > 0.16) {
-        tvTimer = 0;
-        flickerTv(ctx, canvas, material);
-      }
-      const flick = 0.7 + Math.sin(time * 11) * 0.15 + Math.sin(time * 23.7) * 0.1;
-      tvLight.intensity = 4.2 * flick * (1 + beatMid * 0.1);
-      material.color.setRGB(0.55 + flick * 0.35, 0.65 + flick * 0.25, 1);
+    screen: screenCtrl,
+    tick(time, beatMid) {
+      const flick = 0.85 + Math.sin(time * 9) * 0.08;
+      tvLight.intensity = 3.4 * flick * (1 + beatMid * 0.12);
     },
   };
 }
@@ -527,39 +540,3 @@ function addNameplate(body: Group, npc: LoungeNpc): { id: string; element: HTMLE
   return { id: npc.id, element: plate, anchor: label };
 }
 
-function createTvTexture(materials: Material[]): {
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-  material: MeshBasicMaterial;
-} {
-  const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 48;
-  const ctx = canvas.getContext("2d")!;
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  const material = new MeshBasicMaterial({ map: texture, color: 0xffffff });
-  material.userData.live = true;
-  materials.push(material);
-  flickerTv(ctx, canvas, material);
-  return { canvas, ctx, material };
-}
-
-function flickerTv(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, material: MeshBasicMaterial) {
-  const hues = ["#ff6b9d", "#8fd8ff", "#ffb703", "#1f8a80", "#c77dff", "#f6f1e7"];
-  ctx.fillStyle = hues[Math.floor(Math.random() * hues.length)]!;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < 14; i++) {
-    ctx.fillStyle = hues[Math.floor(Math.random() * hues.length)]!;
-    ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 4 + Math.random() * 12, 3 + Math.random() * 8);
-  }
-  if (Math.random() > 0.82) {
-    ctx.fillStyle = "#14182b";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let y = 0; y < canvas.height; y += 3) {
-      ctx.fillStyle = `rgba(246,241,231,${Math.random() * 0.35})`;
-      ctx.fillRect(0, y, canvas.width, 1);
-    }
-  }
-  material.map!.needsUpdate = true;
-}

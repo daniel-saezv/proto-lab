@@ -20,7 +20,7 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { blinkOpen, breathScale, windowPaintSlot } from "./graphics-idle";
 import { fuseMeshes } from "./mesh-fuse";
-import { CEILING_UNDERSIDE, LAYOUT } from "./navigation";
+import { CEILING_UNDERSIDE, LAYOUT, RADIO_USE_RADIUS } from "./navigation";
 import { WORKSHOP_SEAT } from "./workshop-cinematic";
 import { paintWorkshopMural } from "./workshop-mural";
 import {
@@ -523,18 +523,21 @@ function addCatOnCrates(f: AmbientFactories): { head: Mesh; eyes: Object3D; tail
 }
 
 function addRadio(f: AmbientFactories): MeshBasicMaterial {
-  const x = LAYOUT.radio.x;
-  const z = LAYOUT.radio.z;
-  f.box(f.scene, 0.42, 0.36, 0.36, x, 0.18, z, 0x6d4b32);
-  f.box(f.scene, 0.36, 0.2, 0.22, x, 0.48, z, PAL.radio);
-  f.box(f.scene, 0.03, 0.16, 0.03, x + 0.1, 0.64, z, 0x8d97a8, false);
+  const radio = new Group();
+  radio.name = "radio";
+  radio.userData.interactId = "radio";
+  radio.position.set(LAYOUT.radio.x, 0, LAYOUT.radio.z);
+  f.scene.add(radio);
+  f.box(radio, 0.42, 0.36, 0.36, 0, 0.18, 0, 0x6d4b32);
+  f.box(radio, 0.36, 0.2, 0.22, 0, 0.48, 0, PAL.radio);
+  f.box(radio, 0.03, 0.16, 0.03, 0.1, 0.64, 0, 0x8d97a8, false);
   const dialMat = new MeshBasicMaterial({ color: PAL.wrapper });
   f.materials.push(dialMat);
   f.pulses.push(dialMat);
   const dial = new Mesh(f.geo(new CylinderGeometry(0.045, 0.045, 0.02, 10)), dialMat);
   dial.rotation.x = Math.PI / 2;
-  dial.position.set(x - 0.08, 0.5, z + 0.12);
-  f.scene.add(dial);
+  dial.position.set(-0.08, 0.5, 0.12);
+  radio.add(dial);
   return dialMat;
 }
 
@@ -589,7 +592,7 @@ export function tickCornerReactions(
   const nearDog = Math.hypot(player.x - LAYOUT.dog.x, player.z - LAYOUT.dog.z) < 2.2;
   interact.dogSnore.hidden = !nearDog;
 
-  const nearRadio = Math.hypot(player.x - LAYOUT.radio.x, player.z - LAYOUT.radio.z) < 2.1;
+  const nearRadio = Math.hypot(player.x - LAYOUT.radio.x, player.z - LAYOUT.radio.z) < RADIO_USE_RADIUS;
   if (nearRadio && !reduced) {
     const hue = 0.55 + Math.sin(time * 2.3) * 0.45;
     interact.radioDial.color.setHSL(hue, 0.85, 0.55);

@@ -7,6 +7,8 @@ export function showFallback(options: {
   prototypes: CatalogEntry[];
   onTalk: () => void;
   onInstallHelp?: () => void;
+  onTune?: () => void;
+  tuneLabel?: () => string;
   onPlay: (entry: CatalogEntry) => void;
   knownSlugs?: readonly string[];
   onBoardUi?: (ui: BoardUiSnapshot) => void;
@@ -55,6 +57,22 @@ export function showFallback(options: {
     install.textContent = "Instalar en el móvil";
     install.addEventListener("click", options.onInstallHelp);
     actions.append(install);
+  }
+  if (options.onTune) {
+    const now = document.createElement("p");
+    now.className = "fallback-tune-label";
+    now.dataset.testid = "fallback-tune-label";
+    now.textContent = options.tuneLabel?.() ?? "";
+    const tune = document.createElement("button");
+    tune.type = "button";
+    tune.className = "solid-button";
+    tune.dataset.testid = "fallback-tune";
+    tune.textContent = "Otra música";
+    tune.addEventListener("click", () => {
+      options.onTune?.();
+      now.textContent = options.tuneLabel?.() ?? now.textContent;
+    });
+    actions.append(now, tune);
   }
   options.root.append(title, note, boardSection, actions);
 

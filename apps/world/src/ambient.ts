@@ -77,8 +77,11 @@ export type AmbientHandle = {
   npcs: LoungeNpcSpot[];
   nameplates: { id: string; element: HTMLElement; anchor: CSS2DObject }[];
   tick: (time: number, dt: number, player: Vector3, beatBass?: number, beatMid?: number, playerStill?: boolean) => void;
+  setTvSources: (still: string | null, clip: string) => void;
+  setTvSuspended: (suspended: boolean) => void;
   setDialogueCue: (cue: DialogueCue | null) => void;
   pulseDialogue: () => void;
+  dispose: () => void;
 };
 
 export function addAmbient(f: AmbientFactories): AmbientHandle {
@@ -104,6 +107,12 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
     slacker: group.slacker,
     npcs: group.npcs,
     nameplates: group.nameplates,
+    setTvSources(still, clip) {
+      group.setTvSources(still, clip);
+    },
+    setTvSuspended(suspended) {
+      group.setTvSuspended(suspended);
+    },
     setDialogueCue(cue) {
       loungeCue = cue;
       group.setDialogueCue(cue);
@@ -111,6 +120,9 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
     pulseDialogue() {
       loungePulse = 0.45;
       group.pulseDialogue();
+    },
+    dispose() {
+      group.disposeTv();
     },
     tick(time, dt, player, beatBass = 0, beatMid = 0, playerStill = false) {
       const near = Math.hypot(player.x - group.slacker.x, player.z - group.slacker.z) <= group.slacker.radius;
@@ -121,6 +133,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
       if (!near) lineShown = -1;
       group.bubble.hidden = !near;
 
+      group.syncTv(player.x, player.z, dt, f.reduced || Boolean(f.e2e));
       if (f.reduced || f.e2e) return;
 
       if (loungePulse > 0) loungePulse = Math.max(0, loungePulse - dt);

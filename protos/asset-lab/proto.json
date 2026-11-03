@@ -4,7 +4,10 @@
   "description": "Prototipo mínimo para comprobar el puente de recursos privados (imagen, canvas, WebGL y audio).",
   "author": "daniel-saezv",
   "date": "2026-10-31",
-  "tags": ["test", "puente"],
+  "tags": [
+    "test",
+    "puente"
+  ],
   "cover": null,
   "version": "1.4.0",
   "capabilities": ["save", "geolocation"],
@@ -35,6 +38,11 @@
       "note": "El canvas declara touch-action: none para el chequeo móvil del build."
     }
   ],
-  "assets": ["media/pixel.png", "media/beep.wav", "media/nota.json"],
-  "hidden": true
+  "assets": [
+    "media/pixel.png",
+    "media/beep.wav",
+    "media/nota.json"
+  ],
+  "hidden": true,
+  "preview": "preview.webp"
 }

@@ -1,3 +1,13 @@
+import {
+  MUSIC_CATALOG,
+  MUSIC_TRACK_MAX_BYTES,
+  nextTrack,
+  readTrackId,
+  trackById,
+  writeTrackId,
+  type MusicTrack,
+} from "./music-catalog";
+
 export const MUSIC_MUTE_KEY = "proto-lab:music-muted";
 
 /**
@@ -5,7 +15,8 @@ export const MUSIC_MUTE_KEY = "proto-lab:music-muted";
  * (scripts/sw.mjs). `prime()` la pide cuando el chunk del mundo ya está
  * en marcha, para no competir con ese JS. `play()` sigue en el primer gesto.
  */
-export const AMBIENCE_TRACK = "/protos/audio/luanda.m4a";
+/** Pista por defecto. El literal vive en el catálogo para que el build le ponga hash. */
+export const AMBIENCE_TRACK = MUSIC_CATALOG[0]!.src;
 
 /** Subida al empezar a sonar. */
 export const MUSIC_FADE_IN_S = 1.4;
@@ -71,6 +82,9 @@ export type MusicHandle = {
   releasePlayback: () => void;
   /** Vuelve a cargar y sonar tras cerrar el prototipo si el usuario no la silenció. */
   restorePlayback: () => void;
+  /** Pasa a la siguiente pista y llama a play() en este mismo turno. */
+  tune: () => void;
+  trackTitle: () => string;
   dispose: () => void;
 };
 
@@ -221,6 +235,8 @@ type LoopVoice = {
  */
 export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageLike = localStorage): MusicHandle {
   let muted = isMusicMuted(storage);
+  let track: MusicTrack = trackById(readTrackId(storage));
+  let trackSrc = track.src;
   let paused = false;
   let heldForPrototype = false;
   let releaseGeneration = 0;
@@ -443,7 +459,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
 
   function beginElement() {
     if (!audio || !audible() || usingBuffer) return;
-    if (!audio.getAttribute("src")) audio.src = AMBIENCE_TRACK;
+    if (!audio.getAttribute("src")) audio.src = trackSrc;
     audio.loop = true;
     if (elementGain) elementGain.gain.setValueAtTime(1, ctx?.currentTime ?? 0);
     if (!source && !sourceFailed) audio.volume = MASTER_LEVEL;
@@ -558,26 +574,35 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     let end = 0;
     for (let i = 0; i < audio.buffered.length; i++) end = Math.max(end, audio.buffered.end(i));
     if (end < audio.duration - 0.35) return;
-    bytesPromise = fetch(AMBIENCE_TRACK, { credentials: "same-origin", cache: "force-cache" })
+    const src = trackSrc;
+    const generation = playGeneration;
+    bytesPromise = fetch(src, { credentials: "same-origin", cache: "force-cache" })
       .then(async (response) => {
+        if (generation !== playGeneration || src !== trackSrc) return;
         if (!response.ok) return;
-        pendingBytes = await response.arrayBuffer();
+        const bytes = await response.arrayBuffer();
+        if (bytes.byteLength > MUSIC_TRACK_MAX_BYTES) return;
+        pendingBytes = bytes;
         performance.mark?.("proto:audio-primed");
         await decodePending();
       })
       .catch(() => {
-        bytesPromise = null;
+        if (generation === playGeneration) bytesPromise = null;
       });
   }
 
   async function decodePending() {
     if (buffer || decoding || !pendingBytes || !ctx) return;
     decoding = true;
+    const generation = playGeneration;
+    const bytes = pendingBytes;
     try {
-      buffer = await ctx.decodeAudioData(pendingBytes.slice(0));
+      const decoded = await ctx.decodeAudioData(bytes.slice(0));
+      if (generation !== playGeneration) return;
+      buffer = decoded;
       if (audible()) upgradeToLoop();
     } catch {
-      buffer = null;
+      if (generation === playGeneration) buffer = null;
     } finally {
       decoding = false;
     }
@@ -627,7 +652,7 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     const element = ensureAudioElement();
     if (!element || element.getAttribute("src")) return;
     element.preload = "auto";
-    element.src = AMBIENCE_TRACK;
+    element.src = trackSrc;
     performance.mark?.("proto:audio-prime");
     queueMicrotask(() => tryAutoplay());
   }
@@ -820,6 +845,43 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     beginElement();
   }
 
+  function forgetDecodedTrack() {
+    stopLoopVoices();
+    usingBuffer = false;
+    buffer = null;
+    pendingBytes = null;
+    bytesPromise = null;
+    decoding = false;
+    bufferUpgradePending = false;
+    resumeOffset = 0;
+  }
+
+  /** Suelta el buffer anterior y arranca la pista nueva en el turno del gesto. */
+  function retune(next: MusicTrack) {
+    track = next;
+    trackSrc = next.src;
+    writeTrackId(storage, next.id);
+    playGeneration += 1;
+    clearEngaged();
+    forgetDecodedTrack();
+    primed = false;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    if (heldForPrototype || !wantsAudio()) {
+      paintPlayback();
+      return;
+    }
+    armed = true;
+    startOutput();
+  }
+
+  function tune() {
+    retune(nextTrack(track.id));
+  }
+
   function unlock(): void {
     if (heldForPrototype) return;
     const decision = playbackAfterGesture({
@@ -901,6 +963,8 @@ export function createAmbienceMusic(button: HTMLButtonElement, storage: StorageL
     prime,
     releasePlayback,
     restorePlayback,
+    tune,
+    trackTitle: () => track.title,
     dispose() {
       button.removeEventListener("click", onClick);
       const capture: AddEventListenerOptions = { capture: true };

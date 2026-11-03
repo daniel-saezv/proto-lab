@@ -69,6 +69,8 @@ import {
   CAMERA_NEAR,
   CEILING_UNDERSIDE,
   LAYOUT,
+  RADIO_APPROACH,
+  RADIO_USE_RADIUS,
   arcadeMachineCollider,
   moveWithSlide,
   playerLobbyBounds,
@@ -198,6 +200,7 @@ export function startWorld(options: {
   onE2eReady?: () => void;
   onTalk: () => void;
   onTalkNpc?: (id: string) => void;
+  onTune?: () => void;
   onOpenSelector: () => void;
   onTarget: (label: string | null) => void;
   onWhiteboardReady?: (controller: WhiteboardStatusController) => void;
@@ -447,6 +450,7 @@ export function startWorld(options: {
     const entry = options.prototypes[arcadeIndex.current];
     if (!entry) return;
     syncArcadeUpdateBadge(entry);
+    ambient.setTvSources(entry.previewHref, `/protos/${entry.slug}/preview.mp4`);
     if (entry.previewHref) {
       const token = ++screenLoadToken;
       textureLoader.load(
@@ -492,6 +496,16 @@ export function startWorld(options: {
       label: "Usar la máquina",
     },
     { id: "chalkboard", kind: "npc", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 2.2, collider: LAYOUT.chalkboard.collider, label: "Ver la pizarra" },
+    {
+      id: "radio",
+      kind: "npc",
+      x: LAYOUT.radio.x,
+      z: LAYOUT.radio.z,
+      radius: RADIO_USE_RADIUS,
+      collider: 0,
+      label: "Cambiar la música",
+      approach: RADIO_APPROACH,
+    },
     { id: "bench", kind: "npc", x: LAYOUT.bench.x, z: LAYOUT.bench.z, radius: 0, collider: LAYOUT.bench.collider, label: "" },
     ...ambient.colliders.map((item) => ({
       id: item.id,
@@ -664,6 +678,7 @@ export function startWorld(options: {
 
   function releaseRenderer() {
     if (!gpuLive) return;
+    ambient.setTvSuspended(true);
     gpuLive = false;
     options.viewport.dataset.gpu = "0";
     const canvas = renderer.domElement;
@@ -958,12 +973,23 @@ export function startWorld(options: {
     if (spot.kind === "npc" && spot.id === "inventor") options.onTalk();
     else if (spot.kind === "npc" && spot.id === "chalkboard") enterBoardView();
     else if (spot.kind === "npc" && loungeIds.has(spot.id)) options.onTalkNpc?.(spot.id);
+    else if (spot.id === "radio") options.onTune?.();
     else if (spot.kind === "machine" && spot.id === "arcade") options.onOpenSelector();
+  }
+
+  function cancelDialogueTravel() {
+    if (dialoguePhase === "idle") return;
+    dialoguePhase = "idle";
+    dialogueSpeaker = "";
+    if (boardPhase === "idle") player.visible = true;
+    ambient.setDialogueCue(null);
+    options.onDialogueFrame?.(false);
   }
 
   function focus(id: string) {
     const spot = spots.find((item) => item.id === id && item.radius > 0);
     if (!spot) return;
+    cancelDialogueTravel();
     cameraMode = "follow";
     player.position.x = spot.approach?.x ?? spot.x;
     player.position.z = spot.approach?.z ?? spot.z + 1.7;
@@ -1416,6 +1442,7 @@ export function startWorld(options: {
   function setSuspended(next: boolean) {
     if (suspended === next) return;
     suspended = next;
+    ambient.setTvSuspended(next);
     options.viewport.dataset.renderSuspended = next ? "1" : "0";
     velX = 0;
     velZ = 0;
@@ -1562,6 +1589,7 @@ export function startWorld(options: {
     ensureInventorHome,
     dispose() {
       running = false;
+      ambient.dispose();
       input.dispose();
       observer.disconnect();
       releaseRenderer();

@@ -2,6 +2,11 @@ import { LOUNGE_FURNITURE, loungeCameraBlockers } from "./lounge-layout";
 
 export const PLAYER_RADIUS = 0.38;
 
+/** Alcance para cambiar la música, el mismo del dial. */
+export const RADIO_USE_RADIUS = 2.1;
+/** Delante de la radio: dentro de su radio y fuera del de Croquis y de Naipe. */
+export const RADIO_APPROACH = { x: -5.35, z: -3.15 };
+
 /**
  * Caras interiores de los muros (el muro tiene 0,4 de grosor).
  * El suelo útil va de aquí hasta el jugador, sin descontar la cámara.
