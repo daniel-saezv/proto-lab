@@ -1,0 +1,20 @@
+{
+  "slug": "toque",
+  "title": "Toque",
+  "description": "Toca la pantalla y cuenta. Export web de Godot 4.7 en un solo hilo, con el dedo como control y el lienzo adaptado al móvil.",
+  "author": "proto-lab",
+  "date": "2026-11-03",
+  "tags": ["godot", "tactil", "movil"],
+  "cover": null,
+  "version": "0.1.0",
+  "capabilities": ["wasm"],
+  "readyMs": 20000,
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-03",
+      "note": "Export web de un hilo, wasm en Brotli y aviso ready al terminar startGame."
+    }
+  ],
+  "preview": "preview.webp"
+}
