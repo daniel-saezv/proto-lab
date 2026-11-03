@@ -527,6 +527,7 @@ function addRadio(f: AmbientFactories): MeshBasicMaterial {
   radio.name = "radio";
   radio.userData.interactId = "radio";
   radio.position.set(LAYOUT.radio.x, 0, LAYOUT.radio.z);
+  radio.rotation.y = -Math.PI / 2;
   f.scene.add(radio);
   f.box(radio, 0.42, 0.36, 0.36, 0, 0.18, 0, 0x6d4b32);
   f.box(radio, 0.36, 0.2, 0.22, 0, 0.48, 0, PAL.radio);

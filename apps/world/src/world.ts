@@ -533,6 +533,9 @@ export function startWorld(options: {
   addRangeRing("inventor", LAYOUT.inventor.x, LAYOUT.inventor.z, PALETTE.amber);
   addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
   addRangeRing("chalkboard", LAYOUT.chalkboard.x, LAYOUT.chalkboard.z, 0x8fd8ff);
+  addRangeRing("radio", LAYOUT.radio.x, LAYOUT.radio.z, PALETTE.amber);
+  const radioSet = scene.getObjectByName("radio");
+  if (radioSet) tag(radioSet, "Radio", 1.05, "radio", "note");
   for (const npc of ambient.npcs) addRangeRing(npc.id, npc.x, npc.z, npc.color);
 
   let yaw = 0.15;
@@ -2079,8 +2082,12 @@ export function startWorld(options: {
     parent.add(art);
   }
 
-  function tag(parent: Object3D, text: string, y: number, id?: string) {
+  function tag(parent: Object3D, text: string, y: number, id?: string, pip?: "note") {
     const { anchor, plate } = createNameplateElement(text);
+    if (pip === "note") {
+      anchor.dataset.kind = "radio";
+      anchor.querySelector(".nameplate-pip")?.classList.add("nameplate-pip--note");
+    }
     const object = new CSS2DObject(anchor);
     object.center.set(0, 0);
     object.position.set(0, y, 0);

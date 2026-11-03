@@ -112,13 +112,17 @@ describe("rincón de sofás", () => {
     }
   });
 
-  it("deja la radio a mano sin caer en otra persona", () => {
-    const talk = [
+  it("deja la radio a mano y su zona no pisa la de nadie", () => {
+    const talkers = [
       ...LOUNGE_NPCS.map((npc) => ({ id: npc.id, x: npc.x, z: npc.z, radius: npc.radius })),
       { id: "inventor", x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, radius: 2.25 },
       { id: "chalkboard", x: LAYOUT.chalkboard.x, z: LAYOUT.chalkboard.z, radius: 2.2 },
       { id: "arcade", x: LAYOUT.arcade.x, z: LAYOUT.arcade.z, radius: 2.55 },
     ];
+    for (const other of talkers) {
+      const distance = Math.hypot(LAYOUT.radio.x - other.x, LAYOUT.radio.z - other.z);
+      expect(distance, `zona de la radio y ${other.id}`).toBeGreaterThan(RADIO_USE_RADIUS + other.radius);
+    }
     const position = { x: RADIO_APPROACH.x, z: RADIO_APPROACH.z };
     resolvePosition(position, colliders, bounds);
     expect(position.x).toBeCloseTo(RADIO_APPROACH.x, 2);
@@ -126,10 +130,12 @@ describe("rincón de sofás", () => {
     const own = Math.hypot(position.x - LAYOUT.radio.x, position.z - LAYOUT.radio.z);
     expect(own).toBeLessThanOrEqual(RADIO_USE_RADIUS);
     expect(own).toBeGreaterThan(LAYOUT.radio.collider + PLAYER_RADIUS);
-    for (const other of talk) {
+    for (const other of talkers) {
       const distance = Math.hypot(position.x - other.x, position.z - other.z);
       expect(distance, `radio no debe caer en ${other.id}`).toBeGreaterThan(other.radius);
     }
+    const walked = walkToward({ x: 0, z: 1.7 }, RADIO_APPROACH, colliders, bounds, { steps: 720 });
+    expect(walked.remaining).toBeLessThan(0.6);
   });
 
   it("sigue dejando paso hasta la pizarra y hasta el sofá", () => {
