@@ -1,7 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { APP_PERMISSIONS } from "./app-contract.mjs";
-import { readCatalog } from "./catalog-lib.mjs";
+import { CATALOG_SKIP, readCatalog } from "./catalog-lib.mjs";
+import { godotEngineRoot } from "./godot-engine.mjs";
+import { decodeServedPack } from "./godot-web.mjs";
 import { headersForPath, parsePagesHeaders } from "./pages-headers.mjs";
 import { decodeServedWasm } from "./wasm-module.mjs";
 
@@ -127,10 +129,90 @@ export function brotliWasmSlugs(repoRoot, entries) {
   return slugs;
 }
 
+const ENGINE_CACHE = "public, max-age=31536000, immutable, no-transform";
+const PACK_CACHE = "no-cache, no-transform";
+
+/**
+ * El motor compartido hereda el `no-cache` de `/protos/*`. Hay que soltarlo:
+ * si no, Pages concatena las dos políticas.
+ * @param {string} id
+ */
+export function sharedEngineHeader(id) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) fail(`versión de motor no válida (${id})`);
+  return [
+    `# Motor Godot ${id}. La versión va en la ruta: se puede cachear un año.`,
+    `# no-transform: el wasm ya está en Brotli y el borde no debe recomprimirlo.`,
+    `/protos/engines/godot/${id}/*`,
+    "  ! Cache-Control",
+    `  Cache-Control: ${ENGINE_CACHE}`,
+    "",
+    `/protos/engines/godot/${id}/index.wasm`,
+    "  Content-Type: application/wasm",
+    "  Content-Encoding: br",
+    "",
+  ].join("\n");
+}
+
+export function sharedEngineHeaders(repoRoot) {
+  const root = godotEngineRoot(repoRoot);
+  if (!existsSync(root)) return "";
+  const blocks = [];
+  for (const id of readdirSync(root).sort()) {
+    const wasm = join(root, id, "index.wasm");
+    if (!statSync(join(root, id), { throwIfNoEntry: false })?.isDirectory()) continue;
+    if (!existsSync(wasm)) continue;
+    const decoded = decodeServedWasm(readFileSync(wasm));
+    if (!decoded?.brotli) continue;
+    blocks.push(sharedEngineHeader(id));
+  }
+  return blocks.join("\n");
+}
+
+/** `.pck` precomprimido. La URL no lleva versión, así que se revalida. */
+export function brotliPackHeader(slug) {
+  if (!SLUG.test(slug)) fail(`slug no válido (${String(slug)})`);
+  return [
+    `# ${slug}: index.pck está en Brotli q11. no-transform evita que el borde lo recomprima.`,
+    `/protos/${slug}/index.pck`,
+    "  ! Cache-Control",
+    `  Cache-Control: ${PACK_CACHE}`,
+    "  Content-Type: application/octet-stream",
+    "  Content-Encoding: br",
+    "",
+  ].join("\n");
+}
+
+export function brotliPackSlugs(repoRoot) {
+  const protosDir = join(repoRoot, "protos");
+  const slugs = [];
+  for (const dirName of readdirSync(protosDir).sort()) {
+    if (CATALOG_SKIP.has(dirName) || !SLUG.test(dirName)) continue;
+    const file = join(protosDir, dirName, "index.pck");
+    if (!existsSync(file)) continue;
+    const decoded = decodeServedPack(readFileSync(file));
+    if (decoded?.brotli) slugs.push(dirName);
+  }
+  return slugs;
+}
+
+export function appendBrotliPackHeaders(source, slugs) {
+  if (slugs.length === 0) return source.endsWith("\n") ? source : `${source}\n`;
+  return `${source.replace(/\s*$/, "\n")}\n${slugs.map((slug) => brotliPackHeader(slug)).join("\n")}`;
+}
+
+function appendBlocks(source, block) {
+  if (!block) return source.endsWith("\n") ? source : `${source}\n`;
+  return `${source.replace(/\s*$/, "\n")}\n${block.endsWith("\n") ? block : `${block}\n`}`;
+}
+
 export function headerSource(repoRoot) {
   const source = readFileSync(join(repoRoot, "apps/world/public/_headers"), "utf8");
   const entries = readCatalog(repoRoot);
-  return appendBrotliWasmHeaders(appendCapabilityHeaders(source, entries), brotliWasmSlugs(repoRoot, entries));
+  const withCapabilities = appendBrotliWasmHeaders(
+    appendCapabilityHeaders(source, entries),
+    brotliWasmSlugs(repoRoot, entries),
+  );
+  return appendBrotliPackHeaders(appendBlocks(withCapabilities, sharedEngineHeaders(repoRoot)), brotliPackSlugs(repoRoot));
 }
 
 export function pagesHeaderRules(repoRoot) {

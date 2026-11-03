@@ -62,14 +62,30 @@ describe("CSP por capacidades", () => {
     expect(augmented.toLowerCase()).not.toContain("cross-origin-embedder-policy");
   });
 
-  it("el ejemplo Toque sirve el wasm en Brotli y con wasm-unsafe-eval", () => {
-    const rules = parsePagesHeaders(headerSource(root));
-    const wasm = headersForPath(rules, "/protos/toque/index.wasm");
+  it("el ejemplo Toque sirve el motor compartido y el pck en Brotli", () => {
+    const source = headerSource(root);
+    const rules = parsePagesHeaders(source);
+    for (const rule of rules) {
+      expect(rule.pattern.split("*").length - 1).toBeLessThanOrEqual(1);
+    }
+    const wasm = headersForPath(rules, "/protos/engines/godot/4.7.2-stable-nothreads/index.wasm");
     expect(wasm.get("content-type")?.value).toBe("application/wasm");
     expect(wasm.get("content-encoding")?.value).toBe("br");
-    expect(headersForPath(rules, "/protos/toque/index.js").has("content-encoding")).toBe(false);
+    expect(wasm.get("cache-control")?.value).toBe("public, max-age=31536000, immutable, no-transform");
+    const engineJs = headersForPath(rules, "/protos/engines/godot/4.7.2-stable-nothreads/index.js");
+    expect(engineJs.get("cache-control")?.value).toBe("public, max-age=31536000, immutable, no-transform");
+    expect(engineJs.has("content-encoding")).toBe(false);
+    const worklet = headersForPath(rules, "/protos/engines/godot/4.7.2-stable-nothreads/index.audio.worklet.js");
+    expect(worklet.get("cache-control")?.value).toBe("public, max-age=31536000, immutable, no-transform");
+    const pack = headersForPath(rules, "/protos/toque/index.pck");
+    expect(pack.get("content-encoding")?.value).toBe("br");
+    expect(pack.get("content-type")?.value).toBe("application/octet-stream");
+    expect(pack.get("cache-control")?.value).toBe("no-cache, no-transform");
+    expect(headersForPath(rules, "/protos/toque/index.html").get("cache-control")?.value).toBe("no-cache");
+    expect(headersForPath(rules, "/protos/toque/index.wasm").has("content-encoding")).toBe(false);
     expect(headersForPath(rules, "/protos/toque/").get("content-security-policy")?.value).toContain("'wasm-unsafe-eval'");
     expect(headersForPath(rules, "/").get("content-security-policy")?.value ?? "").not.toContain("wasm-unsafe-eval");
+    expect(source.toLowerCase()).not.toContain("cross-origin-opener-policy");
   });
 
   it("marca el wasm en Brotli y no lo aplica a otro slug", () => {

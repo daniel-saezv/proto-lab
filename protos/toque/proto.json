@@ -6,7 +6,7 @@
   "date": "2026-11-03",
   "tags": ["godot", "tactil", "movil"],
   "cover": null,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "capabilities": ["wasm"],
   "readyMs": 20000,
   "history": [
@@ -19,6 +19,11 @@
       "version": "0.1.1",
       "date": "2026-11-03",
       "note": "El shell reenvía onProgress, en bytes, a la capa de apertura del laboratorio."
+    },
+    {
+      "version": "0.1.2",
+      "date": "2026-11-03",
+      "note": "El motor pasa a una ruta versionada y compartida. El paquete se sirve en Brotli."
     }
   ],
   "preview": "preview.webp"

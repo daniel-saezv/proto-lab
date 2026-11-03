@@ -5,6 +5,9 @@ import { parseManifestAssets } from "./asset-path.mjs";
 import { assertAppDatabase } from "./table-sql.mjs";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Carpeta de `protos/` que no es una app. El motor Godot vive aquí. */
+export const CATALOG_SKIP = new Set(["engines"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const VERSION = /^\d+\.\d+\.\d+$/;
 const TAG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -118,6 +121,7 @@ export function readCatalog(repoRoot) {
   for (const dirName of readdirSync(protosDir).sort()) {
     const protoDir = join(protosDir, dirName);
     if (!statSync(protoDir).isDirectory()) continue;
+    if (CATALOG_SKIP.has(dirName)) continue;
     const manifestPath = join(protoDir, "proto.json");
     if (!existsSync(manifestPath)) fail(`${dirName} no tiene proto.json`);
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));

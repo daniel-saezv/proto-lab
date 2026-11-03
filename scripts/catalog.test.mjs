@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { assertManifest, readCatalog, sharedCapabilitySlugs } from "./catalog-lib.mjs";
+import { assertManifest, CATALOG_SKIP, readCatalog, sharedCapabilitySlugs } from "./catalog-lib.mjs";
 import { isShellPath, renderServiceWorker } from "./sw.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -17,7 +17,8 @@ function protoDirectories() {
 describe("catálogo", () => {
   it("sigue las carpetas de protos sin una lista fija", () => {
     const entries = readCatalog(root);
-    expect(entries.map((entry) => entry.slug)).toEqual(protoDirectories());
+    expect(entries.map((entry) => entry.slug)).toEqual(protoDirectories().filter((name) => !CATALOG_SKIP.has(name)));
+    expect(protoDirectories()).toContain("engines");
     const chispa = entries.find((entry) => entry.slug === "chispa");
     expect(chispa?.href).toBe("/protos/chispa/");
     expect(chispa?.history?.length).toBeGreaterThan(0);
