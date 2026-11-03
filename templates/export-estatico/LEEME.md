@@ -57,7 +57,7 @@ Sirve para un export de Godot 4.7 en un solo hilo. La guía de Godot es [Exporti
 
 El audio web, desde Godot 4.3, usa muestras (Sample) cuando no hay hilos: poca latencia, sin efectos ni audio posicional fiable. El navegador no suena hasta un gesto. Arranca el motor al abrir (así el wasm se descarga al entrar, no al primer toque) y reproduce el primer sonido dentro de `_input` con el toque. No hace falta `eval`. Hay un fallo abierto de Safari en iOS si se disparan muchas muestras seguidas durante mucho rato ([godot#116750](https://github.com/godotengine/godot/issues/116750)); pruébalo en el iPhone antes de darlo por bueno.
 
-La pantalla de carga es la de Godot (`#status`). El laboratorio la tapa con «Abriendo…» hasta `ready`. No hace falta otra.
+La pantalla de carga del laboratorio tapa el `#status` de Godot hasta `ready`. El shell reenvía `onProgress` (bytes ya bajados y total; si el total es 0, Godot no conoce el tamaño y el arco sigue indeterminado). No añadas otra imagen de carga: el laboratorio no usa archivos ni fuentes para esa capa.
 
 No actives la PWA de Godot. Su service worker cachea el export sin invalidar y puede enseñar una versión vieja ([el aviso está en la propia guía](https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html)). El service worker del laboratorio no intercepta `/protos/`.
 

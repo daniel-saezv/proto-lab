@@ -127,7 +127,7 @@ El laboratorio aloja aplicaciones hechas con tecnología web: herramientas, util
 Hay dos plantillas. Cópialas, no las importes. No hay una plantilla por motor.
 
 - **Código** (`templates/aplicacion/`, pasos en su `LEEME.md`): Vite + TypeScript. Avisa `alive` y `ready`, y `stop()` suelta el bucle, los listeners, el audio y WebGL. Incluye `window.__protoLabData`.
-- **Export estático** (`templates/export-estatico/`): shell HTML para un build ya hecho. Añade `alive`, `ready` (con `__protoLabNotifyReady` cuando el export termina de pintar) y `stop()`. No exige `package.json` ni Vite. `pnpm` ignora la carpeta si no hay paquete; el catálogo y el ensamblado sí la publican: copian la carpeta (salvo `proto.json`, `godot/`, `db/`, `node_modules`, `dist` y dotfiles) y exigen `index.html`. Un export de Godot 4 deja el proyecto en `godot/` y el shell de `godot-shell.html`: `ready` en el `then` de `startGame` y cierre con `requestQuit`. El `.wasm` publicado va en Brotli q11 y se sirve con `Content-Encoding: br`.
+- **Export estático** (`templates/export-estatico/`): shell HTML para un build ya hecho. Añade `alive`, `ready` (con `__protoLabNotifyReady` cuando el export termina de pintar) y `stop()`. No exige `package.json` ni Vite. `pnpm` ignora la carpeta si no hay paquete; el catálogo y el ensamblado sí la publican: copian la carpeta (salvo `proto.json`, `godot/`, `db/`, `node_modules`, `dist` y dotfiles) y exigen `index.html`. Un export de Godot 4 deja el proyecto en `godot/` y el shell de `godot-shell.html`: `ready` en el `then` de `startGame`, `onProgress` reenviado como `progress` y cierre con `requestQuit`. El `.wasm` publicado va en Brotli q11 y se sirve con `Content-Encoding: br`.
 
 Las skills de Phaser del workspace hablan de loader, escenas y audio por URL. Dentro del laboratorio manda esta sección.
 
@@ -135,7 +135,8 @@ Las skills de Phaser del workspace hablan de loader, escenas y audio por URL. De
 
 El iframe es del mismo origen: `src="/protos/<slug>/"`, sin `sandbox` y sin documento `blob:`.
 
-- Al cargar, si `window.parent !== window`, la aplicación envía `{ source: "proto-lab", type: "alive" }`. Eso solo marca que el documento respondió. No quita la capa de «Abriendo…».
+- Al cargar, si `window.parent !== window`, la aplicación envía `{ source: "proto-lab", type: "alive" }`. Eso solo marca que el documento respondió. No quita la capa de apertura.
+- Esa capa es CSS y un SVG inline, sin imágenes ni fuentes. Si la aplicación envía `{ source: "proto-lab", type: "progress", loaded, total }` y `total` es un número de bytes mayor que 0, el arco muestra ese avance. Si `total` es 0 o no llega el mensaje, el arco queda indeterminado. `prefers-reduced-motion` deja el arco quieto.
 - Cuando el primer fotograma ya es visible (no una pantalla en blanco), envía `{ source: "proto-lab", type: "ready" }`. El laboratorio quita la capa y da la apertura por buena.
 - `readyMs` en `proto.json` es el plazo en milisegundos (por defecto 8000, mínimo 1000, máximo 60000). Si vence sin `ready`, se quita el iframe y queda el aviso con Volver, aunque `alive` hubiera llegado.
 - `window.__protoLabApp.stop()` es obligatorio. El laboratorio lo llama al cerrar, luego navega el iframe a `about:blank` y lo elimina. La aplicación también lo llama en `pagehide`.

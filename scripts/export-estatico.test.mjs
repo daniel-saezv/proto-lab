@@ -25,6 +25,8 @@ describe("plantilla de export estático", () => {
     expect(godotShell).toContain("requestQuit");
     expect(godotShell).not.toContain("eval(");
     expect(godotShell).not.toContain("installServiceWorker");
+    expect(godotShell).toContain("onProgress");
+    expect(godotShell).toContain("type: 'progress'");
   });
 
   it("el manifiesto de ejemplo pasa el lector", () => {
