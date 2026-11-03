@@ -76,7 +76,7 @@ export type AmbientHandle = {
   slacker: { x: number; z: number; radius: number; approach: { x: number; z: number } };
   npcs: LoungeNpcSpot[];
   nameplates: { id: string; element: HTMLElement; anchor: CSS2DObject }[];
-  tick: (time: number, dt: number, player: Vector3, beatBass?: number, beatMid?: number) => void;
+  tick: (time: number, dt: number, player: Vector3, beatBass?: number, beatMid?: number, playerStill?: boolean) => void;
   setDialogueCue: (cue: DialogueCue | null) => void;
   pulseDialogue: () => void;
 };
@@ -96,18 +96,23 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
   group.bubble.textContent = pickSlackerLine(0);
   let lineShown = -1;
 
+  let loungePulse = 0;
+  let loungeCue: DialogueCue | null = null;
+
   return {
     colliders: [...group.colliders, ...corners.colliders],
     slacker: group.slacker,
     npcs: group.npcs,
     nameplates: group.nameplates,
     setDialogueCue(cue) {
+      loungeCue = cue;
       group.setDialogueCue(cue);
     },
     pulseDialogue() {
+      loungePulse = 0.45;
       group.pulseDialogue();
     },
-    tick(time, dt, player, beatBass = 0, beatMid = 0) {
+    tick(time, dt, player, beatBass = 0, beatMid = 0, playerStill = false) {
       const near = Math.hypot(player.x - group.slacker.x, player.z - group.slacker.z) <= group.slacker.radius;
       if (near && lineShown < 0) {
         lineShown = Math.floor(time * 0.37);
@@ -118,7 +123,16 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
 
       if (f.reduced || f.e2e) return;
 
-      group.tick(time, dt, beatMid);
+      if (loungePulse > 0) loungePulse = Math.max(0, loungePulse - dt);
+
+      group.tick(time, dt, beatMid, {
+        playerX: player.x,
+        playerZ: player.z,
+        playerStill,
+        activeCue: loungeCue,
+        dialoguePulse: loungePulse,
+        nearSlacker: near,
+      });
 
       for (let i = 0; i < dust.length; i++) {
         const m = dust[i]!;

@@ -107,6 +107,13 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
   f.box(f.scene, 0.08, 0.04, 0.2, dx + 0.4, 0.78, dz + 0.02, PAL.wrapper, false);
   f.box(f.scene, 0.25, 0.08, 0.18, dx + 0.15, 0.78, dz - 0.08, 0xf4efe4, false);
   f.box(f.scene, 0.14, 0.06, 0.14, dx + 0.42, 0.77, dz + 0.16, PAL.cartridge, false);
+  f.box(f.scene, 0.06, 0.08, 0.05, dx - 0.05, 0.79, dz + 0.1, PAL.deskDark, false);
+  f.box(f.scene, 0.045, 0.05, 0.045, dx - 0.02, 0.835, dz + 0.1, PAL.desk, false);
+  f.box(f.scene, 0.09, 0.035, 0.07, dx + 0.28, 0.785, dz - 0.02, PAL.shelf, false);
+  f.box(f.scene, 0.085, 0.03, 0.065, dx + 0.28, 0.815, dz - 0.02, PAL.tool, false);
+  f.box(f.scene, 0.08, 0.025, 0.06, dx + 0.29, 0.84, dz - 0.02, PAL.wrapper, false);
+  f.box(f.scene, 0.18, 0.12, 0.012, dx - 0.55, 1.05, dz + 0.38, PAL.cartridge, false);
+  f.box(f.scene, 0.16, 0.1, 0.01, dx - 0.55, 1.05, dz + 0.392, PAL.neon, false);
 
   const sx = LAYOUT.shelves.x;
   const sz = LAYOUT.shelves.z;
@@ -546,7 +553,9 @@ function addFridgeHum(f: AmbientFactories): Mesh {
   const z = LAYOUT.fridge.z;
   f.box(f.scene, 0.72, 1.35, 0.58, x, 0.68, z, 0xd8e4ef);
   f.box(f.scene, 0.68, 0.04, 0.54, x, 1.36, z, 0xb8c5d0, false);
-  f.box(f.scene, 0.04, 0.35, 0.06, x - 0.32, 0.85, z + 0.32, 0x8d97a8, false);
+  f.box(f.scene, 0.04, 0.35, 0.06, x - 0.32, 0.85, z + 0.32, PAL.tool, false);
+  f.box(f.scene, 0.14, 0.18, 0.008, x, 1.02, z + 0.31, PAL.cartridge, false);
+  f.box(f.scene, 0.12, 0.14, 0.006, x, 1.02, z + 0.318, PAL.neon, false);
   const hum = new Mesh(f.geo(new SphereGeometry(0.02, 6, 4)), new MeshBasicMaterial({ color: 0xffffff }));
   hum.userData.noBatch = true;
   f.materials.push(hum.material);

@@ -28,6 +28,7 @@ import {
   TV_SET,
   type LoungeNpc,
 } from "./lounge-layout";
+import { createSofaGlanceRuntime, tickSofaGlances, type SofaGlanceContext } from "./sofa-glances";
 
 const PALETTE = {
   couch: 0x5c4038,
@@ -73,7 +74,7 @@ export type LoungeGroup = {
   npcs: LoungeNpcSpot[];
   nameplates: LoungePlate[];
   bubble: HTMLElement;
-  tick: (time: number, dt: number, beatMid: number) => void;
+  tick: (time: number, dt: number, beatMid: number, glanceCtx?: SofaGlanceContext) => void;
   setDialogueCue: (cue: DialogueCue | null) => void;
   pulseDialogue: () => void;
 };
@@ -103,6 +104,27 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
 
   const nameplates = [slacker.plate, pipe.plate, cards.plate, sketch.plate];
   const faceIdles = collectFaceIdles(parent);
+  const glanceNpcs = LOUNGE_NPCS.map((npc) => {
+    let body: Group | undefined;
+    let head: Mesh | undefined;
+    parent.traverse((obj) => {
+      if (obj.userData.interactId === npc.id && obj instanceof Group && obj.userData.sofaHead) {
+        body = obj;
+        head = obj.userData.sofaHead as Mesh;
+      }
+    });
+    if (!body || !head) throw new Error(`Cabeza del sofá ausente: ${npc.id}`);
+    return {
+      id: npc.id,
+      head,
+      restPitch: head.rotation.x,
+      bodyYaw: npc.yaw,
+      x: npc.x,
+      z: npc.z,
+      phase: idlePhase(npc.id),
+    };
+  });
+  const glances = createSofaGlanceRuntime(glanceNpcs, f.reduced);
 
   return {
     colliders: LOUNGE_FURNITURE.map((item) => ({
@@ -128,7 +150,7 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
     })),
     nameplates,
     bubble: slacker.bubble,
-    tick(time, dt, beatMid) {
+    tick(time, dt, beatMid, glanceCtx) {
       if (act.pulse > 0) act.pulse = Math.max(0, act.pulse - dt);
       slacker.tick(time);
       pipe.tick(time);
@@ -137,6 +159,7 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
       tv.tick(time, dt, beatMid);
       // Idle de cara. El humo, las cartas y el lápiz siguen en los tick de arriba.
       for (const idle of faceIdles) idle(time);
+      if (glanceCtx) tickSofaGlances(glances, time, dt, glanceCtx);
     },
     setDialogueCue(cue) {
       act.cue = cue;
@@ -185,8 +208,14 @@ function addTable(parent: Group, f: AmbientFactories) {
     const card = f.box(parent, 0.12, 0.012, 0.16, x + dx, 0.335, z + dz, color, false);
     card.rotation.y = rot;
   }
-  f.box(parent, 0.1, 0.02, 0.14, x + 0.28, 0.34, z - 0.12, 0xffb703, false);
-  f.box(parent, 0.08, 0.04, 0.08, x - 0.28, 0.35, z + 0.12, 0xc46b3a, false);
+  f.box(parent, 0.08, 0.04, 0.08, x - 0.28, 0.35, z + 0.12, PALETTE.pipe, false);
+  f.box(parent, 0.05, 0.07, 0.05, x - 0.32, 0.365, z + 0.08, PALETTE.couchDark, false);
+  f.box(parent, 0.04, 0.035, 0.04, x - 0.26, 0.375, z + 0.08, PALETTE.card, false);
+  f.box(parent, 0.11, 0.04, 0.08, x + 0.06, 0.355, z + 0.14, PALETTE.cardTeal, false);
+  f.box(parent, 0.1, 0.035, 0.07, x + 0.06, 0.39, z + 0.14, PALETTE.cardGold, false);
+  f.box(parent, 0.09, 0.03, 0.06, x + 0.07, 0.42, z + 0.14, PALETTE.cardPink, false);
+  const poster = f.box(parent, 0.22, 0.14, 0.012, x, 0.52, z + 0.33, PALETTE.cardPink, false);
+  poster.rotation.x = -0.12;
 }
 
 function addTelevision(parent: Group, f: AmbientFactories): { tick: (time: number, dt: number, beatMid: number) => void } {
@@ -433,7 +462,10 @@ function addSeated(
   const head = new Mesh(f.geo(new SphereGeometry(0.17, 12, 10)), f.mat(PALETTE.skin));
   head.position.set(0, 0.54, -0.06);
   head.rotation.x = lookPitch;
+  head.userData.noBatch = true;
+  head.castShadow = false;
   body.add(head);
+  body.userData.sofaHead = head;
   const nose = f.box(head, 0.06, 0.05, 0.07, 0, -0.02, 0.15, PALETTE.skin, false);
   nose.castShadow = false;
   const hair = new Mesh(f.geo(new SphereGeometry(0.15, 10, 8)), f.mat(colors.hair));
