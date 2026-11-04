@@ -1,4 +1,5 @@
 import { LOUNGE_FURNITURE, loungeCameraBlockers } from "./lounge-layout";
+import { PANTRY_COUNTER } from "./pantry-layout";
 
 export const PLAYER_RADIUS = 0.38;
 
@@ -68,6 +69,7 @@ export const LAYOUT = {
   tv: piece("tv"),
   croquis: piece("croquis"),
   fridge: { x: 9.12, z: 6.2, collider: 0.42 },
+  counter: { x: PANTRY_COUNTER.x, z: PANTRY_COUNTER.z, collider: PANTRY_COUNTER.collider },
   dog: { x: 8.02, z: 6.15, collider: 0.26 },
   desk: { x: 6.4, z: -6.85, collider: 0.55 },
   shelves: { x: 9.32, z: -5.15, collider: 0.42 },
@@ -166,6 +168,7 @@ export function lobbyStaticColliders(): ColliderSpot[] {
     "tv",
     "croquis",
     "fridge",
+    "counter",
     "dog",
     "desk",
     "shelves",
@@ -228,6 +231,14 @@ export function lobbyCameraBlockers(): CameraBlocker[] {
     { minX: arcade.x - 0.85, maxX: arcade.x + 0.95, minY: 0, maxY: 2.05, minZ: arcade.z - 0.8, maxZ: arcade.z + 0.85 },
     { minX: inventor.x - 0.5, maxX: inventor.x + 0.55, minY: 0, maxY: 2.1, minZ: inventor.z - 0.45, maxZ: inventor.z + 0.45 },
     { minX: fridge.x - 0.42, maxX: fridge.x + 0.42, minY: 0, maxY: 1.5, minZ: fridge.z - 0.36, maxZ: fridge.z + 0.36 },
+    {
+      minX: LAYOUT.counter.x - 0.36,
+      maxX: LAYOUT.counter.x + 0.36,
+      minY: 0,
+      maxY: 0.78,
+      minZ: LAYOUT.counter.z - 0.24,
+      maxZ: LAYOUT.counter.z + 0.24,
+    },
     { minX: shelves.x - 0.22, maxX: shelves.x + 0.22, minY: 0, maxY: 1.5, minZ: shelves.z - 0.68, maxZ: shelves.z + 0.68 },
     { minX: desk.x - 0.75, maxX: desk.x + 0.75, minY: 0, maxY: 1.05, minZ: desk.z - 0.45, maxZ: desk.z + 0.45 },
     ...loungeCameraBlockers(),

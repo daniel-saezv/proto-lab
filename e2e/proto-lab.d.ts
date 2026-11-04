@@ -20,6 +20,8 @@ interface Window {
     playerPose?: () => { x: number; z: number; yaw: number };
     rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
     frameWorkMs?: () => number;
+    frameAt?: (x: number, z: number, lookYaw: number, lookPitch: number, distance?: number) => void;
+    posePantry?: () => void;
     batchStats?: () => {
       meshesBefore: number;
       meshesAfter: number;

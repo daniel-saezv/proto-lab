@@ -528,6 +528,8 @@ export function startWorld(options: {
     })),
   ];
   const loungeIds = new Set(ambient.npcs.map((npc) => npc.id));
+  const remolonTalk = talkHome("remolon");
+  const naipeTalk = talkHome("naipe");
   for (const plate of ambient.nameplates) trackPlate(plate.id, plate.element, plate.anchor, plate.element.textContent ?? "");
 
   addRangeRing("inventor", LAYOUT.inventor.x, LAYOUT.inventor.z, PALETTE.amber);
@@ -538,6 +540,7 @@ export function startWorld(options: {
   if (radioSet) tag(radioSet, "Radio", 1.05, "radio", "note");
   for (const npc of ambient.npcs) addRangeRing(npc.id, npc.x, npc.z, npc.color);
 
+  const pantryGaze = { cx: 0, cz: 0, fx: 0, fz: -1, hold: false };
   let yaw = 0.15;
   let pitch = 0.15;
   let viewYaw = yaw;
@@ -551,6 +554,7 @@ export function startWorld(options: {
   let velX = 0;
   let velZ = 0;
   let arm = 3.8;
+  let perfArm: number | null = null;
   let inputEnabled = true;
   let targetLabel: string | null = null;
   let snapped = true;
@@ -828,7 +832,18 @@ export function startWorld(options: {
       material.opacity = reduced || e2eRender ? 0.92 : 0.58 + Math.sin(frame * 4) * 0.28;
     }
     const playerStill = Math.hypot(velX, velZ) <= 0.12;
-    ambient.tick(frame, dt, player.position, bass, mid, playerStill);
+    pantryGaze.cx = camera.position.x;
+    pantryGaze.cz = camera.position.z;
+    const gazeX = player.position.x - camera.position.x;
+    const gazeZ = player.position.z - camera.position.z;
+    const gazeLen = Math.hypot(gazeX, gazeZ) || 1;
+    pantryGaze.fx = gazeX / gazeLen;
+    pantryGaze.fz = gazeZ / gazeLen;
+    pantryGaze.hold = dialoguePhase !== "idle" || boardPhase !== "idle" || workshopTrip !== null;
+    ambient.tick(frame, dt, player.position, bass, mid, playerStill, pantryGaze);
+    const pantryActor = ambient.pantryActor();
+    placeErrand(remolonTalk, pantryActor);
+    placeErrand(naipeTalk, pantryActor);
     lobbyWhiteboard.tick(now);
 
     if (!selectorOpen && options.prototypes.length > 1 && !reduced && !e2eRender) {
@@ -989,7 +1004,33 @@ export function startWorld(options: {
     options.onDialogueFrame?.(false);
   }
 
+  function talkHome(id: string): { spot: Spot; x: number; z: number; radius: number } | null {
+    const spot = spots.find((item) => item.id === id && item.radius > 0);
+    if (!spot) return null;
+    return { spot, x: spot.x, z: spot.z, radius: spot.radius };
+  }
+
+  function placeErrand(
+    home: { spot: Spot; x: number; z: number; radius: number } | null,
+    actor: { id: string; x: number; z: number; away: boolean },
+  ) {
+    if (!home) return;
+    const spot = home.spot;
+    if (actor.away && actor.id === spot.id) {
+      spot.x = actor.x;
+      spot.z = actor.z;
+      spot.radius = 0;
+      spot.collider = 0.34;
+    } else {
+      spot.x = home.x;
+      spot.z = home.z;
+      spot.radius = home.radius;
+      spot.collider = 0;
+    }
+  }
+
   function focus(id: string) {
+    perfArm = null;
     const spot = spots.find((item) => item.id === id && item.radius > 0);
     if (!spot) return;
     cancelDialogueTravel();
@@ -1007,6 +1048,7 @@ export function startWorld(options: {
   }
 
   function applyViewpoint(id: string): boolean {
+    perfArm = null;
     const pose = viewpointById(id);
     if (!pose) return false;
     if (pose.kind === "top") {
@@ -1547,6 +1589,19 @@ export function startWorld(options: {
       batchStats: () => batchStats,
       workshopView,
       frameWorkMs: () => Number(perfWorkMs.toFixed(2)),
+      setViewpoint: applyViewpoint,
+      frameAt(x: number, z: number, lookYaw: number, lookPitch: number, distance?: number) {
+        cameraMode = "follow";
+        player.position.set(x, 0, z);
+        yaw = lookYaw;
+        pitch = lookPitch;
+        player.rotation.y = lookFacingYaw(lookYaw);
+        perfArm = typeof distance === "number" ? distance : null;
+        snapped = true;
+      },
+      posePantry() {
+        ambient.posePantry();
+      },
     };
   }
 
@@ -1609,6 +1664,7 @@ export function startWorld(options: {
   }
 
   function cameraDistance(): number {
+    if (perfArm != null) return perfArm;
     return camera.aspect < 0.9 ? 6.4 : 3.8;
   }
 
@@ -1833,6 +1889,7 @@ export function startWorld(options: {
       { x: LAYOUT.arcade.x, z: LAYOUT.arcade.z, r: 1.2 },
       { x: LAYOUT.bench.x, z: LAYOUT.bench.z, r: 0.75 },
       { x: LAYOUT.fridge.x, z: LAYOUT.fridge.z, r: 0.85 },
+      { x: LAYOUT.counter.x, z: LAYOUT.counter.z, r: 0.55 },
       { x: SLACKER_COUCH.x, z: SLACKER_COUCH.z, r: 1.05 },
       { x: NORTH_COUCH.x, z: NORTH_COUCH.z, r: 1.05 },
       { x: SOUTH_COUCH.x, z: SOUTH_COUCH.z, r: 1.05 },
@@ -1865,6 +1922,7 @@ export function startWorld(options: {
       { x: SOUTH_COUCH.x, z: SOUTH_COUCH.z, r: 0.72 },
       { x: LOUNGE_TABLE.x, z: LOUNGE_TABLE.z, r: 0.48 },
       { x: LAYOUT.fridge.x, z: LAYOUT.fridge.z, r: 0.4 },
+      { x: LAYOUT.counter.x, z: LAYOUT.counter.z, r: 0.32 },
     ];
     const parts = spots.map((spot) => {
       const geometry = new CircleGeometry(spot.r, 12);
@@ -2236,6 +2294,8 @@ declare global {
       playerPose?: () => { x: number; z: number; yaw: number };
       rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
       frameWorkMs?: () => number;
+      frameAt?: (x: number, z: number, lookYaw: number, lookPitch: number, distance?: number) => void;
+      posePantry?: () => void;
       batchStats?: () => BatchStats | null;
       workshopView?: () => {
         place: string;

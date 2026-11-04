@@ -15,6 +15,7 @@ import { createNameplateElement } from "./nameplates";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { blinkOpen, breathScale, idlePhase } from "./graphics-idle";
 import { fuseMeshes } from "./mesh-fuse";
+import type { ErrandPose } from "./pantry-routine";
 import type { DialogueCue } from "./dialogue-cues";
 import {
   LOUNGE_FURNITURE,
@@ -73,7 +74,8 @@ export type LoungeGroup = {
   npcs: LoungeNpcSpot[];
   nameplates: LoungePlate[];
   bubble: HTMLElement;
-  tick: (time: number, dt: number, beatMid: number, glanceCtx?: SofaGlanceContext) => void;
+  tick: (time: number, dt: number, beatMid: number, glanceCtx?: SofaGlanceContext, errand?: ErrandPose) => void;
+  applyErrand: (pose: ErrandPose, time: number) => void;
   syncTv: (playerX: number, playerZ: number, dt: number, reduced: boolean) => void;
   setTvSources: (still: string | null, clip: string) => void;
   setTvSuspended: (suspended: boolean) => void;
@@ -103,6 +105,7 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
   const slacker = addSlacker(parent, remolon, f, act);
   const pipe = addPiper(parent, brasa, f, act);
   const cards = addDealer(parent, naipe, f, act);
+  const walkers = [slacker.walker, cards.walker];
   const sketch = addSketcher(parent, croquis, f, act);
 
   const nameplates = [slacker.plate, pipe.plate, cards.plate, sketch.plate];
@@ -153,7 +156,7 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
     })),
     nameplates,
     bubble: slacker.bubble,
-    tick(time, dt, beatMid, glanceCtx) {
+    tick(time, dt, beatMid, glanceCtx, errand) {
       if (act.pulse > 0) act.pulse = Math.max(0, act.pulse - dt);
       slacker.tick(time);
       pipe.tick(time);
@@ -163,6 +166,10 @@ export function addLoungeGroup(parent: Group, f: AmbientFactories): LoungeGroup 
       // Idle de cara. El humo, las cartas y el lápiz siguen en los tick de arriba.
       for (const idle of faceIdles) idle(time);
       if (glanceCtx) tickSofaGlances(glances, time, dt, glanceCtx);
+      if (errand) applyWalker(walkers, errand, time);
+    },
+    applyErrand(pose, time) {
+      applyWalker(walkers, pose, time);
     },
     syncTv(playerX, playerZ, dt, reduced) {
       const distance = Math.hypot(playerX - TV_SET.x, playerZ - TV_SET.z);
@@ -266,8 +273,9 @@ function addSlacker(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: Lou
   bubble: HTMLElement;
   plate: LoungePlate;
   tick: (time: number) => void;
+  walker: WalkerRig;
 } {
-  const body = addSeated(parent, npc, { shirt: 0x4a5568, pants: 0x3d4a5c, hair: 0x2a2933 }, f, 0.52, 0.34);
+  const body = addSeated(parent, npc, { shirt: 0x4a5568, pants: 0x3d4a5c, hair: 0x2a2933 }, f, 0.52, 0.34, true);
   const arm = new Group();
   arm.userData.noBatch = true;
   arm.position.set(0.22, 0.32, 0.08);
@@ -301,10 +309,15 @@ function addSlacker(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: Lou
   const bubble = new CSS2DObject(bubbleAnchor);
   bubble.position.set(0, 1.02, 0.12);
   body.add(bubble);
+  fuseSameMaterial(body, f);
+  const can = f.box(arm, 0.05, 0.08, 0.05, 0.02, -0.48, 0.16, PALETTE.cardGold, false);
+  can.visible = false;
+  can.userData.noBatch = true;
 
   return {
     bubble: bubbleAnchor,
     plate: addNameplate(body, npc),
+    walker: walkerRig(body, "arm", arm, 0, can),
     tick(time) {
       const speed = act.cue === "slouch" ? 1.8 : 1;
       const chew = Math.sin(time * 1.4 * speed);
@@ -389,8 +402,9 @@ function addPiper(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: Loung
 function addDealer(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: LoungeAct): {
   plate: LoungePlate;
   tick: (time: number) => void;
+  walker: WalkerRig;
 } {
-  const body = addSeated(parent, npc, { shirt: 0x1f4d4a, pants: 0x173430, hair: 0x1a1a22 }, f, 0.52, 0.4);
+  const body = addSeated(parent, npc, { shirt: 0x1f4d4a, pants: 0x173430, hair: 0x1a1a22 }, f, 0.52, 0.4, true);
   const cap = new Mesh(f.geo(new CylinderGeometry(0.16, 0.17, 0.08, 10)), f.mat(0x173430));
   cap.position.set(0, 0.72, -0.16);
   body.add(cap);
@@ -411,9 +425,14 @@ function addDealer(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: Loun
   }
   const shuffle = f.box(hands, 0.09, 0.008, 0.13, 0.02, 0.06, 0.06, PALETTE.cardTeal, false);
   shuffle.rotation.x = -0.55;
+  fuseSameMaterial(body, f);
+  const can = f.box(hands, 0.05, 0.08, 0.05, 0.06, 0.04, 0.08, PALETTE.cardPink, false);
+  can.visible = false;
+  can.userData.noBatch = true;
 
   return {
     plate: addNameplate(body, npc),
+    walker: walkerRig(body, "hands", hands, hands.position.z, can),
     tick(time) {
       const dealing = act.cue === "shuffle";
       const speed = dealing ? 2.7 : 1;
@@ -457,6 +476,116 @@ function addSketcher(parent: Group, npc: LoungeNpc, f: AmbientFactories, act: Lo
   };
 }
 
+type WalkerRig = {
+  id: "remolon" | "naipe";
+  body: Group;
+  seatY: number;
+  legL: Mesh;
+  legR: Mesh;
+  sitLX: number;
+  sitRX: number;
+  legLY: number;
+  legLZ: number;
+  legRY: number;
+  legRZ: number;
+  arm: Group;
+  armKind: "arm" | "hands";
+  armRestZ: number;
+  can: Mesh;
+};
+
+function walkerRig(body: Group, armKind: "arm" | "hands", arm: Group, armRestZ: number, can: Mesh): WalkerRig {
+  const legs: Mesh[] = [];
+  for (const child of body.children) {
+    if (child instanceof Mesh && child.userData.walkerLeg) legs.push(child);
+  }
+  const legL = legs[0];
+  const legR = legs[1];
+  if (!legL || !legR) throw new Error("Faltan las piernas del paseo");
+  const id = body.userData.interactId;
+  if (id !== "remolon" && id !== "naipe") throw new Error("Caminante desconocido");
+  return {
+    id,
+    body,
+    seatY: body.position.y,
+    legL,
+    legR,
+    sitLX: legL.rotation.x,
+    sitRX: legR.rotation.x,
+    legLY: legL.position.y,
+    legLZ: legL.position.z,
+    legRY: legR.position.y,
+    legRZ: legR.position.z,
+    arm,
+    armKind,
+    armRestZ,
+    can,
+  };
+}
+
+function fuseSameMaterial(body: Group, f: AmbientFactories) {
+  const buckets: Mesh[][] = [];
+  for (const child of body.children) {
+    if (!(child instanceof Mesh) || child.userData.noBatch || child.userData.walkerLeg) continue;
+    let placed = false;
+    for (const bucket of buckets) {
+      if (bucket[0]!.material === child.material) {
+        bucket.push(child);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) buckets.push([child]);
+  }
+  for (const bucket of buckets) {
+    if (bucket.length < 2) continue;
+    const fused = fuseMeshes(bucket);
+    f.geo(fused.geometry);
+    fused.castShadow = false;
+    fused.userData.noBatch = true;
+  }
+}
+
+function applyWalker(rigs: readonly WalkerRig[], pose: ErrandPose, time: number) {
+  if (!pose.engaged) return;
+  let rig: WalkerRig | undefined;
+  for (const item of rigs) if (item.id === pose.id) rig = item;
+  if (!rig) return;
+  const stand = pose.stand;
+  rig.body.position.x = pose.x;
+  rig.body.position.z = pose.z;
+  const bob = pose.walking ? Math.abs(Math.sin(time * 8.5)) * 0.035 * stand : 0;
+  const floorY = 0.44;
+  rig.body.position.y = rig.seatY + (floorY - rig.seatY) * stand + bob;
+  rig.body.rotation.y = pose.yaw;
+  const swing = pose.walking ? Math.sin(time * 8.5) * 0.35 * stand : 0;
+  const standX = 1.45;
+  rig.legL.rotation.x = rig.sitLX + (standX - rig.sitLX) * stand + swing;
+  rig.legR.rotation.x = rig.sitRX + (standX - rig.sitRX) * stand - swing;
+  rig.legL.position.y = rig.legLY + (-0.2 - rig.legLY) * stand;
+  rig.legL.position.z = rig.legLZ + (0.02 - rig.legLZ) * stand;
+  rig.legR.position.y = rig.legRY + (-0.2 - rig.legRY) * stand;
+  rig.legR.position.z = rig.legRZ + (0.02 - rig.legRZ) * stand;
+  if (pose.reach > 0) {
+    if (rig.armKind === "arm") rig.arm.rotation.x = -1.1 * pose.reach;
+    else {
+      rig.arm.position.z = rig.armRestZ + 0.14 * pose.reach;
+      rig.arm.rotation.x = -0.45 * pose.reach;
+      rig.arm.rotation.z = 0;
+    }
+  } else if (pose.walking && rig.armKind === "arm") {
+    rig.arm.rotation.x = -0.35;
+  } else if (rig.armKind === "hands") {
+    rig.arm.position.z = rig.armRestZ;
+    if (pose.walking) {
+      rig.arm.rotation.x = -0.15;
+      rig.arm.rotation.z = 0;
+    }
+  }
+  rig.can.visible = pose.carrying;
+  for (const other of rigs) if (other !== rig) other.can.visible = false;
+}
+
 function addSeated(
   parent: Group,
   npc: LoungeNpc,
@@ -464,11 +593,13 @@ function addSeated(
   f: AmbientFactories,
   seatY: number,
   lookPitch: number,
+  walker = false,
 ): Group {
   const body = new Group();
   body.position.set(npc.x, seatY, npc.z);
   body.rotation.y = npc.yaw;
   body.userData.interactId = npc.id;
+  if (walker) body.userData.noBatch = true;
   parent.add(body);
   f.box(body, 0.42, 0.2, 0.48, 0, 0, 0.06, colors.shirt, false);
   f.box(body, 0.36, 0.34, 0.26, 0, 0.26, -0.08, colors.shirt);
@@ -489,6 +620,10 @@ function addSeated(
   legL.rotation.x = -0.62;
   const legR = f.box(body, 0.12, 0.12, 0.4, 0.11, -0.02, 0.3, colors.pants, false);
   legR.rotation.x = -0.5;
+  if (walker) {
+    legL.userData.walkerLeg = true;
+    legR.userData.walkerLeg = true;
+  }
   attachFaceIdle(body, head, f, colors.shirt, idlePhase(npc.id));
   return body;
 }

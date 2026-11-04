@@ -21,6 +21,8 @@ import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { blinkOpen, breathScale, windowPaintSlot } from "./graphics-idle";
 import { fuseMeshes } from "./mesh-fuse";
 import { CEILING_UNDERSIDE, LAYOUT, RADIO_USE_RADIUS } from "./navigation";
+import type { AnimalPose } from "./pantry-routine";
+import { addFridgeDoor, addPantryKitchen } from "./pantry-kitchen";
 import { WORKSHOP_SEAT } from "./workshop-cinematic";
 import { paintWorkshopMural } from "./workshop-mural";
 import {
@@ -57,11 +59,15 @@ const PAL = {
 export type SwayPlant = { mesh: Object3D; phase: number };
 
 export type CornerInteractables = {
+  catRoot: Group;
   catHead: Mesh;
   catEyes: Object3D;
   catTail: Object3D;
+  catAway: boolean;
+  dogRoot: Group;
   dogSnore: HTMLDivElement;
   dogChest: Object3D;
+  dogWalking: boolean;
   radioDial: MeshBasicMaterial;
   fan: Group;
   windowMats: MeshBasicMaterial[];
@@ -76,7 +82,7 @@ export function addStoryCorners(f: AmbientFactories): {
   colliders: AmbientCollider[];
   interact: CornerInteractables;
 } {
-  const decor = ["desk", "shelves", "pinball", "fridge", "dog", "crates", "plant", "radio", "plantPinball", "plantRest"] as const;
+  const decor = ["desk", "shelves", "pinball", "fridge", "counter", "dog", "crates", "plant", "radio", "plantPinball", "plantRest"] as const;
   const colliders: AmbientCollider[] = decor.map((id) => ({
     id,
     x: LAYOUT[id].x,
@@ -146,11 +152,15 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
   addDeskGlassware(f);
   addDeskTools(f);
   return {
+    catRoot: cat.root,
     catHead: cat.head,
     catEyes: cat.eyes,
     catTail: cat.tail,
+    catAway: false,
+    dogRoot: dog.root,
     dogSnore: dog.snore,
     dogChest: dog.chest,
+    dogWalking: false,
     radioDial: addRadio(f),
     fan,
     windowMats,
@@ -475,17 +485,22 @@ function paintScreen(
   }
 }
 
-function addCatOnCrates(f: AmbientFactories): { head: Mesh; eyes: Object3D; tail: Object3D } {
+function addCatOnCrates(f: AmbientFactories): { root: Group; head: Mesh; eyes: Object3D; tail: Object3D } {
   const x = LAYOUT.crates.x;
   const z = LAYOUT.crates.z;
   f.box(f.scene, 0.56, 0.4, 0.5, x, 0.2, z, 0x8d5a34);
   f.box(f.scene, 0.48, 0.34, 0.42, x, 0.57, z, 0x734826);
+  const root = new Group();
+  root.name = "cat";
+  root.userData.noBatch = true;
+  root.position.set(x, 0, z);
+  f.scene.add(root);
   const y = 0.84;
-  f.box(f.scene, 0.28, 0.16, 0.32, x, y, z, PAL.cat);
+  f.box(root, 0.28, 0.16, 0.32, 0, y, 0, PAL.cat, false);
 
   const pivot = new Group();
-  pivot.position.set(x - 0.14, y + 0.05, z);
-  f.scene.add(pivot);
+  pivot.position.set(-0.14, y + 0.05, 0);
+  root.add(pivot);
   const skull = new Mesh(f.geo(new SphereGeometry(0.13, 10, 8)), f.mat(PAL.cat));
   const earGeo = f.geo(new BoxGeometry(0.04, 0.08, 0.026));
   const earL = new Mesh(earGeo, f.mat(PAL.cat));
@@ -514,12 +529,12 @@ function addCatOnCrates(f: AmbientFactories): { head: Mesh; eyes: Object3D; tail
 
   const tail = new Group();
   tail.userData.noBatch = true;
-  tail.position.set(x + 0.1, y - 0.02, z);
+  tail.position.set(0.1, y - 0.02, 0);
   const seg = new Mesh(f.geo(new BoxGeometry(0.16, 0.04, 0.04)), f.mat(PAL.cat));
   seg.position.x = 0.06;
   tail.add(seg);
-  f.scene.add(tail);
-  return { head, eyes, tail };
+  root.add(tail);
+  return { root, head, eyes, tail };
 }
 
 function addRadio(f: AmbientFactories): MeshBasicMaterial {
@@ -542,33 +557,64 @@ function addRadio(f: AmbientFactories): MeshBasicMaterial {
   return dialMat;
 }
 
-function addSleepingDog(f: AmbientFactories): { snore: HTMLDivElement; chest: Object3D } {
-  const x = LAYOUT.dog.x;
-  const z = LAYOUT.dog.z;
-  f.box(f.scene, 0.55, 0.14, 0.24, x, 0.08, z, PAL.dog);
+function addSleepingDog(f: AmbientFactories): { root: Group; snore: HTMLDivElement; chest: Object3D } {
+  const root = new Group();
+  root.name = "dog";
+  root.userData.noBatch = true;
+  root.position.set(LAYOUT.dog.x, 0, LAYOUT.dog.z);
+  f.scene.add(root);
+  const body = f.box(root, 0.55, 0.14, 0.24, 0, 0.08, 0, PAL.dog, false);
   const head = new Mesh(f.geo(new SphereGeometry(0.12, 10, 8)), f.mat(PAL.dog));
-  head.position.set(x - 0.32, 0.1, z + 0.04);
+  head.position.set(-0.32, 0.1, 0.04);
   head.castShadow = f.shadows;
-  f.scene.add(head);
-  f.box(f.scene, 0.04, 0.07, 0.03, x - 0.36, 0.2, z + 0.09, PAL.dog, false);
-  f.box(f.scene, 0.04, 0.07, 0.03, x - 0.36, 0.2, z - 0.01, PAL.dog, false);
+  root.add(head);
+  const earL = f.box(root, 0.04, 0.07, 0.03, -0.36, 0.2, 0.09, PAL.dog, false);
+  const earR = f.box(root, 0.04, 0.07, 0.03, -0.36, 0.2, -0.01, PAL.dog, false);
   const chest = new Mesh(f.geo(new BoxGeometry(0.32, 0.06, 0.16)), f.mat(PAL.dog));
-  chest.position.set(x, 0.16, z);
+  chest.position.set(0, 0.16, 0);
   chest.userData.noBatch = true;
   chest.castShadow = false;
-  f.scene.add(chest);
-  f.box(f.scene, 0.016, 0.008, 0.028, x - 0.42, 0.125, z + 0.01, 0x1a1a22, false);
-  f.box(f.scene, 0.016, 0.008, 0.028, x - 0.42, 0.125, z + 0.07, 0x1a1a22, false);
-  f.box(f.scene, 0.16, 0.08, 0.1, x + 0.26, 0.06, z - 0.06, PAL.dog, false);
+  root.add(chest);
+  const eyeL = f.box(root, 0.016, 0.008, 0.028, -0.42, 0.125, 0.01, 0x1a1a22, false);
+  const eyeR = f.box(root, 0.016, 0.008, 0.028, -0.42, 0.125, 0.07, 0x1a1a22, false);
+  const tail = f.box(root, 0.16, 0.08, 0.1, 0.26, 0.06, -0.06, PAL.dog, false);
+  const coat = fuseMeshes([body, head, earL, earR, tail]);
+  f.geo(coat.geometry);
+  coat.userData.noBatch = true;
+  coat.castShadow = f.shadows;
+  const eyes = fuseMeshes([eyeL, eyeR]);
+  f.geo(eyes.geometry);
+  eyes.userData.noBatch = true;
+  eyes.castShadow = false;
 
   const snore = document.createElement("div");
   snore.className = "speech-bubble snore-bubble";
   snore.hidden = true;
   snore.textContent = "Zzz…";
   const label = new CSS2DObject(snore);
-  label.position.set(x - 0.1, 0.35, z);
-  f.scene.add(label);
-  return { snore, chest };
+  label.position.set(-0.1, 0.35, 0);
+  root.add(label);
+  return { root, snore, chest };
+}
+
+/** El perro mira por su −X local. El gato baja de las cajas al tumbarse. */
+export function applyAnimalPose(interact: CornerInteractables, pose: AnimalPose): void {
+  interact.dogWalking = pose.engaged && pose.id === "dog" && pose.moving;
+  interact.catAway = pose.engaged && pose.id === "cat";
+  if (!pose.engaged) return;
+  if (pose.id === "dog") {
+    const root = interact.dogRoot;
+    root.position.set(pose.x, 0.1 * pose.up, pose.z);
+    root.rotation.x = -0.22 * pose.up;
+    root.rotation.y = pose.moving ? pose.yaw + Math.PI / 2 : pose.yaw;
+    root.rotation.z = 0;
+    return;
+  }
+  const root = interact.catRoot;
+  root.position.set(pose.x, -0.66 * pose.drop, pose.z);
+  root.rotation.x = 0;
+  root.rotation.y = pose.yaw;
+  root.rotation.z = 0.55 * pose.drop * (1 - pose.up);
 }
 
 export function tickCornerReactions(
@@ -580,18 +626,20 @@ export function tickCornerReactions(
   beatBass = 0,
   beatMid = 0,
 ) {
-  const catX = LAYOUT.crates.x - 0.14;
-  const catZ = LAYOUT.crates.z;
-  const nearCat = Math.hypot(player.x - catX, player.z - catZ) < 2.4;
-  if (nearCat) {
-    const angle = Math.atan2(player.x - catX, player.z - catZ);
-    interact.catHead.rotation.y = angle;
-  } else {
-    interact.catHead.rotation.y *= 0.92;
+  if (!interact.catAway) {
+    const catX = interact.catRoot.position.x - 0.14;
+    const catZ = interact.catRoot.position.z;
+    const nearCat = Math.hypot(player.x - catX, player.z - catZ) < 2.4;
+    if (nearCat) {
+      const angle = Math.atan2(player.x - catX, player.z - catZ);
+      interact.catHead.rotation.y = angle;
+    } else {
+      interact.catHead.rotation.y *= 0.92;
+    }
   }
 
-  const nearDog = Math.hypot(player.x - LAYOUT.dog.x, player.z - LAYOUT.dog.z) < 2.2;
-  interact.dogSnore.hidden = !nearDog;
+  const nearDog = Math.hypot(player.x - interact.dogRoot.position.x, player.z - interact.dogRoot.position.z) < 2.2;
+  interact.dogSnore.hidden = interact.dogWalking || !nearDog;
 
   const nearRadio = Math.hypot(player.x - LAYOUT.radio.x, player.z - LAYOUT.radio.z) < RADIO_USE_RADIUS;
   if (nearRadio && !reduced) {
@@ -632,9 +680,8 @@ function addFridgeHum(f: AmbientFactories): Mesh {
   const z = LAYOUT.fridge.z;
   f.box(f.scene, 0.72, 1.35, 0.58, x, 0.68, z, 0xd8e4ef);
   f.box(f.scene, 0.68, 0.04, 0.54, x, 1.36, z, 0xb8c5d0, false);
-  f.box(f.scene, 0.04, 0.35, 0.06, x - 0.32, 0.85, z + 0.32, PAL.tool, false);
-  f.box(f.scene, 0.14, 0.18, 0.008, x, 1.02, z + 0.31, PAL.cartridge, false);
-  f.box(f.scene, 0.12, 0.14, 0.006, x, 1.02, z + 0.318, PAL.neon, false);
+  f.box(f.scene, 0.14, 0.18, 0.008, x, 1.16, z + 0.31, PAL.cartridge, false);
+  f.box(f.scene, 0.12, 0.14, 0.006, x, 1.16, z + 0.318, PAL.neon, false);
   const hum = new Mesh(f.geo(new SphereGeometry(0.02, 6, 4)), new MeshBasicMaterial({ color: 0xffffff }));
   hum.userData.noBatch = true;
   f.materials.push(hum.material);
@@ -643,6 +690,8 @@ function addFridgeHum(f: AmbientFactories): Mesh {
   return hum;
 }
 
-export function addFridgeCorner(f: AmbientFactories): Mesh {
-  return addFridgeHum(f);
+export function addFridgeCorner(f: AmbientFactories): { hum: Mesh; door: Group } {
+  const hum = addFridgeHum(f);
+  addPantryKitchen(f);
+  return { hum, door: addFridgeDoor(f) };
 }

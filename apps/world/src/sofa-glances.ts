@@ -20,6 +20,8 @@ export type SofaGlanceContext = {
   activeCue: DialogueCue | null;
   dialoguePulse: number;
   nearSlacker: boolean;
+  /** Quien está en la nevera no gira la cabeza desde el sofá. */
+  awayId?: string | null;
 };
 
 type GlanceState = "rest" | "turn" | "hold" | "return";
@@ -117,13 +119,14 @@ export function tickSofaGlances(runtime: SofaGlanceRuntime, time: number, dt: nu
   }
 
   runtime.globalCooldown = Math.max(0, runtime.globalCooldown - dt);
+  const away = ctx.awayId ?? null;
 
   for (const npc of runtime.npcs) {
     npc.nextRandom -= dt;
   }
 
   if (runtime.globalCooldown <= 0) {
-    const inRange = runtime.npcs.filter((npc) => eligibleNear(ctx.playerX, ctx.playerZ, npc));
+    const inRange = runtime.npcs.filter((npc) => npc.id !== away && eligibleNear(ctx.playerX, ctx.playerZ, npc));
     const stillNear = inRange.filter((npc) => Math.hypot(ctx.playerX - npc.x, ctx.playerZ - npc.z) <= STILL_RANGE);
     if (ctx.playerStill && stillNear.length > 0 && stillNear.every((npc) => npc.state === "rest")) {
       beginGlance(
@@ -133,7 +136,7 @@ export function tickSofaGlances(runtime: SofaGlanceRuntime, time: number, dt: nu
         ctx.playerZ,
       );
     } else if (ctx.dialoguePulse > 0.2) {
-      const talkers = runtime.npcs.filter((npc) => ctx.activeCue && cueForNpc(npc.id) === ctx.activeCue);
+      const talkers = runtime.npcs.filter((npc) => npc.id !== away && ctx.activeCue && cueForNpc(npc.id) === ctx.activeCue);
       if (talkers.length > 0) {
         beginGlance(
           runtime,
@@ -142,11 +145,11 @@ export function tickSofaGlances(runtime: SofaGlanceRuntime, time: number, dt: nu
           ctx.playerZ,
         );
       }
-    } else if (ctx.nearSlacker && ctx.activeCue === "slouch") {
+    } else if (ctx.nearSlacker && ctx.activeCue === "slouch" && away !== "remolon") {
       beginGlance(runtime, ["remolon"], ctx.playerX, ctx.playerZ);
     }
 
-    const randomReady = runtime.npcs.filter((npc) => npc.state === "rest" && npc.nextRandom <= 0);
+    const randomReady = runtime.npcs.filter((npc) => npc.id !== away && npc.state === "rest" && npc.nextRandom <= 0);
     if (randomReady.length > 0 && Math.sin(time * 0.37 + randomReady[0]!.phase) > 0.55) {
       beginGlance(
         runtime,
@@ -159,6 +162,13 @@ export function tickSofaGlances(runtime: SofaGlanceRuntime, time: number, dt: nu
   }
 
   for (const npc of runtime.npcs) {
+    if (npc.id === away) {
+      npc.state = "rest";
+      npc.yaw = 0;
+      npc.head.rotation.x = npc.restPitch;
+      npc.head.rotation.y = 0;
+      continue;
+    }
     npc.head.rotation.x = npc.restPitch;
     const speed = 6.5;
     if (npc.state === "rest") {
