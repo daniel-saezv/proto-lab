@@ -1,4 +1,4 @@
-import { renameSync, statSync, unlinkSync } from "node:fs";
+import { readFileSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { runProcess } from "./preview-encode.mjs";
 
 /** Tiene que coincidir con `apps/world/src/preview-frame.ts`. */
@@ -16,17 +16,51 @@ export function previewStillIssues(width, height) {
 }
 
 /**
+ * Ancho y alto de un PNG o un WebP (VP8, VP8L o VP8X), sin ffprobe.
+ * La CI no instala ffmpeg; el catálogo tiene que poder comprobar el marco igual.
+ * @param {Buffer} buffer
+ * @returns {{ width: number, height: number } | null}
+ */
+export function imageSize(buffer) {
+  if (buffer.length >= 24 && buffer[0] === 0x89 && buffer.toString("ascii", 1, 4) === "PNG") {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (buffer.length < 12 || buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WEBP") {
+    return null;
+  }
+  let offset = 12;
+  /** @type {{ width: number, height: number } | null} */
+  let frame = null;
+  while (offset + 8 <= buffer.length) {
+    const tag = buffer.toString("ascii", offset, offset + 4);
+    const size = buffer.readUInt32LE(offset + 4);
+    const start = offset + 8;
+    if (tag === "VP8X" && start + 10 <= buffer.length) {
+      const width = (buffer[start + 4] | (buffer[start + 5] << 8) | (buffer[start + 6] << 16)) + 1;
+      const height = (buffer[start + 7] | (buffer[start + 8] << 8) | (buffer[start + 9] << 16)) + 1;
+      return { width, height };
+    }
+    if (tag === "VP8 " && start + 10 <= buffer.length && (buffer[start] & 1) === 0) {
+      frame = {
+        width: buffer.readUInt16LE(start + 6) & 0x3fff,
+        height: buffer.readUInt16LE(start + 8) & 0x3fff,
+      };
+    } else if (tag === "VP8L" && start + 5 <= buffer.length && buffer[start] === 0x2f) {
+      const bits = buffer.readUInt32LE(start + 1);
+      frame = { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+    }
+    offset = start + size + (size & 1);
+  }
+  return frame;
+}
+
+/**
  * @param {string} file
  */
 export async function readImageSize(file) {
-  const raw = await runProcess(
-    "ffprobe",
-    ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", file],
-    { pipe: true },
-  );
-  const [width, height] = raw.toString().trim().split("x").map((part) => Number(part));
-  if (!width || !height) throw new Error(`Sin tamaño de imagen: ${file}`);
-  return { width, height };
+  const size = imageSize(readFileSync(file));
+  if (!size?.width || !size?.height) throw new Error(`Sin tamaño de imagen: ${file}`);
+  return size;
 }
 
 /**

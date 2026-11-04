@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,10 +10,13 @@ import {
   PREVIEW_STILL_HEIGHT,
   PREVIEW_STILL_MAX_BYTES,
   PREVIEW_STILL_WIDTH,
+  imageSize,
   normalizePreviewStill,
   previewStillIssues,
   readImageSize,
 } from "./preview-frame.mjs";
+
+const ffmpegOk = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -40,13 +44,42 @@ describe("estándar de la foto fija", () => {
     expect(checked.length).toBeGreaterThan(0);
   });
 
+  it("lee el tamaño en la cabecera, sin ffprobe", () => {
+    const png = Buffer.alloc(24);
+    png[0] = 0x89;
+    png.write("PNG\r\n\x1a\n", 1, "ascii");
+    png.writeUInt32BE(13, 8);
+    png.write("IHDR", 12, "ascii");
+    png.writeUInt32BE(40, 16);
+    png.writeUInt32BE(120, 20);
+    expect(imageSize(png)).toEqual({ width: 40, height: 120 });
+
+    const payload = Buffer.alloc(10);
+    payload[3] = 0x9d;
+    payload[4] = 0x01;
+    payload[5] = 0x2a;
+    payload.writeUInt16LE(640, 6);
+    payload.writeUInt16LE(360, 8);
+    const chunk = Buffer.alloc(8 + payload.length);
+    chunk.write("VP8 ", 0, "ascii");
+    chunk.writeUInt32LE(payload.length, 4);
+    payload.copy(chunk, 8);
+    const webp = Buffer.alloc(12 + chunk.length);
+    webp.write("RIFF", 0, "ascii");
+    webp.writeUInt32LE(webp.length - 8, 4);
+    webp.write("WEBP", 8, "ascii");
+    chunk.copy(webp, 12);
+    expect(imageSize(webp)).toEqual({ width: 640, height: 360 });
+  });
+
   it("el selector recorta a 16:10 con cover", () => {
     const css = readFileSync(join(root, "apps/world/src/style.css"), "utf8");
     expect(css).toMatch(/\.selector-preview-wrap \{[^}]*aspect-ratio:\s*16\s*\/\s*10/s);
     expect(css).toMatch(/\.selector-preview \{[^}]*object-fit:\s*cover/s);
   });
 
-  it("normaliza una captura vertical a 16:9 sin perder el centro", async () => {
+  // La reescritura usa ffmpeg, que en la CI no está. El marco del catálogo se comprueba arriba, sin ese binario.
+  it.skipIf(!ffmpegOk)("normaliza una captura vertical a 16:9 sin perder el centro", async () => {
     const dir = mkdtempSync(join(tmpdir(), "preview-frame-"));
     const file = join(dir, "tall.webp");
     try {
