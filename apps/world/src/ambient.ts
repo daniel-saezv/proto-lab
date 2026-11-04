@@ -16,7 +16,7 @@ import {
   type BufferGeometry,
   type Material,
 } from "three";
-import { addFridgeCorner, addStoryCorners, applyAnimalPose, tickCornerReactions } from "./ambient-corners";
+import { addFridgeCorner, addStoryCorners, applyAnimalPose, tickCornerReactions, type DeskBeat } from "./ambient-corners";
 import { addLoungeGroup, type LoungeNpcSpot } from "./ambient-lounge";
 import type { DialogueCue } from "./dialogue-cues";
 import { LAYOUT } from "./navigation";
@@ -118,6 +118,7 @@ export type AmbientHandle = {
   setTvSuspended: (suspended: boolean) => void;
   setDialogueCue: (cue: DialogueCue | null) => void;
   pulseDialogue: () => void;
+  setDeskBeat: (beat: DeskBeat) => void;
   dispose: () => void;
 };
 
@@ -154,6 +155,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
     pet: null as { id: string; x: number; z: number } | null,
   };
   const actor: PantryActor = { id: errandPose.id, x: errandPose.x, z: errandPose.z, away: false };
+  let deskBeat: DeskBeat = "off";
 
   function syncActor() {
     actor.id = errandPose.id;
@@ -190,6 +192,9 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
     },
     pantryActor() {
       return actor;
+    },
+    setDeskBeat(beat) {
+      deskBeat = beat;
     },
     dispose() {
       group.disposeTv();
@@ -247,7 +252,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
       }
 
       fridge.hum.scale.set(1, 1 + Math.sin(time * 16) * 0.4, 1);
-      tickCornerReactions(corners.interact, player, time, dt, f.reduced, beatBass, beatMid);
+      tickCornerReactions(corners.interact, player, time, dt, f.reduced, beatBass, beatMid, deskBeat);
     },
   };
 }

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { dialogueHeadFromTop, dialogueHeadTarget } from "./dialogue-camera";
-import { CAMERA_CEILING_Y, ROOM_INNER } from "./navigation";
+import { dialoguePointFromTop } from "./dialogue-camera";
+import { CAMERA_CEILING_Y, LAYOUT, ROOM_INNER } from "./navigation";
 import {
   INVENTOR_HOME,
   WORKSHOP_SEAT,
+  WORKSHOP_TABLE_HALF_DEPTH,
   WORKSHOP_TRIP_SECONDS,
   homePose,
   poseAlong,
@@ -11,6 +12,9 @@ import {
   seatPose,
   workshopSeatCamera,
   workshopSeatSubject,
+  workshopTableClear,
+  workshopTableFrontZ,
+  workshopTablePoint,
   workshopTripSeconds,
 } from "./workshop-cinematic";
 
@@ -62,26 +66,43 @@ describe("cinemática del escritorio", () => {
     expect(remainingBlend(0.7, 0.4)).toBeLessThan(0.95);
   });
 
-  it("encuadra la cara sentada en el tercio alto, en retrato y en apaisado", () => {
+  it("sienta al Inventor entre el muro y la mesa, de cara a la sala, lejos de la radio", () => {
+    const nearEdge = LAYOUT.desk.z - WORKSHOP_TABLE_HALF_DEPTH;
+    const chairBack = WORKSHOP_SEAT.z - 0.28;
+    expect(chairBack).toBeGreaterThan(ROOM_INNER.minZ + 0.15);
+    expect(WORKSHOP_SEAT.z).toBeLessThan(nearEdge);
+    expect(LAYOUT.desk.z).toBeGreaterThan(WORKSHOP_SEAT.z);
+    expect(WORKSHOP_SEAT.yaw).toBe(0);
+    expect(WORKSHOP_SEAT.x).toBe(LAYOUT.desk.x);
+    const gap = Math.hypot(LAYOUT.radio.x - LAYOUT.desk.x, LAYOUT.radio.z - LAYOUT.desk.z);
+    expect(gap).toBeGreaterThan(4);
+    expect(LAYOUT.desk.x + 0.7).toBeLessThan(LAYOUT.radio.x - 0.5);
+    expect(workshopTableFrontZ()).toBeLessThan(LAYOUT.radio.z - 2);
+  });
+
+  it("encuadra mesa e Inventor por encima del panel, en retrato y en apaisado", () => {
     const subject = workshopSeatSubject();
-    expect(subject.headY).toBeGreaterThan(1.2);
+    const table = workshopTablePoint();
+    expect(subject.headY).toBeGreaterThan(table.y);
     for (const view of VIEWS) {
       const pose = workshopSeatCamera(view.aspect, view.fov);
-      const fromTop = dialogueHeadFromTop(pose, subject, view.fov);
-      const target = dialogueHeadTarget(view.aspect);
-      expect(fromTop, view.name).toBeCloseTo(target, 2);
-      expect(target, view.name).toBeLessThanOrEqual(0.28);
+      const head = dialoguePointFromTop(pose, { x: subject.x, y: subject.headY, z: subject.z }, view.fov);
+      const top = dialoguePointFromTop(pose, table, view.fov);
+      const clear = workshopTableClear(view.aspect);
+      expect(head, view.name).toBeGreaterThan(0.04);
+      expect(head, view.name).toBeLessThan(0.2);
+      expect(top, view.name).toBeGreaterThan(head);
+      expect(top, view.name).toBeLessThan(clear);
       const forwardX = Math.sin(subject.yaw);
       const forwardZ = Math.cos(subject.yaw);
       const facing = (pose.x - subject.x) * forwardX + (pose.z - subject.z) * forwardZ;
       expect(facing, view.name).toBeGreaterThan(1.2);
-      expect(pose.y).toBeGreaterThan(0.6);
+      expect(pose.z, view.name).toBeGreaterThan(workshopTableFrontZ());
+      expect(pose.y).toBeGreaterThan(0.5);
       expect(pose.y).toBeLessThanOrEqual(CAMERA_CEILING_Y);
       expect(pose.x).toBeGreaterThan(ROOM_INNER.minX);
       expect(pose.x).toBeLessThan(ROOM_INNER.maxX);
-      expect(pose.z).toBeGreaterThan(ROOM_INNER.minZ);
       expect(pose.z).toBeLessThan(ROOM_INNER.maxZ);
-      expect(pose.lookY).toBeLessThan(subject.headY);
     }
   });
 });

@@ -46,7 +46,7 @@ export function inventorSpeech(
         DESK_OFFER
       );
     case "workshop":
-      return `Ya estoy en el escritorio. Tu nota sigue igual, palabra por palabra: es tu {em}app{/em}, no le he dado ni una vuelta.\n\n«${draft.title}»\n${draft.description}\n\n¿Volvemos a tu nota o la dejo en el tablón tal cual?`;
+      return "Me siento a la mesa. La {em}máquina{/em} está pensando.";
     case "sending":
       return "Un momento, que mojo la {em}pluma{/em}…";
   }

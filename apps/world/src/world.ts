@@ -48,6 +48,7 @@ import {
 import { attachInput } from "./input";
 import { getMusicEnergy } from "./ambience-music";
 import { addAmbient } from "./ambient";
+import type { DeskBeat } from "./ambient-corners";
 import { dialogueCameraPose, dialogueSubject, dialogueTransitionSeconds, type DialogueSubject } from "./dialogue-camera";
 import type { DialogueCue } from "./dialogue-cues";
 import { drawTitleCard } from "./title-card";
@@ -172,6 +173,8 @@ export type WorldHandle = {
   skipWorkshopTrip: () => void;
   /** Si se quedó a medias, lo devuelve a (−1,5, −3,4) antes de un diálogo nuevo. */
   ensureInventorHome: () => void;
+  /** `talk` mira a cámara; `work` apunta en la mesa; `off` lo deja quieto. */
+  setWorkshopBeat: (beat: DeskBeat) => void;
   dispose: () => void;
 };
 
@@ -599,6 +602,7 @@ export function startWorld(options: {
     onDone: () => void;
   };
   let workshopTrip: WorkshopTrip | null = null;
+  let workshopBeat: DeskBeat = "off";
   let perfWorkMs = 0;
   const workshopCamFrom = new Vector3();
   const workshopCamTo = new Vector3();
@@ -804,6 +808,7 @@ export function startWorld(options: {
         const arm = inventor.userData.arm as Object3D | undefined;
         const armL = inventor.userData.armL as Object3D | undefined;
         const posing = workshopTrip !== null || inventorPose.sit > 0.001;
+        const seated = inventorPose.sit > 0.35 && workshopTrip === null;
         if (!posing) {
           inventor.position.y = Math.sin(frame * 2) * 0.04;
           const flourishAmt = Math.max(dialogueFlourish, returnFlourish);
@@ -812,10 +817,7 @@ export function startWorld(options: {
             arm.rotation.x = Math.sin(frame * 1.6) * 0.25 + flourish;
           }
           if (armL) armL.rotation.x = Math.sin(frame * 1.6 + 2.1) * 0.18;
-        } else if (inventorPose.sit > 0.35) {
-          if (arm) arm.rotation.x = -0.55 * inventorPose.sit;
-          if (armL) armL.rotation.x = -0.35 * inventorPose.sit;
-        } else {
+        } else if (!seated) {
           if (arm) arm.rotation.x = Math.sin(frame * 8) * 0.45;
           if (armL) armL.rotation.x = Math.sin(frame * 8 + Math.PI) * 0.45;
         }
@@ -850,6 +852,7 @@ export function startWorld(options: {
       material.opacity = reduced || e2eRender ? 0.92 : 0.58 + Math.sin(frame * 4) * 0.28;
     }
     const playerStill = Math.hypot(velX, velZ) <= 0.12;
+    if (inventorPose.sit > 0.35 && workshopTrip === null) poseInventorAtDesk(frame, reduced || e2eRender);
     pantryGaze.cx = camera.position.x;
     pantryGaze.cz = camera.position.z;
     const gazeX = player.position.x - camera.position.x;
@@ -1284,6 +1287,41 @@ export function startWorld(options: {
     inventor.rotation.y = pose.yaw;
     const hips = inventor.userData.hips as Object3D | undefined;
     if (hips) hips.rotation.x = -1.35 * pose.sit;
+    if (pose.sit < 0.2) {
+      const head = inventor.userData.head as Object3D | undefined;
+      if (head) {
+        head.rotation.x = 0;
+        head.rotation.y = 0;
+      }
+    }
+  }
+
+  function poseInventorAtDesk(frame: number, still: boolean) {
+    const arm = inventor.userData.arm as Object3D | undefined;
+    const armL = inventor.userData.armL as Object3D | undefined;
+    const head = inventor.userData.head as Object3D | undefined;
+    const talking = workshopBeat === "talk";
+    if (talking) {
+      if (arm) arm.rotation.x = -0.4;
+      if (armL) armL.rotation.x = -0.22;
+      if (head) {
+        head.rotation.x = 0.28;
+        head.rotation.y = 0.12;
+      }
+      return;
+    }
+    const write = still ? 0.35 : Math.sin(frame * 6);
+    if (arm) arm.rotation.x = -1.05 + write * 0.32;
+    if (armL) armL.rotation.x = -0.28;
+    if (head) {
+      head.rotation.x = 0.55;
+      head.rotation.y = still ? 0 : Math.sin(frame * 1.3) * 0.08;
+    }
+  }
+
+  function setWorkshopBeat(beat: DeskBeat) {
+    workshopBeat = beat;
+    ambient.setDeskBeat(beat);
   }
 
   function playWorkshopTrip(dest: "desk" | "home", onDone: () => void, movesCamera = true) {
@@ -1364,6 +1402,7 @@ export function startWorld(options: {
   }
 
   function workshopView() {
+    const head = inventor.userData.head as Object3D | undefined;
     return {
       place: dialoguePlace,
       x: Number(inventor.position.x.toFixed(3)),
@@ -1374,6 +1413,8 @@ export function startWorld(options: {
       camX: Number(camera.position.x.toFixed(3)),
       camY: Number(camera.position.y.toFixed(3)),
       camZ: Number(camera.position.z.toFixed(3)),
+      beat: workshopBeat,
+      headX: Number((head?.rotation.x ?? 0).toFixed(3)),
     };
   }
 
@@ -1663,6 +1704,7 @@ export function startWorld(options: {
     playWorkshopTrip,
     skipWorkshopTrip,
     ensureInventorHome,
+    setWorkshopBeat,
     dispose() {
       running = false;
       ambient.dispose();
@@ -1992,6 +2034,7 @@ export function startWorld(options: {
     head.position.set(0, 1.42, 0);
     head.castShadow = shadows;
     group.add(head);
+    group.userData.head = head;
     const hair = new Mesh(geo(new SphereGeometry(0.22, 12, 10)), mat(PALETTE.hair));
     hair.scale.y = 0.7;
     hair.position.set(0, 1.58, -0.02);
@@ -2327,6 +2370,8 @@ declare global {
         camX: number;
         camY: number;
         camZ: number;
+        beat: string;
+        headX: number;
       };
     };
   }

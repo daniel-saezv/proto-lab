@@ -25,6 +25,8 @@ import { CAT_BED, FRIDGE_DEPTH, FRIDGE_WIDTH } from "./pantry-layout";
 import type { AnimalPose } from "./pantry-routine";
 import { addFridgeDoor, addPantryKitchen } from "./pantry-kitchen";
 import { WORKSHOP_SEAT } from "./workshop-cinematic";
+
+export type DeskBeat = "off" | "talk" | "work";
 import { paintWorkshopMural } from "./workshop-mural";
 import {
   FLOOR_GLOW,
@@ -77,6 +79,8 @@ export type CornerInteractables = {
   neonMat: MeshBasicMaterial;
   sway: SwayPlant[];
   lamps: PointLight[];
+  deskNote: Object3D;
+  deskPen: Object3D;
 };
 
 export function addStoryCorners(f: AmbientFactories): {
@@ -109,10 +113,11 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
   const dz = LAYOUT.desk.z;
   f.box(f.scene, 1.4, 0.72, 0.7, dx, 0.36, dz, PAL.desk);
   f.box(f.scene, 0.9, 0.04, 0.5, dx + 0.12, 0.74, dz + 0.08, PAL.deskDark, false);
-  f.box(f.scene, 0.38, 0.28, 0.08, dx - 0.28, 0.88, dz + 0.3, PAL.monitor);
+  f.box(f.scene, 0.38, 0.28, 0.08, dx - 0.42, 0.88, dz - 0.16, PAL.monitor);
   const pcScreen = createBlinkingScreen(f.materials, "#8fd8ff", "code");
   const screen = new Mesh(f.geo(new PlaneGeometry(0.32, 0.22)), pcScreen);
-  screen.position.set(dx - 0.28, 0.9, dz + 0.35);
+  screen.position.set(dx - 0.42, 0.9, dz - 0.21);
+  screen.rotation.y = Math.PI;
   f.scene.add(screen);
   f.box(f.scene, 0.08, 0.04, 0.2, dx + 0.4, 0.78, dz + 0.02, PAL.wrapper, false);
   f.box(f.scene, 0.25, 0.08, 0.18, dx + 0.15, 0.78, dz - 0.08, 0xf4efe4, false);
@@ -152,6 +157,7 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
   addWorkshopSeat(f);
   addDeskGlassware(f);
   addDeskTools(f);
+  const deskProps = addDeskFidgets(f);
   return {
     catRoot: cat.root,
     catHead: cat.head,
@@ -170,6 +176,8 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
     neonMat,
     sway,
     lamps: [],
+    deskNote: deskProps.note,
+    deskPen: deskProps.pen,
   };
 }
 
@@ -244,11 +252,11 @@ function addDeskGlassware(f: AmbientFactories) {
   const material = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   f.materials.push(material);
   const spots = [
-    { x: dx - 0.55, z: dz - 0.22, h: 1, color: 0x8fd8ff },
-    { x: dx - 0.42, z: dz - 0.24, h: 0.85, color: 0x8fd8ff },
-    { x: dx - 0.3, z: dz - 0.2, h: 1.05, color: 0xc46b3a },
-    { x: dx - 0.18, z: dz - 0.24, h: 0.75, color: 0x8fd8ff },
-    { x: dx - 0.06, z: dz - 0.21, h: 0.95, color: 0xd7f4ff },
+    { x: dx + 0.22, z: dz + 0.08, h: 1, color: 0x8fd8ff },
+    { x: dx + 0.34, z: dz + 0.06, h: 0.85, color: 0x8fd8ff },
+    { x: dx + 0.46, z: dz + 0.1, h: 1.05, color: 0xc46b3a },
+    { x: dx + 0.3, z: dz - 0.06, h: 0.75, color: 0x8fd8ff },
+    { x: dx + 0.42, z: dz - 0.04, h: 0.95, color: 0xd7f4ff },
   ];
   const mesh = new InstancedMesh(geo, material, spots.length);
   mesh.userData.noBatch = true;
@@ -268,6 +276,35 @@ function addDeskGlassware(f: AmbientFactories) {
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   mesh.computeBoundingSphere();
   f.scene.add(mesh);
+}
+
+/** Cuaderno y pluma sueltos: se mueven cuando el Inventor apunta. No entran en el batch. */
+function addDeskFidgets(f: AmbientFactories): { note: Object3D; pen: Object3D } {
+  const dx = LAYOUT.desk.x;
+  const dz = LAYOUT.desk.z;
+  const note = f.box(f.scene, 0.22, 0.012, 0.16, dx + 0.02, 0.755, dz - 0.08, 0xf4efe4, false);
+  note.userData.noBatch = true;
+  note.userData.home = { x: note.position.x, y: note.position.y, z: note.position.z };
+  const pen = f.box(f.scene, 0.14, 0.02, 0.02, dx + 0.16, 0.77, dz - 0.02, PAL.deskDark, false);
+  pen.userData.noBatch = true;
+  pen.rotation.y = 0.7;
+  pen.userData.home = { x: pen.position.x, y: pen.position.y, z: pen.position.z, ry: pen.rotation.y };
+  return { note, pen };
+}
+
+export function tickDeskFidget(note: Object3D, pen: Object3D, time: number, beat: DeskBeat, still: boolean) {
+  const noteHome = note.userData.home as { x: number; y: number; z: number };
+  const penHome = pen.userData.home as { x: number; y: number; z: number; ry: number };
+  note.position.set(noteHome.x, noteHome.y, noteHome.z);
+  pen.position.set(penHome.x, penHome.y, penHome.z);
+  pen.rotation.y = penHome.ry;
+  note.rotation.z = 0;
+  if (beat !== "work" || still) return;
+  const write = Math.sin(time * 6);
+  note.rotation.z = Math.sin(time * 1.3) * 0.05;
+  pen.position.x = penHome.x + write * 0.035;
+  pen.position.z = penHome.z + Math.cos(time * 6) * 0.012;
+  pen.rotation.z = write * 0.35;
 }
 
 /** Herramientas del banco, un solo lote, sin sombra propia. */
@@ -628,7 +665,9 @@ export function tickCornerReactions(
   reduced: boolean,
   beatBass = 0,
   beatMid = 0,
+  deskBeat: DeskBeat = "off",
 ) {
+  tickDeskFidget(interact.deskNote, interact.deskPen, time, deskBeat, reduced);
   if (!interact.catAway) {
     const catX = interact.catRoot.position.x - 0.14;
     const catZ = interact.catRoot.position.z;

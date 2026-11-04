@@ -27,5 +27,8 @@ describe("salto de la cinemática del escritorio", () => {
     expect(query).toContain(".dialogue-choice");
     expect(query).toContain("min-height: 44px");
     expect(query).toContain("touch-action: manipulation");
+    expect(query).toContain("#dialogue.is-workshop");
+    expect(query).toContain("max-height: 48%");
+    expect(query).toContain("--workshop-kb");
   });
 });

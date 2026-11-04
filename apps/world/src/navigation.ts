@@ -84,7 +84,8 @@ export const LAYOUT = {
   bin: { x: KITCHEN_BIN.x, z: KITCHEN_BIN.z, collider: KITCHEN_BIN.collider },
   dog: { x: DOG_BED.x, z: DOG_BED.z, collider: 0.28 },
   cat: { x: CAT_BED.x, z: CAT_BED.z, collider: 0.24 },
-  desk: { x: 6.4, z: -6.85, collider: 0.55 },
+  /** Separado del muro norte: la silla queda entre la mesa y la pared. La cocina queda en el este. */
+  desk: { x: 6.4, z: -6.05, collider: 0.55 },
   shelves: { x: 9.32, z: -5.15, collider: 0.42 },
   pinball: { x: -4.85, z: 5.55, collider: 0.48 },
   arcade: { x: 0.6, z: -0.35, collider: 0.78 },

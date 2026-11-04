@@ -59,15 +59,14 @@ describe("inventorSpeech", () => {
     expect(iteration).not.toMatch(/juego/i);
   });
 
-  it("el marcador del escritorio repite la nota y habla de apps", () => {
+  it("el escritorio anuncia que la máquina piensa, sin reescribir la nota", () => {
     const text = inventorSpeech(
       { name: "workshop" },
       { kind: "propuesta", title: "Farol", description: "Una app para anotar turnos." },
       [],
     );
-    expect(text).toContain("Farol");
-    expect(text).toContain("Una app para anotar turnos.");
-    expect(text).toContain("app");
+    expect(text).toContain("máquina");
+    expect(text).not.toContain("Farol");
     expect(text).not.toMatch(/juego/i);
     const { plain, runs } = lineRuns(text);
     expect(runs.filter((run) => run.kind).length).toBeLessThanOrEqual(1);

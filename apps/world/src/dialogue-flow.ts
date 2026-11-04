@@ -65,10 +65,7 @@ export function inventorChoices(
         { id: "choice-cancel", label: "Mejor no", action: { type: "close" } },
       ];
     case "workshop":
-      return [
-        { id: "choice-workshop-back", label: "Volver a mi nota", action: { type: "trip", dest: "home" } },
-        { id: "choice-workshop-send", label: "Enviar tal cual", action: { type: "send" } },
-      ];
+      return [];
     default:
       return [];
   }
