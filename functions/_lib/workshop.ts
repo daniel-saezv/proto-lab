@@ -5,8 +5,6 @@ export const WORKSHOP_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8-fast";
 
 export const WORKSHOP_LIMITS = {
   maxTurns: 5,
-  maxSessionsPerDay: 3,
-  maxCallsPerDay: 15,
   maxNeuronsPerDay: 8000,
   sessionTtlSeconds: 15 * 60,
   quotaTtlSeconds: 60 * 60 * 48,
@@ -20,8 +18,6 @@ export const WORKSHOP_LIMITS = {
 } as const;
 
 export const WORKSHOP_COPY = {
-  quotaSessions: "Hoy ya has pasado tres veces por el escritorio. Mañana seguimos. Tu nota sigue igual.",
-  quotaCalls: "Hoy la máquina ya no da más de sí. Volvemos a tu nota, sin cambiarla.",
   quotaNeurons: "Hoy el taller ya ha gastado su cupo. Tu nota sigue como la escribiste.",
   config: "El escritorio está, pero la máquina no responde. Tu nota sigue igual.",
   model: "La máquina no ha respondido. Puedes probar otra vez o seguir con tu nota.",
@@ -73,14 +69,6 @@ export type WorkshopMessage = {
 
 export function workshopSessionKey(id: string): string {
   return `workshop:s:${id}`;
-}
-
-export function workshopSessionsKey(email: string, day: string): string {
-  return `workshop:sessions:${encodeURIComponent(email)}:${day}`;
-}
-
-export function workshopCallsKey(email: string, day: string): string {
-  return `workshop:calls:${encodeURIComponent(email)}:${day}`;
 }
 
 export function workshopNeuronsKey(day: string): string {

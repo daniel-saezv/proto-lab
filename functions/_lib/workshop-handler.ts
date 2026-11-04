@@ -13,12 +13,10 @@ import {
   messageChars,
   parseWorkshopJson,
   strictWorkshopMessages,
-  workshopCallsKey,
   workshopModelText,
   workshopNeuronsKey,
   workshopPayloadShape,
   workshopSessionKey,
-  workshopSessionsKey,
   type WorkshopChange,
   type WorkshopDraft,
   type WorkshopMessage,
@@ -279,25 +277,15 @@ export async function handleWorkshop(
   return fail(400, "validation", "No he entendido qué quieres hacer.");
 }
 
-async function quotaBlock(kv: KvLike, email: string, day: string, messages: WorkshopMessage[]): Promise<Response | null> {
-  const sessions = await readCount(kv, workshopSessionsKey(email, day));
-  if (sessions >= WORKSHOP_LIMITS.maxSessionsPerDay) {
-    return restore(429, "quota", WORKSHOP_COPY.quotaSessions);
-  }
-  const calls = await readCount(kv, workshopCallsKey(email, day));
-  if (calls >= WORKSHOP_LIMITS.maxCallsPerDay) {
-    return restore(429, "quota", WORKSHOP_COPY.quotaCalls);
-  }
+async function neuronQuota(kv: KvLike, day: string, messages: WorkshopMessage[]): Promise<Response | null> {
   const neurons = await readCount(kv, workshopNeuronsKey(day));
-  const estimate = estimateNeurons(messageChars(messages));
-  if (neurons + estimate > WORKSHOP_LIMITS.maxNeuronsPerDay) {
+  if (neurons + estimateNeurons(messageChars(messages)) > WORKSHOP_LIMITS.maxNeuronsPerDay) {
     return restore(429, "quota", WORKSHOP_COPY.quotaNeurons);
   }
   return null;
 }
 
-async function spendCall(kv: KvLike, email: string, day: string, messages: WorkshopMessage[]): Promise<void> {
-  await addCount(kv, workshopCallsKey(email, day), 1);
+async function spendNeurons(kv: KvLike, day: string, messages: WorkshopMessage[]): Promise<void> {
   await addCount(kv, workshopNeuronsKey(day), estimateNeurons(messageChars(messages)));
 }
 
@@ -311,11 +299,10 @@ async function startSession(
 ): Promise<Response> {
   const draft = draftFromProposal(proposal);
   const messages = buildWorkshopMessages({ original: draft, current: draft, turn: 1 });
-  const blocked = await quotaBlock(kv, email, day, messages);
+  const blocked = await neuronQuota(kv, day, messages);
   if (blocked) return blocked;
 
-  await addCount(kv, workshopSessionsKey(email, day), 1);
-  await spendCall(kv, email, day, messages);
+  await spendNeurons(kv, day, messages);
 
   const session: WorkshopSession = {
     email,
@@ -327,7 +314,7 @@ async function startSession(
     rejection: null,
   };
   const sessionId = newSessionId();
-  const spoken = await speak(ai, messages, session, knownSlugs, 1, kv, email, day);
+  const spoken = await speak(ai, messages, session, knownSlugs, 1, kv, day);
   if (!spoken.ok) {
     await writeSession(kv, sessionId, session);
     return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: 0 });
@@ -398,13 +385,13 @@ async function continueSession(
       turn: nextTurn,
       decision: { kind: decision, utterance },
     });
-    const blocked = await callQuota(kv, email, day, messages);
+    const blocked = await neuronQuota(kv, day, messages);
     if (blocked) {
       await deleteSession(kv, sessionId);
       return blocked;
     }
-    await spendCall(kv, email, day, messages);
-    const spoken = await speak(ai, messages, session, knownSlugs, nextTurn, kv, email, day);
+    await spendNeurons(kv, day, messages);
+    const spoken = await speak(ai, messages, session, knownSlugs, nextTurn, kv, day);
     if (!spoken.ok) {
       await writeSession(kv, sessionId, session);
       return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: session.turn });
@@ -428,13 +415,13 @@ async function continueSession(
       rejected: session.rejection ?? undefined,
     },
   });
-  const blocked = await callQuota(kv, email, day, messages);
+  const blocked = await neuronQuota(kv, day, messages);
   if (blocked) {
     await deleteSession(kv, sessionId);
     return blocked;
   }
-  await spendCall(kv, email, day, messages);
-  const spoken = await speak(ai, messages, session, knownSlugs, nextTurn, kv, email, day);
+  await spendNeurons(kv, day, messages);
+  const spoken = await speak(ai, messages, session, knownSlugs, nextTurn, kv, day);
   if (!spoken.ok) {
     await writeSession(kv, sessionId, session);
     return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: session.turn });
@@ -448,16 +435,6 @@ async function continueSession(
   return json(200, turnBody({ phase: "turn", sessionId, ...spoken.view, draft: session.current, original: session.original }));
 }
 
-async function callQuota(kv: KvLike, email: string, day: string, messages: WorkshopMessage[]): Promise<Response | null> {
-  const calls = await readCount(kv, workshopCallsKey(email, day));
-  if (calls >= WORKSHOP_LIMITS.maxCallsPerDay) return restore(429, "quota", WORKSHOP_COPY.quotaCalls);
-  const neurons = await readCount(kv, workshopNeuronsKey(day));
-  if (neurons + estimateNeurons(messageChars(messages)) > WORKSHOP_LIMITS.maxNeuronsPerDay) {
-    return restore(429, "quota", WORKSHOP_COPY.quotaNeurons);
-  }
-  return null;
-}
-
 async function speak(
   ai: WorkshopAi,
   messages: WorkshopMessage[],
@@ -465,7 +442,6 @@ async function speak(
   knownSlugs: readonly string[],
   turn: number,
   kv: KvLike,
-  email: string,
   day: string,
 ): Promise<{ ok: true; view: { speech: string; change: WorkshopChange | null; turn: number; ready: boolean } } | { ok: false }> {
   let parsed: { speech: string; change: WorkshopChange | null; ready: boolean } | null = null;
@@ -475,9 +451,9 @@ async function speak(
     if (!parsed) {
       logWorkshop("bad-json", { attempt: 1, kind: first.shape.kind, keys: first.shape.keys, response: first.shape.response });
       const retryMessages = strictWorkshopMessages(messages);
-      const blocked = await callQuota(kv, email, day, retryMessages);
+      const blocked = await neuronQuota(kv, day, retryMessages);
       if (!blocked) {
-        await spendCall(kv, email, day, retryMessages);
+        await spendNeurons(kv, day, retryMessages);
         const second = await callModel(ai, retryMessages, true);
         parsed = second.parsed;
         if (!parsed) {

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { installAccessKeysForTests, resetAccessCertsForTests } from "./access";
 import { accessClaims, createAccessFixture, type AccessFixture } from "./access-fixture";
 import type { KvLike } from "./handler";
-import { WORKSHOP_LIMITS, WORKSHOP_MODEL, workshopCallsKey, workshopNeuronsKey, workshopSessionKey, workshopSessionsKey } from "./workshop";
+import { WORKSHOP_COPY, WORKSHOP_LIMITS, WORKSHOP_MODEL, buildWorkshopMessages, estimateNeurons, messageChars, strictWorkshopMessages, workshopNeuronsKey, workshopSessionKey } from "./workshop";
 import { handleWorkshop, type WorkshopAi, type WorkshopEnv } from "./workshop-handler";
 import { WORKSHOP_UTTERANCE_MAX } from "../../apps/world/src/workshop-view";
 
@@ -135,8 +135,8 @@ describe("POST /api/workshop", () => {
     expect(change.title).toBe("Cometa con estela");
     expect(fetches).toEqual([]);
     expect([...kv.store.keys()].some((key) => key.startsWith("proposals:"))).toBe(false);
-    expect(kv.store.get(workshopSessionsKey(EMAIL, DAY))).toBe("1");
-    expect(kv.ttls.get(workshopSessionsKey(EMAIL, DAY))).toBe(WORKSHOP_LIMITS.quotaTtlSeconds);
+    expect([...kv.store.keys()].some((key) => key.includes(":sessions:") || key.includes(":calls:"))).toBe(false);
+    expect(kv.ttls.get(workshopNeuronsKey(DAY))).toBe(WORKSHOP_LIMITS.quotaTtlSeconds);
     const sessionId = body.sessionId as string;
     expect(kv.ttls.get(workshopSessionKey(sessionId))).toBe(WORKSHOP_LIMITS.sessionTtlSeconds);
     const call = ai.calls[0] as { model: string; input: Record<string, unknown> };
@@ -168,7 +168,8 @@ describe("POST /api/workshop", () => {
     expect(ai.calls).toHaveLength(1);
     const call = ai.calls[0] as { input: Record<string, unknown> };
     expect(call.input.response_format).toEqual({ type: "json_object" });
-    expect(kv.store.get(workshopCallsKey(EMAIL, DAY))).toBe("1");
+    expect(Number(kv.store.get(workshopNeuronsKey(DAY)))).toBeGreaterThan(0);
+    expect([...kv.store.keys()].some((key) => key.includes(":calls:"))).toBe(false);
   });
 
   it("no aplica el cambio hasta que el amigo lo acepta, y el tipo no cambia", async () => {
@@ -218,7 +219,9 @@ describe("POST /api/workshop", () => {
     expect(second.input.temperature).toBe(0);
     const messages = second.input.messages as { content: string }[];
     expect(messages.at(-1)?.content).toContain("no era un JSON");
-    expect(kv.store.get(workshopCallsKey(EMAIL, DAY))).toBe("2");
+    const spent = Number(kv.store.get(workshopNeuronsKey(DAY)));
+    expect(spent).toBeGreaterThan(estimateNeurons(0));
+    expect([...kv.store.keys()].some((key) => key.includes(":calls:"))).toBe(false);
     const log = logged.join("\n");
     expect(log).toContain("bad-json");
     expect(log).not.toContain("princesa");
@@ -243,19 +246,23 @@ describe("POST /api/workshop", () => {
     expect(body.speech).toBe("¿Y si el bosque es de noche?");
     expect(body.turn).toBe(1);
     expect(ai.calls).toHaveLength(2);
-    expect(kv.store.get(workshopCallsKey(EMAIL, DAY))).toBe("2");
+    expect(Number(kv.store.get(workshopNeuronsKey(DAY)))).toBeGreaterThan(estimateNeurons(0));
   });
 
-  it("no reintenta si el cupo de llamadas ya se gastó en la primera", async () => {
+  it("no reintenta si las neuronas que quedan no cubren la segunda reserva", async () => {
     const kv = memoryKv();
-    kv.store.set(workshopCallsKey(EMAIL, DAY), "14");
+    const draft = { kind: "propuesta" as const, title: ownerDraft.title, description: ownerDraft.description };
+    const messages = buildWorkshopMessages({ original: draft, current: draft, turn: 1 });
+    const first = estimateNeurons(messageChars(messages));
+    kv.store.set(workshopNeuronsKey(DAY), String(WORKSHOP_LIMITS.maxNeuronsPerDay - first));
     const ai = aiOf({ response: "no es json" });
     const body = await bodyOf(
       await handleWorkshop(request({ op: "start", draft: ownerDraft }), envOf(kv, ai), { now: NOW }),
     );
     expect(String(body.speech)).toContain("liado");
     expect(ai.calls).toHaveLength(1);
-    expect(kv.store.get(workshopCallsKey(EMAIL, DAY))).toBe("15");
+    expect(kv.store.get(workshopNeuronsKey(DAY))).toBe(String(WORKSHOP_LIMITS.maxNeuronsPerDay));
+    expect(estimateNeurons(messageChars(strictWorkshopMessages(messages)))).toBeGreaterThan(0);
   });
 
   it("aísla la sesión por persona y la borra al abandonar", async () => {
@@ -280,26 +287,51 @@ describe("POST /api/workshop", () => {
     expect(kv.store.has(workshopSessionKey(String(started.sessionId)))).toBe(false);
   });
 
-  it("para en el cupo sin llamar al modelo y sin sumar la sesión", async () => {
+  it("ignora un contador viejo de sesiones o de llamadas", async () => {
     const kv = memoryKv();
-    kv.store.set(workshopSessionsKey(EMAIL, DAY), "3");
-    const ai = aiOf(reply("no debería"));
+    kv.store.set(`workshop:sessions:${encodeURIComponent(EMAIL)}:${DAY}`, "9");
+    kv.store.set(`workshop:calls:${encodeURIComponent(EMAIL)}:${DAY}`, "40");
+    const ai = aiOf(reply("¿Por dónde empezamos?"));
     const response = await handleWorkshop(request({ op: "start", draft: proposal }), envOf(kv, ai), { now: NOW });
-    expect(response.status).toBe(429);
-    const body = await bodyOf(response);
-    expect(body.restore).toBe(true);
-    expect(ai.calls).toHaveLength(0);
-    expect(kv.store.get(workshopSessionsKey(EMAIL, DAY))).toBe("3");
+    expect(response.status).toBe(200);
+    expect(ai.calls).toHaveLength(1);
+    expect(kv.store.get(`workshop:sessions:${encodeURIComponent(EMAIL)}:${DAY}`)).toBe("9");
+    expect(kv.store.get(`workshop:calls:${encodeURIComponent(EMAIL)}:${DAY}`)).toBe("40");
   });
 
-  it("frena las neuronas globales antes de la llamada", async () => {
+  it("frena las neuronas globales antes de la llamada y devuelve la nota", async () => {
     const kv = memoryKv();
     kv.store.set(workshopNeuronsKey(DAY), "7990");
     const ai = aiOf(reply("no debería"));
     const response = await handleWorkshop(request({ op: "start", draft: proposal }), envOf(kv, ai), { now: NOW });
     expect(response.status).toBe(429);
+    const body = await bodyOf(response);
+    expect(body.restore).toBe(true);
+    expect(body.error).toBe("quota");
+    expect(body.message).toBe(WORKSHOP_COPY.quotaNeurons);
     expect(ai.calls).toHaveLength(0);
-    expect(kv.store.has(workshopSessionsKey(EMAIL, DAY))).toBe(false);
+    expect(kv.store.has(workshopSessionKey("cualquiera"))).toBe(false);
+    expect([...kv.store.keys()].some((key) => key.startsWith("workshop:s:"))).toBe(false);
+  });
+
+  it("al llenarse las neuronas a mitad de charla cierra la sesión para volver a la nota", async () => {
+    const kv = memoryKv();
+    const ai = aiOf(reply("¿El castillo está en un bosque?"));
+    const started = await bodyOf(
+      await handleWorkshop(request({ op: "start", draft: ownerDraft }), envOf(kv, ai), { now: NOW }),
+    );
+    kv.store.set(workshopNeuronsKey(DAY), String(WORKSHOP_LIMITS.maxNeuronsPerDay));
+    const response = await handleWorkshop(
+      request({ op: "turn", sessionId: started.sessionId, decision: "reply", utterance: "en un bosque" }),
+      envOf(kv, ai),
+      { now: NOW },
+    );
+    expect(response.status).toBe(429);
+    const body = await bodyOf(response);
+    expect(body.restore).toBe(true);
+    expect(body.message).toBe(WORKSHOP_COPY.quotaNeurons);
+    expect(kv.store.has(workshopSessionKey(String(started.sessionId)))).toBe(false);
+    expect(ai.calls).toHaveLength(1);
   });
 
   it("si falta el binding no gasta cupo", async () => {
@@ -327,7 +359,8 @@ describe("POST /api/workshop", () => {
     const stored = JSON.parse(kv.store.get(workshopSessionKey(String(body.sessionId))) ?? "{}") as { turn: number };
     expect(stored.turn).toBe(0);
     expect(ai.calls).toBe(1);
-    expect(kv.store.get(workshopCallsKey(EMAIL, DAY))).toBe("1");
+    expect(Number(kv.store.get(workshopNeuronsKey(DAY)))).toBeGreaterThan(0);
+    expect([...kv.store.keys()].some((key) => key.includes(":calls:"))).toBe(false);
   });
 
   it("la espera del modelo no cuenta como CPU del worker", async () => {
