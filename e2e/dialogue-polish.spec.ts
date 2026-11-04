@@ -83,12 +83,17 @@ async function expectOneScroll(page: Page, testId: string) {
   const cue = page.getByTestId("scroll-cue");
   if (overflows) {
     await expect(cue).toBeVisible();
-    await sheet.evaluate((el) => {
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && el.contains(active)) active.blur();
-      el.scrollTop = el.scrollHeight;
-    });
-    await expect.poll(() => sheet.evaluate((el) => el.scrollTop)).toBeGreaterThan(8);
+    await expect.poll(() =>
+      sheet.evaluate((el) => {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && el.contains(active)) active.blur();
+        el.scrollTop = 0;
+        el.scrollTop = el.scrollHeight;
+        const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
+        const node = el.parentElement?.querySelector("[data-testid='scroll-cue']");
+        return gap <= 4 && node instanceof HTMLElement && node.hidden;
+      }),
+    ).toBe(true);
     await expect(cue).toBeHidden();
   } else {
     await expect(cue).toBeHidden();
