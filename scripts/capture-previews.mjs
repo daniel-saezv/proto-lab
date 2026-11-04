@@ -7,6 +7,7 @@ import { chromium } from "@playwright/test";
 import { readCatalog } from "./catalog-lib.mjs";
 import { encodePreviewClip, evenCrop, frameSpread, mediaDuration, motionSeek } from "./preview-encode.mjs";
 import { PREVIEW_MOTION_FILE, assertPreviewMotionBuffer, writePreviewStamp } from "./preview-motion.mjs";
+import { normalizePreviewStill } from "./preview-frame.mjs";
 import { chooseClip } from "./preview-shot.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -138,8 +139,9 @@ async function captureSlug(browser, slug, previewName) {
     const clip = chooseClip(await visibleCanvasBoxes(page), viewport);
     const outPath = join(root, "protos", slug, previewName);
     const quality = await writeShot(page, outPath, clip);
+    await normalizePreviewStill(outPath);
     const where = clip ? "canvas" : "ventana";
-    console.log(`Vista previa (${where}): ${outPath} (${statSync(outPath).size} bytes, calidad ${quality})`);
+    console.log(`Vista previa (${where}): ${outPath} (${statSync(outPath).size} bytes, calidad ${quality}, 640×360)`);
   } finally {
     await page.close();
   }

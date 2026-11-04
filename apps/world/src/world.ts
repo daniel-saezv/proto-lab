@@ -24,10 +24,11 @@ import {
   RingGeometry,
   Scene,
   SphereGeometry,
+  ClampToEdgeWrapping,
+  LinearFilter,
   LinearSRGBColorSpace,
   SRGBColorSpace,
   Texture,
-  TextureLoader,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -52,6 +53,13 @@ import type { DeskBeat } from "./ambient-corners";
 import { dialogueCameraPose, dialogueSubject, dialogueTransitionSeconds, type DialogueSubject } from "./dialogue-camera";
 import type { DialogueCue } from "./dialogue-cues";
 import { drawTitleCard } from "./title-card";
+import {
+  ARCADE_ASPECT,
+  ARCADE_SCREEN_HEIGHT,
+  ARCADE_SCREEN_WIDTH,
+  coverRepeat,
+} from "./preview-frame";
+import { loadPreviewStill, preloadPreviewStills } from "./preview-stills";
 import {
   clampFollowDistance,
   followDistanceAfterWheel,
@@ -404,8 +412,8 @@ export function startWorld(options: {
   const arcadeIndex = { current: 0 };
   let selectorOpen = false;
   let idleElapsed = 0;
-  const textureLoader = new TextureLoader();
-  let screenTextureDisposable: CanvasTexture | Texture | null = null;
+  const screenTextures = new Map<string, Texture>();
+  let titleCardTexture: CanvasTexture | null = null;
   let screenLoadToken = 0;
 
   const inventor = buildInventor();
@@ -421,29 +429,77 @@ export function startWorld(options: {
   arcadeLight.position.set(arcadeSpot.x - 0.15, 1.35, arcadeSpot.z + 1.15);
   addArcadeGlow(arcadeSpot.x, arcadeSpot.z);
 
-  function disposeScreenMap() {
-    const map = arcadeScreenMaterial.map;
-    if (map && map !== screenTextureDisposable) map.dispose();
-    if (screenTextureDisposable) {
-      screenTextureDisposable.dispose();
-      screenTextureDisposable = null;
-    }
+  function applyCover(texture: Texture, imageAspect: number) {
+    const repeat = coverRepeat(imageAspect, ARCADE_ASPECT);
+    texture.wrapS = ClampToEdgeWrapping;
+    texture.wrapT = ClampToEdgeWrapping;
+    texture.center.set(0.5, 0.5);
+    texture.repeat.set(repeat.x, repeat.y);
+    texture.offset.set(0, 0);
+    texture.colorSpace = SRGBColorSpace;
+    // 640×360 no es potencia de dos. Sin mipmaps el muestreo es el mismo en WebGL 1 y 2.
+    texture.generateMipmaps = false;
+    texture.minFilter = LinearFilter;
+    texture.magFilter = LinearFilter;
+  }
+
+  function dropTitleCard() {
+    if (!titleCardTexture) return;
+    if (arcadeScreenMaterial.map === titleCardTexture) arcadeScreenMaterial.map = null;
+    titleCardTexture.dispose();
+    titleCardTexture = null;
+  }
+
+  function disposeArcadePreviews() {
+    dropTitleCard();
+    for (const texture of screenTextures.values()) texture.dispose();
+    screenTextures.clear();
     arcadeScreenMaterial.map = null;
   }
 
   function applyTitleCard(entry: CatalogEntry) {
-    disposeScreenMap();
+    dropTitleCard();
     const canvas = document.createElement("canvas");
-    canvas.width = 512;
-    canvas.height = 320;
+    canvas.width = 640;
+    canvas.height = 400;
     const context = canvas.getContext("2d");
     if (!context) return;
-    drawTitleCard(context, entry, 512, 320);
+    drawTitleCard(context, entry, 640, 400);
     const texture = new CanvasTexture(canvas);
-    texture.colorSpace = SRGBColorSpace;
-    screenTextureDisposable = texture;
+    applyCover(texture, 640 / 400);
+    texture.needsUpdate = true;
+    titleCardTexture = texture;
     arcadeScreenMaterial.map = texture;
     arcadeScreenMaterial.needsUpdate = true;
+  }
+
+  function rememberPreview(href: string, image: HTMLImageElement) {
+    const cached = screenTextures.get(href);
+    if (cached) return cached;
+    const texture = new Texture(image);
+    applyCover(texture, image.naturalWidth / image.naturalHeight);
+    texture.needsUpdate = true;
+    screenTextures.set(href, texture);
+    return texture;
+  }
+
+  function showArcadePreview(entry: CatalogEntry) {
+    const token = ++screenLoadToken;
+    const href = entry.previewHref;
+    if (!href) {
+      applyTitleCard(entry);
+      return;
+    }
+    void loadPreviewStill(href).then((image) => {
+      if (token !== screenLoadToken) return;
+      if (!image) {
+        applyTitleCard(entry);
+        return;
+      }
+      dropTitleCard();
+      arcadeScreenMaterial.map = rememberPreview(href, image);
+      arcadeScreenMaterial.needsUpdate = true;
+    });
   }
 
   function syncArcadeUpdateBadge(entry: CatalogEntry) {
@@ -461,35 +517,13 @@ export function startWorld(options: {
     idleElapsed = 0;
     const entry = options.prototypes[arcadeIndex.current];
     if (!entry) return;
+    options.viewport.dataset.arcadeSlug = entry.slug;
     syncArcadeUpdateBadge(entry);
     ambient.setTvSources(entry.previewHref, `/protos/${entry.slug}/preview.mp4`);
-    if (entry.previewHref) {
-      const token = ++screenLoadToken;
-      textureLoader.load(
-        entry.previewHref,
-        (texture) => {
-          if (token !== screenLoadToken) {
-            texture.dispose();
-            return;
-          }
-          disposeScreenMap();
-          texture.colorSpace = SRGBColorSpace;
-          screenTextureDisposable = texture;
-          arcadeScreenMaterial.map = texture;
-          arcadeScreenMaterial.needsUpdate = true;
-        },
-        undefined,
-        () => {
-          if (token !== screenLoadToken) return;
-          applyTitleCard(entry);
-        },
-      );
-    } else {
-      screenLoadToken += 1;
-      applyTitleCard(entry);
-    }
+    showArcadePreview(entry);
   }
 
+  preloadPreviewStills(options.prototypes.flatMap((entry) => (entry.previewHref ? [entry.previewHref] : [])));
   setArcadeHighlight(0);
 
   const player = buildPlayer();
@@ -1733,7 +1767,7 @@ export function startWorld(options: {
       labelRenderer.domElement.remove();
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
-      disposeScreenMap();
+      disposeArcadePreviews();
       lobbyWhiteboard.dispose();
     },
   };
@@ -2245,7 +2279,7 @@ export function startWorld(options: {
     group.add(marquee);
     group.userData.marqueeMat = marqueeMat;
     box(group, 1.08, 0.74, 0.05, 0, 1.16, 0.3, 0x100c18, false);
-    const screen = new Mesh(geo(new PlaneGeometry(0.94, 0.6)), screenMaterial);
+    const screen = new Mesh(geo(new PlaneGeometry(ARCADE_SCREEN_WIDTH, ARCADE_SCREEN_HEIGHT)), screenMaterial);
     screen.position.set(0, 1.16, 0.35);
     screen.userData.noBatch = true;
     group.add(screen);
