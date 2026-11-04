@@ -6,6 +6,8 @@ import {
   buildWorkshopMessages,
   estimateNeurons,
   parseWorkshopJson,
+  workshopModelText,
+  workshopPayloadShape,
 } from "./workshop";
 
 const note = {
@@ -55,5 +57,37 @@ describe("taller, prompt y lectura", () => {
     expect(
       parseWorkshopJson('{"speech":"","change":{"title":"ab","description":"corta"},"ready":true}'),
     ).toBeNull();
+  });
+
+  it("lee el objeto response, un bloque con valla y solo el primer objeto", () => {
+    const objectPayload = {
+      response: {
+        speech: "¿El castillo está en un bosque o en una isla?",
+        change: null,
+        ready: false,
+      },
+    };
+    expect(parseWorkshopJson(workshopModelText(objectPayload))?.speech).toBe(
+      "¿El castillo está en un bosque o en una isla?",
+    );
+    expect(workshopPayloadShape(objectPayload)).toEqual({
+      kind: "object",
+      keys: "response",
+      response: "object",
+    });
+    const fenced =
+      'antes ```json\n{"speech":"¿Y si el bosque es de noche?","change":null,"ready":false}\n```\ndespues {"speech":"segunda","change":null,"ready":true}';
+    const fromFence = parseWorkshopJson(fenced);
+    expect(fromFence?.speech).toBe("¿Y si el bosque es de noche?");
+    expect(fromFence?.ready).toBe(false);
+    expect(parseWorkshopJson('{"speech":"mira } esto","change":null,"ready":false} sobra}')?.speech).toBe(
+      "mira } esto",
+    );
+    const choices = {
+      choices: [{ message: { content: '{"speech":"por choices","change":null,"ready":false}' } }],
+    };
+    expect(parseWorkshopJson(workshopModelText(choices))?.speech).toBe("por choices");
+    expect(workshopModelText({ response: 3 })).toBe("");
+    expect(parseWorkshopJson(workshopModelText({ response: { speech: 3, change: null, ready: false } }))).toBeNull();
   });
 });

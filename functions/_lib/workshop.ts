@@ -175,13 +175,61 @@ function parseChange(value: unknown): WorkshopChange | null {
   return { title, description, why };
 }
 
-export function parseWorkshopJson(raw: string): { speech: string; change: WorkshopChange | null; ready: boolean } | null {
+/** Segunda llamada, solo si la primera no trae un JSON legible. */
+export const WORKSHOP_STRICT_RETRY =
+  "La respuesta anterior no era un JSON válido. Responde solo con un objeto JSON y nada más. Claves: speech (string), change (null o un objeto con title, description y why) y ready (boolean). Sin markdown.";
+
+export function strictWorkshopMessages(messages: readonly WorkshopMessage[]): WorkshopMessage[] {
+  return [...messages, { role: "user", content: WORKSHOP_STRICT_RETRY }];
+}
+
+/** Forma del payload, sin valores: el log no puede llevar la nota ni el texto del modelo. */
+export function workshopPayloadShape(payload: unknown): { kind: string; keys: string; response: string } {
+  if (typeof payload === "string") return { kind: "string", keys: "", response: "absent" };
+  if (!payload || typeof payload !== "object") {
+    return { kind: payload == null ? "empty" : typeof payload, keys: "", response: "absent" };
+  }
+  const body = payload as Record<string, unknown>;
+  const response = body.response;
+  const responseKind = response == null ? "empty" : Array.isArray(response) ? "array" : typeof response;
+  return { kind: "object", keys: Object.keys(body).sort().join(","), response: responseKind };
+}
+
+function stripFences(raw: string): string {
+  return raw.replace(/```(?:json)?/gi, "");
+}
+
+/** Primer objeto equilibrado. El cierre final del texto entero mezcla un segundo bloque y el parseo falla. */
+function firstJsonObject(raw: string): string | null {
   const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < raw.length; i += 1) {
+    const char = raw[i] ?? "";
+    if (inString) {
+      if (escape) escape = false;
+      else if (char === "\\") escape = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return raw.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+export function parseWorkshopJson(raw: string): { speech: string; change: WorkshopChange | null; ready: boolean } | null {
+  const slice = firstJsonObject(stripFences(raw));
+  if (!slice) return null;
   let body: unknown;
   try {
-    body = JSON.parse(raw.slice(start, end + 1));
+    body = JSON.parse(slice);
   } catch {
     return null;
   }
@@ -193,16 +241,35 @@ export function parseWorkshopJson(raw: string): { speech: string; change: Worksh
   return { speech, change: parseChange(record.change), ready: record.ready === true };
 }
 
+function textFromField(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") return JSON.stringify(value);
+  return "";
+}
+
+function openAiContent(body: Record<string, unknown>): string {
+  const choices = body.choices;
+  if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object") return "";
+  const message = (choices[0] as Record<string, unknown>).message;
+  if (!message || typeof message !== "object") return "";
+  return textFromField((message as Record<string, unknown>).content);
+}
+
 export function workshopModelText(payload: unknown): string {
   if (typeof payload === "string") return payload;
   if (!payload || typeof payload !== "object") return "";
   const body = payload as Record<string, unknown>;
-  if (typeof body.response === "string") return body.response;
+  const direct = textFromField(body.response);
+  if (direct) return direct;
   const result = body.result;
   if (result && typeof result === "object") {
     const nested = result as Record<string, unknown>;
-    if (typeof nested.response === "string") return nested.response;
+    const nestedText = textFromField(nested.response) || openAiContent(nested);
+    if (nestedText) return nestedText;
   }
+  const choice = openAiContent(body);
+  if (choice) return choice;
+  if (typeof body.speech === "string") return JSON.stringify(body);
   return "";
 }
 

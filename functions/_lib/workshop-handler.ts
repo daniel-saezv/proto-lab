@@ -12,9 +12,11 @@ import {
   estimateNeurons,
   messageChars,
   parseWorkshopJson,
+  strictWorkshopMessages,
   workshopCallsKey,
   workshopModelText,
   workshopNeuronsKey,
+  workshopPayloadShape,
   workshopSessionKey,
   workshopSessionsKey,
   type WorkshopChange,
@@ -155,20 +157,31 @@ function summaryBody(session: WorkshopSession, speech: string): Record<string, u
   });
 }
 
-async function callModel(
-  ai: WorkshopAi,
-  messages: WorkshopMessage[],
-): Promise<{ speech: string; change: WorkshopChange | null; ready: boolean } | null> {
-  const payload = await withTimeout(
-    ai.run(WORKSHOP_MODEL, {
-      messages,
-      max_tokens: WORKSHOP_LIMITS.maxTokens,
-      temperature: 0.6,
-      response_format: { type: "json_object" },
-    }),
-    WORKSHOP_LIMITS.modelTimeoutMs,
-  );
-  return parseWorkshopJson(workshopModelText(payload));
+type ModelRead = {
+  parsed: { speech: string; change: WorkshopChange | null; ready: boolean } | null;
+  shape: { kind: string; keys: string; response: string };
+};
+
+function logWorkshop(event: string, detail: Record<string, string | number>): void {
+  console.error(JSON.stringify({ source: "workshop", event, ...detail }));
+}
+
+function workshopErrorKind(error: unknown): string {
+  if (!(error instanceof Error)) return "throw";
+  if (error.message === "timeout") return "timeout";
+  if (/json mode/i.test(error.message)) return "json-mode";
+  return error.name || "throw";
+}
+
+async function callModel(ai: WorkshopAi, messages: WorkshopMessage[], retry: boolean): Promise<ModelRead> {
+  const input: Record<string, unknown> = {
+    messages,
+    max_tokens: WORKSHOP_LIMITS.maxTokens,
+    temperature: retry ? 0 : 0.6,
+  };
+  if (!retry) input.response_format = { type: "json_object" };
+  const payload = await withTimeout(ai.run(WORKSHOP_MODEL, input), WORKSHOP_LIMITS.modelTimeoutMs);
+  return { parsed: parseWorkshopJson(workshopModelText(payload)), shape: workshopPayloadShape(payload) };
 }
 
 function offerChange(
@@ -314,7 +327,7 @@ async function startSession(
     rejection: null,
   };
   const sessionId = newSessionId();
-  const spoken = await speak(ai, messages, session, knownSlugs, 1);
+  const spoken = await speak(ai, messages, session, knownSlugs, 1, kv, email, day);
   if (!spoken.ok) {
     await writeSession(kv, sessionId, session);
     return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: 0 });
@@ -391,7 +404,7 @@ async function continueSession(
       return blocked;
     }
     await spendCall(kv, email, day, messages);
-    const spoken = await speak(ai, messages, session, knownSlugs, nextTurn);
+    const spoken = await speak(ai, messages, session, knownSlugs, nextTurn, kv, email, day);
     if (!spoken.ok) {
       await writeSession(kv, sessionId, session);
       return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: session.turn });
@@ -421,7 +434,7 @@ async function continueSession(
     return blocked;
   }
   await spendCall(kv, email, day, messages);
-  const spoken = await speak(ai, messages, session, knownSlugs, nextTurn);
+  const spoken = await speak(ai, messages, session, knownSlugs, nextTurn, kv, email, day);
   if (!spoken.ok) {
     await writeSession(kv, sessionId, session);
     return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: session.turn });
@@ -451,15 +464,36 @@ async function speak(
   session: WorkshopSession,
   knownSlugs: readonly string[],
   turn: number,
+  kv: KvLike,
+  email: string,
+  day: string,
 ): Promise<{ ok: true; view: { speech: string; change: WorkshopChange | null; turn: number; ready: boolean } } | { ok: false }> {
   let parsed: { speech: string; change: WorkshopChange | null; ready: boolean } | null = null;
-  let down = false;
   try {
-    parsed = await callModel(ai, messages);
-  } catch {
-    down = true;
+    const first = await callModel(ai, messages, false);
+    parsed = first.parsed;
+    if (!parsed) {
+      logWorkshop("bad-json", { attempt: 1, kind: first.shape.kind, keys: first.shape.keys, response: first.shape.response });
+      const retryMessages = strictWorkshopMessages(messages);
+      const blocked = await callQuota(kv, email, day, retryMessages);
+      if (!blocked) {
+        await spendCall(kv, email, day, retryMessages);
+        const second = await callModel(ai, retryMessages, true);
+        parsed = second.parsed;
+        if (!parsed) {
+          logWorkshop("bad-json", {
+            attempt: 2,
+            kind: second.shape.kind,
+            keys: second.shape.keys,
+            response: second.shape.response,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    logWorkshop("model-error", { kind: workshopErrorKind(error) });
+    return { ok: false };
   }
-  if (down) return { ok: false };
   const forcedReady = turn >= WORKSHOP_LIMITS.maxTurns;
   if (!parsed) {
     session.pending = null;
