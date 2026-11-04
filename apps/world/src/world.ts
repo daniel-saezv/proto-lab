@@ -164,7 +164,7 @@ export type WorldHandle = {
   /** Pausa el bucle, el análisis de audio y el resto del trabajo por frame. */
   setSuspended: (suspended: boolean) => void;
   /** Suelta el contexto WebGL del laboratorio. La escena y el jugador siguen en memoria. */
-  releaseRenderer: () => void;
+  releaseRenderer: () => Promise<void>;
   /** Vuelve a crear el renderer sobre la misma escena, sin mover al jugador. */
   restoreRenderer: () => void;
   /** Lleva al Inventor al escritorio o a su sitio. `movesCamera` false deja la cámara en paz. */
@@ -683,8 +683,8 @@ export function startWorld(options: {
   }
   bindSurface(renderer.domElement);
 
-  function releaseRenderer() {
-    if (!gpuLive) return;
+  function releaseRenderer(): Promise<void> {
+    if (!gpuLive) return Promise.resolve();
     ambient.setTvSuspended(true);
     gpuLive = false;
     options.viewport.dataset.gpu = "0";
@@ -695,8 +695,26 @@ export function startWorld(options: {
     sun.shadow.map = null;
     sun.shadow.mapPass = null;
     renderer.dispose();
-    gl.getExtension("WEBGL_lose_context")?.loseContext();
-    canvas.remove();
+    const extension = gl.getExtension("WEBGL_lose_context");
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        canvas.remove();
+        resolve();
+      };
+      canvas.addEventListener(
+        "webglcontextlost",
+        (event) => {
+          event.preventDefault();
+          finish();
+        },
+        { once: true },
+      );
+      window.setTimeout(finish, 400);
+      extension?.loseContext();
+    });
   }
 
   function restoreRenderer() {
