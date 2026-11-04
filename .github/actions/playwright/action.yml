@@ -13,7 +13,7 @@ inputs:
     required: false
     default: ""
   build:
-    description: "false" omite pnpm build porque dist ya está en el workspace.
+    description: "Si vale false, omite pnpm build porque dist ya está en el workspace."
     required: false
     default: "true"
 
