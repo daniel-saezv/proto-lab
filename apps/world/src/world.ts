@@ -136,6 +136,14 @@ import { bindWhiteboardMesh } from "./world-whiteboard";
 import { LOUNGE_TABLE, NORTH_COUCH, SLACKER_COUCH, SOUTH_COUCH } from "./lounge-layout";
 import { fuseMeshes } from "./mesh-fuse";
 import { batchStaticMeshes, type BatchStats } from "./static-batch";
+import {
+  buildIdeaGeometry,
+  cloudAnchor,
+  layoutCloudSlots,
+  paintIdeaColors,
+  type CloudSlot,
+  type WorkshopIdeaMesh,
+} from "./workshop-letters";
 import { applyShade, floorShade, floorUv, wallShade, type ShadeSpot } from "./vertex-ao";
 import type { ProposalStatusItem } from "./proposals-status-api";
 
@@ -192,6 +200,8 @@ export type WorldHandle = {
   ensureInventorHome: () => void;
   /** `talk` mira a cámara; `work` apunta en la mesa; `off` lo deja quieto. */
   setWorkshopBeat: (beat: DeskBeat) => void;
+  /** Nubes de la ronda. `null` las quita. */
+  setWorkshopIdeas: (ideas: WorkshopIdeaMesh[] | null) => void;
   dispose: () => void;
 };
 
@@ -230,6 +240,8 @@ export function startWorld(options: {
   /** `true` mientras la cámara entra o vuelve del diálogo. */
   onDialogueFrame?: (open: boolean) => void;
   onGesture?: () => void;
+  /** Centros en píxeles de pantalla de las ideas de la ronda, para los botones. */
+  onWorkshopHits?: (hits: { id: string; x: number; y: number; size: number }[]) => void;
   /** `false` deja cada malla suelta para medir renderer.info. */
   batch?: boolean;
   perf?: boolean;
@@ -649,6 +661,12 @@ export function startWorld(options: {
   };
   let workshopTrip: WorkshopTrip | null = null;
   let workshopBeat: DeskBeat = "off";
+  type CloudEntry = { mesh: Mesh; slot: CloudSlot; idea: WorkshopIdeaMesh };
+  let cloudEntries: CloudEntry[] = [];
+  let cloudMaterial: MeshBasicMaterial | null = null;
+  const cloudScratch = new Vector3();
+  const cloudFacing = new Vector3();
+  const cloudForward = new Vector3(0, 0, 1);
   let perfWorkMs = 0;
   const workshopCamFrom = new Vector3();
   const workshopCamTo = new Vector3();
@@ -969,6 +987,7 @@ export function startWorld(options: {
       camera.lookAt(player.position.x, 1.15, player.position.z);
     }
     updateTarget();
+    if (cloudEntries.length > 0) placeWorkshopClouds(frame, reduced || e2eRender);
     renderer.render(scene, activeCamera);
     labelRenderer.render(scene, activeCamera);
     if (options.perf) perfWorkMs = performance.now() - now;
@@ -1376,6 +1395,100 @@ export function startWorld(options: {
     ambient.setDeskBeat(beat);
   }
 
+  function disposeWorkshopClouds() {
+    for (const entry of cloudEntries) {
+      entry.mesh.geometry.dispose();
+      entry.mesh.removeFromParent();
+    }
+    cloudEntries = [];
+    options.onWorkshopHits?.([]);
+  }
+
+  function setWorkshopIdeas(ideas: WorkshopIdeaMesh[] | null) {
+    const next = ideas ?? [];
+    const same =
+      next.length === cloudEntries.length &&
+      next.every(
+        (idea, index) =>
+          idea.id === cloudEntries[index]?.idea.id &&
+          idea.text === cloudEntries[index]?.idea.text &&
+          idea.role === cloudEntries[index]?.idea.role,
+      );
+    if (same) {
+      next.forEach((idea, index) => {
+        const entry = cloudEntries[index];
+        if (!entry || entry.idea.picked === idea.picked) return;
+        paintIdeaColors(entry.mesh.geometry as BufferGeometry, idea.role, idea.picked);
+        entry.idea = idea;
+      });
+      return;
+    }
+    disposeWorkshopClouds();
+    if (next.length === 0) return;
+    if (!cloudMaterial) {
+      cloudMaterial = new MeshBasicMaterial({ vertexColors: true });
+      materials.push(cloudMaterial);
+    }
+    const nowCount = next.filter((idea) => idea.role === "now").length;
+    const pastCount = next.length - nowCount;
+    const laid = layoutCloudSlots(nowCount, pastCount, camera.aspect, camera.fov);
+    let pastIndex = 0;
+    let nowIndex = 0;
+    for (const idea of next) {
+      const slot = idea.role === "past" ? laid.past[pastIndex++] : laid.now[nowIndex++];
+      if (!slot || !cloudMaterial) continue;
+      const geometry = buildIdeaGeometry(idea.text);
+      paintIdeaColors(geometry, idea.role, idea.picked);
+      const mesh = new Mesh(geometry, cloudMaterial);
+      mesh.name = `idea-${idea.id}`;
+      mesh.userData.noBatch = true;
+      mesh.renderOrder = idea.role === "past" ? 1 : 2;
+      scene.add(mesh);
+      cloudEntries.push({ mesh, slot, idea });
+    }
+    placeWorkshopClouds(0, true);
+  }
+
+  function placeWorkshopClouds(time: number, still: boolean) {
+    if (cloudEntries.length === 0) return;
+    const nowCount = cloudEntries.filter((entry) => entry.idea.role === "now").length;
+    const pastCount = cloudEntries.length - nowCount;
+    const laid = layoutCloudSlots(nowCount, pastCount, camera.aspect, camera.fov);
+    let pastIndex = 0;
+    let nowIndex = 0;
+    for (const entry of cloudEntries) {
+      const slot = entry.idea.role === "past" ? laid.past[pastIndex++] : laid.now[nowIndex++];
+      if (!slot) continue;
+      entry.slot = slot;
+      const anchor = cloudAnchor(camera, slot, cloudScratch);
+      entry.mesh.position.copy(anchor);
+      if (!still) entry.mesh.position.y += Math.sin(time * 1.3 + (pastIndex + nowIndex)) * 0.012;
+      entry.mesh.scale.setScalar(slot.scale);
+      cloudFacing.copy(camera.position).sub(entry.mesh.position);
+      if (cloudFacing.lengthSq() > 1e-6) {
+        cloudFacing.normalize();
+        entry.mesh.quaternion.setFromUnitVectors(cloudForward, cloudFacing);
+      }
+    }
+    publishCloudHits();
+  }
+
+  function publishCloudHits() {
+    if (!options.onWorkshopHits || !gpuLive) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    const hits = cloudEntries
+      .filter((entry) => entry.idea.role === "now")
+      .map((entry) => {
+        cloudScratch.copy(entry.mesh.position).project(camera);
+        const x = (cloudScratch.x * 0.5 + 0.5) * rect.width + rect.left;
+        const y = (-cloudScratch.y * 0.5 + 0.5) * rect.height + rect.top;
+        const full = 2 * Math.tan((camera.fov * Math.PI) / 360) * Math.max(0.2, entry.slot.depth);
+        const size = (entry.slot.scale / full) * rect.height;
+        return { id: entry.idea.id, x, y, size: Math.max(44, size) };
+      });
+    options.onWorkshopHits(hits);
+  }
+
   function playWorkshopTrip(dest: "desk" | "home", onDone: () => void, movesCamera = true) {
     if (movesCamera) rememberFollowRig();
     const token = ++workshopToken;
@@ -1452,6 +1565,19 @@ export function startWorld(options: {
       dialoguePlace = "stand";
     }
     trip.onDone();
+  }
+
+  function workshopCloudStats() {
+    let triangles = 0;
+    for (const entry of cloudEntries) {
+      triangles += entry.mesh.geometry.getAttribute("position").count / 3;
+    }
+    return {
+      count: cloudEntries.length,
+      past: cloudEntries.filter((entry) => entry.idea.role === "past").length,
+      now: cloudEntries.filter((entry) => entry.idea.role === "now").length,
+      triangles,
+    };
   }
 
   function workshopView() {
@@ -1674,6 +1800,7 @@ export function startWorld(options: {
       rendererStats,
       batchStats: () => batchStats,
       workshopView,
+      workshopClouds: workshopCloudStats,
       probeWalkable: () => {
         const bounds = playerLobbyBounds();
         const start = { x: 0, z: 1.7 };
@@ -1700,6 +1827,7 @@ export function startWorld(options: {
       rendererStats,
       batchStats: () => batchStats,
       workshopView,
+      workshopClouds: workshopCloudStats,
       frameWorkMs: () => Number(perfWorkMs.toFixed(2)),
       setViewpoint: applyViewpoint,
       frameAt(x: number, z: number, lookYaw: number, lookPitch: number, distance?: number) {
@@ -1758,7 +1886,9 @@ export function startWorld(options: {
     skipWorkshopTrip,
     ensureInventorHome,
     setWorkshopBeat,
+    setWorkshopIdeas,
     dispose() {
+      disposeWorkshopClouds();
       running = false;
       ambient.dispose();
       input.dispose();
@@ -2511,6 +2641,7 @@ declare global {
         beat: string;
         headX: number;
       };
+      workshopClouds?: () => { count: number; past: number; now: number; triangles: number };
     };
   }
 }

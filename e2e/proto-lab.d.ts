@@ -51,6 +51,7 @@ interface Window {
       beat?: string;
       headX?: number;
     };
+    workshopClouds?: () => { count: number; past: number; now: number; triangles: number };
   };
   __chispa?: {
     drop: (x?: number) => void;

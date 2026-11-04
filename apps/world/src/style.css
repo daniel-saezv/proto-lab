@@ -542,6 +542,39 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   font-size: 0.75rem;
   line-height: 1;
 }
+#dialogue.is-workshop[data-workshop="pick"] { overflow: visible; }
+.workshop-cloud-hits {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.workshop-cloud-hit {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  display: block;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  touch-action: manipulation;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.workshop-cloud-hit:focus-visible {
+  outline: 3px solid var(--amber);
+  outline-offset: 2px;
+}
+.workshop-cloud-hit[aria-pressed="true"] {
+  border-color: var(--amber);
+  background: rgba(255, 183, 3, 0.2);
+}
 @keyframes workshop-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }

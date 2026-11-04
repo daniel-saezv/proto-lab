@@ -137,6 +137,9 @@ const dialogue = createDialogue({
   onWorkshopBeat: (beat) => {
     world?.setWorkshopBeat(beat);
   },
+  onWorkshopIdeas: (ideas) => {
+    world?.setWorkshopIdeas(ideas);
+  },
 });
 
 workshopSkip.addEventListener("click", () => {
@@ -486,6 +489,28 @@ async function bootWorld() {
       onWhiteboardReady: (controller) => {
         lobbyWhiteboard = controller;
         flushProposalStatusToBoards();
+      },
+      onWorkshopHits: (hits) => {
+        const origin = dialogueRoot.getBoundingClientRect();
+        const limit = origin.top - 6;
+        const viewW = window.innerWidth;
+        for (const hit of hits) {
+          const button = dialogueRoot.querySelector(`[data-cloud-id="${CSS.escape(hit.id)}"]`);
+          if (!(button instanceof HTMLElement)) continue;
+          const room = Math.max(44, Math.min(240, limit - 4, viewW));
+          const size = Math.max(44, Math.min(hit.size, room));
+          const half = size / 2;
+          let x = hit.x;
+          let y = hit.y;
+          if (y > limit - half) y = limit - half;
+          if (y < half) y = half;
+          if (x < half) x = half;
+          if (x > viewW - half) x = viewW - half;
+          button.style.width = `${size}px`;
+          button.style.height = `${size}px`;
+          button.style.left = `${x - origin.left - dialogueRoot.clientLeft}px`;
+          button.style.top = `${y - origin.top - dialogueRoot.clientTop}px`;
+        }
       },
       onGesture: () => music.unlock(),
     });

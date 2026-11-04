@@ -30,6 +30,7 @@ import {
   type WorkshopScreen,
   type WorkshopTrailMark,
 } from "./workshop-view";
+import { workshopIdeaMeshes, type WorkshopIdeaMesh } from "./workshop-letters";
 
 export const INVENTOR_NAME = "Inventor";
 
@@ -75,6 +76,8 @@ export function createDialogue(options: {
   workshop?: (request: WorkshopRequest) => Promise<WorkshopResult>;
   /** `talk` mira a cámara; `work` usa la mesa; `off` al irse. */
   onWorkshopBeat?: (beat: "off" | "talk" | "work") => void;
+  /** Ideas de la ronda en la escena. `null` las quita. */
+  onWorkshopIdeas?: (ideas: WorkshopIdeaMesh[] | null) => void;
 }) {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let phase: Phase = { name: "greet" };
@@ -319,7 +322,7 @@ export function createDialogue(options: {
       maxRounds: result.maxRounds,
       trail: workshopTrailBefore(workshopTrail, result.round),
     };
-    options.onWorkshopBeat?.("talk");
+    options.onWorkshopBeat?.("work");
     render();
   }
 
@@ -423,6 +426,7 @@ export function createDialogue(options: {
     options.root.dataset.phase = phase.name;
     options.root.dataset.outcome = phase.name === "done" ? phase.outcome : "";
     options.root.classList.toggle("is-workshop", phase.name === "workshop");
+    if (!(phase.name === "workshop" && workshopScreen?.kind === "pick")) options.onWorkshopIdeas?.(null);
     releaseSheet();
     options.root.append(createDialogCloseButton(() => close()));
     if (phase.name === "workshop" && workshopScreen) options.root.dataset.workshop = workshopScreen.kind;
@@ -587,7 +591,7 @@ export function createDialogue(options: {
   function showTrail(trail: WorkshopTrailMark[]) {
     if (trail.length === 0) return;
     const list = document.createElement("ol");
-    list.className = "workshop-trail";
+    list.className = "sr-only";
     list.dataset.testid = "workshop-trail";
     list.setAttribute("aria-label", "Ideas elegidas");
     for (const mark of trail) {
@@ -724,24 +728,33 @@ export function createDialogue(options: {
     showTrail(screen.trail);
     const picked = new Set<string>();
     const list = document.createElement("div");
-    list.className = "workshop-options";
+    list.className = "workshop-cloud-hits";
     list.setAttribute("role", "group");
     list.setAttribute("aria-label", "Ideas de esta ronda");
-    for (const option of screen.options) {
+    const publish = () => {
+      options.onWorkshopIdeas?.(workshopIdeaMeshes(screen.options, picked, screen.trail));
+    };
+    for (const [index, option] of screen.options.entries()) {
       const chip = document.createElement("button");
       chip.type = "button";
-      chip.className = "workshop-option";
+      chip.className = "workshop-cloud-hit";
       chip.dataset.testid = "workshop-option";
+      chip.dataset.cloudId = `now-${index}`;
       chip.setAttribute("aria-pressed", "false");
-      chip.textContent = option;
+      const label = document.createElement("span");
+      label.className = "sr-only";
+      label.textContent = option;
+      chip.append(label);
       chip.addEventListener("click", () => {
         if (picked.has(option)) picked.delete(option);
         else picked.add(option);
         chip.setAttribute("aria-pressed", picked.has(option) ? "true" : "false");
+        publish();
       });
       list.append(chip);
     }
-    content().append(list);
+    options.root.append(list);
+    publish();
     const actions = actionRow();
     for (const choice of workshopPickChoices()) {
       addChoice(actions, choice.id, choice.label, () => {
