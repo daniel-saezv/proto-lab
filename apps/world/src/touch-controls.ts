@@ -1,11 +1,13 @@
 import { create } from "nipplejs";
-import { pinchScale, shouldApplyPinch } from "./camera-rig";
 import {
+  activeContact,
   lookRatesFromStickVector,
   movementFromStickVector,
   selectionHostFromEventTarget,
   shouldBlockTextSelection,
   shouldIgnoreTouchAt,
+  stickDeflection,
+  type StickContact,
 } from "./touch-map";
 
 type NippleCollection = ReturnType<typeof create>;
@@ -36,17 +38,10 @@ export function attachTouchControls(options: {
   isBlocked: () => boolean;
   onGesture?: () => void;
   onSurfaceTap?: (clientX: number, clientY: number) => void;
-  onZoom?: (scale: number) => void;
 }): TouchControlsHandle {
-  let moveForward = 0;
-  let moveRight = 0;
-  let lookX = 0;
-  let lookY = 0;
   let activeSticks = 0;
   let zonesEnabled = true;
-  let pinching = false;
-
-  const tapState = { down: false, x: 0, y: 0, moved: false, side: null as "move" | "look" | null };
+  const contacts = new Map<number, StickContact>();
 
   const gestureCapture: AddEventListenerOptions = { capture: true };
   const onGesture = () => options.onGesture?.();
@@ -72,29 +67,39 @@ export function attachTouchControls(options: {
     setMarkerVisible(activeSticks > 0);
   }
 
-  function bindTapZone(zone: HTMLElement, side: "move" | "look") {
+  function bindZone(zone: HTMLElement, zoneName: StickContact["zone"]) {
     const onDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
       onGesture();
       if (!zonesEnabled || options.isBlocked() || shouldIgnoreTouchAt(event.clientX, event.clientY)) return;
-      tapState.down = true;
-      tapState.x = event.clientX;
-      tapState.y = event.clientY;
-      tapState.moved = false;
-      tapState.side = side;
+      contacts.set(event.pointerId, {
+        id: event.pointerId,
+        zone: zoneName,
+        startX: event.clientX,
+        startY: event.clientY,
+        x: event.clientX,
+        y: event.clientY,
+      });
+      try {
+        zone.setPointerCapture?.(event.pointerId);
+      } catch {
+        // Un PointerEvent sintético no se puede capturar. El dedo sigue en el mapa por su id.
+      }
     };
     const onMove = (event: PointerEvent) => {
-      if (!tapState.down || tapState.side !== side) return;
-      if (Math.hypot(event.clientX - tapState.x, event.clientY - tapState.y) > 10) tapState.moved = true;
+      const contact = contacts.get(event.pointerId);
+      if (!contact || contact.zone !== zoneName) return;
+      contact.x = event.clientX;
+      contact.y = event.clientY;
     };
     const onUp = (event: PointerEvent) => {
       onGesture();
-      if (!tapState.down || tapState.side !== side) return;
-      tapState.down = false;
-      if (!tapState.moved && !pinching && !options.isBlocked()) {
-        options.onSurfaceTap?.(event.clientX, event.clientY);
-      }
-      tapState.side = null;
+      const contact = contacts.get(event.pointerId);
+      if (!contact || contact.zone !== zoneName) return;
+      const moved = Math.hypot(contact.x - contact.startX, contact.y - contact.startY) > 10;
+      const alone = contacts.size === 1;
+      contacts.delete(event.pointerId);
+      if (alone && !moved && !options.isBlocked()) options.onSurfaceTap?.(event.clientX, event.clientY);
     };
     zone.addEventListener("pointerdown", onDown);
     zone.addEventListener("pointermove", onMove);
@@ -110,58 +115,23 @@ export function attachTouchControls(options: {
     };
   }
 
-  const unbindMoveTap = bindTapZone(options.zoneMove, "move");
-  const unbindLookTap = bindTapZone(options.zoneLook, "look");
-  const unbindPinch = bindPinch(options.zoneMove.parentElement, options.onZoom, (active) => {
-    pinching = active;
-    if (active) {
-      lookX = 0;
-      lookY = 0;
-      moveForward = 0;
-      moveRight = 0;
-    }
-  });
+  const unbindMove = bindZone(options.zoneMove, "move");
+  const unbindLook = bindZone(options.zoneLook, "look");
 
-  function wireMove(collection: NippleCollection) {
+  function wireMarker(collection: NippleCollection) {
     collection.on("start", () => {
       onGesture();
       bumpActive(1);
     });
     collection.on("end", () => {
       bumpActive(-1);
-      moveForward = 0;
-      moveRight = 0;
-    });
-    collection.on("move", (evt: { data: { vector: { x: number; y: number } } }) => {
-      if (options.isBlocked()) return;
-      const { forward, right } = movementFromStickVector(evt.data.vector.x, evt.data.vector.y);
-      moveForward = forward;
-      moveRight = right;
-    });
-  }
-
-  function wireLook(collection: NippleCollection) {
-    collection.on("start", () => {
-      onGesture();
-      bumpActive(1);
-    });
-    collection.on("end", () => {
-      bumpActive(-1);
-      lookX = 0;
-      lookY = 0;
-    });
-    collection.on("move", (evt: { data: { vector: { x: number; y: number } } }) => {
-      if (options.isBlocked()) return;
-      const rates = lookRatesFromStickVector(evt.data.vector.x, evt.data.vector.y);
-      lookX = rates.lookX;
-      lookY = rates.lookY;
     });
   }
 
   const moveCollection = create({ ...NIPPLE_OPTS, zone: options.zoneMove });
   const lookCollection = create({ ...NIPPLE_OPTS, zone: options.zoneLook });
-  wireMove(moveCollection);
-  wireLook(lookCollection);
+  wireMarker(moveCollection);
+  wireMarker(lookCollection);
 
   const resizeObserver = new ResizeObserver(() => {
     moveCollection.reposition();
@@ -170,14 +140,24 @@ export function attachTouchControls(options: {
   resizeObserver.observe(options.zoneMove);
   resizeObserver.observe(options.zoneLook);
 
+  function list(): StickContact[] {
+    return [...contacts.values()];
+  }
+
   return {
     readMovement() {
-      if (options.isBlocked() || pinching) return { forward: 0, right: 0 };
-      return { forward: moveForward, right: moveRight };
+      if (options.isBlocked()) return { forward: 0, right: 0 };
+      const contact = activeContact(list(), "move");
+      if (!contact) return { forward: 0, right: 0 };
+      const vector = stickDeflection(contact);
+      return movementFromStickVector(vector.x, vector.y);
     },
     readLook() {
-      if (options.isBlocked() || pinching) return { lookX: 0, lookY: 0 };
-      return { lookX, lookY };
+      if (options.isBlocked()) return { lookX: 0, lookY: 0 };
+      const contact = activeContact(list(), "look");
+      if (!contact) return { lookX: 0, lookY: 0 };
+      const vector = stickDeflection(contact);
+      return lookRatesFromStickVector(vector.x, vector.y);
     },
     syncEnabled() {
       const en = !options.isBlocked();
@@ -187,10 +167,7 @@ export function attachTouchControls(options: {
       options.zoneMove.style.pointerEvents = pe;
       options.zoneLook.style.pointerEvents = pe;
       if (!en) {
-        moveForward = 0;
-        moveRight = 0;
-        lookX = 0;
-        lookY = 0;
+        contacts.clear();
         activeSticks = 0;
         setMarkerVisible(false);
       }
@@ -200,64 +177,15 @@ export function attachTouchControls(options: {
       lookCollection.reposition();
     },
     dispose() {
-      unbindMoveTap();
-      unbindLookTap();
-      unbindPinch();
+      unbindMove();
+      unbindLook();
       document.removeEventListener("selectstart", onSelectStart, selectCapture);
       resizeObserver.disconnect();
       moveCollection.destroy();
       lookCollection.destroy();
+      contacts.clear();
       activeSticks = 0;
       setMarkerVisible(false);
     },
-  };
-}
-
-function bindPinch(
-  root: HTMLElement | null,
-  onZoom: ((scale: number) => void) | undefined,
-  setActive: (active: boolean) => void,
-): () => void {
-  if (!root || !onZoom) return () => {};
-  const points = new Map<number, { x: number; y: number }>();
-  let span = 0;
-  const measure = () => {
-    const all = [...points.values()];
-    if (all.length < 2) return 0;
-    return Math.hypot(all[0]!.x - all[1]!.x, all[0]!.y - all[1]!.y);
-  };
-  const refresh = () => {
-    setActive(points.size >= 2);
-    span = points.size >= 2 ? measure() : 0;
-  };
-  const onDown = (event: PointerEvent) => {
-    points.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    refresh();
-  };
-  const onMove = (event: PointerEvent) => {
-    if (!points.has(event.pointerId)) return;
-    points.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (points.size < 2 || span <= 0) return;
-    const next = measure();
-    const scale = pinchScale(span, next);
-    span = next;
-    if (!shouldApplyPinch(points.size, scale)) return;
-    onZoom(scale!);
-  };
-  const onUp = (event: PointerEvent) => {
-    points.delete(event.pointerId);
-    refresh();
-  };
-  const capture: AddEventListenerOptions = { capture: true, passive: true };
-  root.addEventListener("pointerdown", onDown, capture);
-  root.addEventListener("pointermove", onMove, capture);
-  root.addEventListener("pointerup", onUp, capture);
-  root.addEventListener("pointercancel", onUp, capture);
-  return () => {
-    root.removeEventListener("pointerdown", onDown, capture);
-    root.removeEventListener("pointermove", onMove, capture);
-    root.removeEventListener("pointerup", onUp, capture);
-    root.removeEventListener("pointercancel", onUp, capture);
-    setActive(false);
   };
 }

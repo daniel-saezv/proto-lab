@@ -7,12 +7,9 @@ import {
   FOLLOW_DISTANCE_PORTRAIT_BEFORE,
   captureFollowRig,
   clampFollowDistance,
-  followDistanceAfterPinch,
   followDistanceAfterWheel,
   maxFollowDistance,
-  pinchScale,
   rigForReturn,
-  shouldApplyPinch,
 } from "./camera-rig";
 
 describe("límites de la cámara de seguimiento", () => {
@@ -30,20 +27,12 @@ describe("límites de la cámara de seguimiento", () => {
     expect(FOLLOW_DISTANCE_DESKTOP).toBeLessThan(FOLLOW_DISTANCE_PORTRAIT_BEFORE);
   });
 
-  it("la rueda y el pellizco no salen del intervalo", () => {
+  it("la rueda no sale del intervalo", () => {
     const portrait = 0.46;
     expect(followDistanceAfterWheel(5.2, 800, portrait)).toBe(FOLLOW_DISTANCE_PORTRAIT);
     expect(followDistanceAfterWheel(5.2, -800, portrait)).toBeLessThan(5.2);
     expect(followDistanceAfterWheel(2, -5000, portrait)).toBe(FOLLOW_DISTANCE_MIN);
-    expect(followDistanceAfterPinch(5.2, 2, portrait)).toBeCloseTo(2.6, 5);
-    expect(followDistanceAfterPinch(2, 0.2, portrait)).toBe(FOLLOW_DISTANCE_PORTRAIT);
-    expect(followDistanceAfterPinch(2, 4, portrait)).toBe(FOLLOW_DISTANCE_MIN);
     expect(clampFollowDistance(Number.NaN, portrait)).toBe(FOLLOW_DISTANCE_PORTRAIT);
-    expect(pinchScale(0, 10)).toBeNull();
-    expect(pinchScale(40, 80)).toBe(2);
-    expect(shouldApplyPinch(1, 2)).toBe(false);
-    expect(shouldApplyPinch(2, 1)).toBe(false);
-    expect(shouldApplyPinch(2, 1.2)).toBe(true);
   });
 });
 

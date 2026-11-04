@@ -6,6 +6,59 @@ export function touchScreenSide(clientX: number, viewportWidth: number): "left" 
   return clientX < viewportWidth * 0.5 ? "left" : "right";
 }
 
+/** La izquierda camina. La derecha mira. No se intercambian. */
+export function stickZoneForSide(side: "left" | "right"): "move" | "look" {
+  return side === "left" ? "move" : "look";
+}
+
+/** Por debajo de esto, dos dedos son un pellizco y no dos sticks. */
+export const PINCH_START_PX = 120;
+/** Radio del stick: a esta distancia del origen la deflexión es 1. */
+export const STICK_RADIUS_PX = 56;
+
+export type StickContact = {
+  id: number;
+  zone: "move" | "look";
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+};
+
+/**
+ * Dos dedos que nacen juntos, o los dos en la misma mitad, son un pellizco.
+ * No mueven al personaje ni la cámara. Dos dedos separados, uno por mitad,
+ * son los dos sticks a la vez.
+ */
+export function contactsArePinch(contacts: StickContact[]): boolean {
+  if (contacts.length < 2) return false;
+  for (let i = 0; i < contacts.length; i++) {
+    for (let j = i + 1; j < contacts.length; j++) {
+      const a = contacts[i]!;
+      const b = contacts[j]!;
+      if (a.zone === b.zone) return true;
+      const span = Math.hypot(a.startX - b.startX, a.startY - b.startY);
+      if (span < PINCH_START_PX) return true;
+    }
+  }
+  return false;
+}
+
+/** El primer dedo de esa mitad. Vacío si el gesto es un pellizco. */
+export function activeContact(contacts: StickContact[], zone: "move" | "look"): StickContact | null {
+  if (contactsArePinch(contacts)) return null;
+  return contacts.find((contact) => contact.zone === zone) ?? null;
+}
+
+/** x a la derecha, y hacia arriba, recortado al disco del stick. */
+export function stickDeflection(contact: StickContact, radius = STICK_RADIUS_PX): { x: number; y: number } {
+  const dx = (contact.x - contact.startX) / radius;
+  const dy = (contact.startY - contact.y) / radius;
+  const mag = Math.hypot(dx, dy);
+  if (mag === 0 || mag <= 1) return { x: dx, y: dy };
+  return { x: dx / mag, y: dy / mag };
+}
+
 /**
  * Escala del stick derecho. 15 (y 7 en vertical) dejaban el giro a fondo
  * en 3,78 rad/s. 6 y 2,8 lo bajaban a 1,51 y 0,51, demasiado quieto.

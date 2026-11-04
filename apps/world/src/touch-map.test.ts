@@ -3,12 +3,17 @@ import { ORBIT_SENSITIVITY_COARSE, lookRateFromDeflection } from "./locomotion";
 import {
   TOUCH_LOOK_RATE,
   TOUCH_LOOK_RATE_Y,
+  activeContact,
+  contactsArePinch,
   lookRatesFromStickVector,
   movementFromStickVector,
   selectionHostFromEventTarget,
   shouldBlockTextSelection,
   shouldIgnoreTouchAt,
+  stickDeflection,
+  stickZoneForSide,
   touchScreenSide,
+  type StickContact,
 } from "./touch-map";
 
 describe("controles táctiles dinámicos", () => {
@@ -16,6 +21,31 @@ describe("controles táctiles dinámicos", () => {
     expect(touchScreenSide(100, 400)).toBe("left");
     expect(touchScreenSide(250, 400)).toBe("right");
     expect(touchScreenSide(200, 400)).toBe("right");
+    expect(stickZoneForSide("left")).toBe("move");
+    expect(stickZoneForSide("right")).toBe("look");
+  });
+
+  it("dos dedos lejanos, uno por mitad, siguen vivos a la vez", () => {
+    const left: StickContact = { id: 1, zone: "move", startX: 80, startY: 500, x: 80, y: 430, };
+    const right: StickContact = { id: 2, zone: "look", startX: 300, startY: 420, x: 360, y: 420 };
+    const both = [left, right];
+    expect(contactsArePinch(both)).toBe(false);
+    expect(activeContact(both, "move")?.id).toBe(1);
+    expect(activeContact(both, "look")?.id).toBe(2);
+    expect(stickDeflection(left).y).toBeGreaterThan(0.9);
+    expect(stickDeflection(right).x).toBeGreaterThan(0.9);
+    expect(stickDeflection(left).x).toBe(0);
+  });
+
+  it("dos dedos juntos son un pellizco y no mandan en ningún stick", () => {
+    const a: StickContact = { id: 3, zone: "look", startX: 220, startY: 400, x: 180, y: 360 };
+    const b: StickContact = { id: 4, zone: "look", startX: 260, startY: 430, x: 320, y: 470 };
+    expect(contactsArePinch([a, b])).toBe(true);
+    expect(activeContact([a, b], "move")).toBeNull();
+    expect(activeContact([a, b], "look")).toBeNull();
+    const close: StickContact = { id: 5, zone: "move", startX: 200, startY: 400, x: 160, y: 400 };
+    const near: StickContact = { id: 6, zone: "look", startX: 250, startY: 400, x: 300, y: 400 };
+    expect(contactsArePinch([close, near])).toBe(true);
   });
 
   it("mapea el vector del stick a avance y lateral con zona muerta", () => {

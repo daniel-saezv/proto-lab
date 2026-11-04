@@ -1,6 +1,7 @@
 /**
- * El doble toque del iPhone agranda la página. Safari ignora user-scalable,
- * así que el viewport cerrado se acompaña de cancelar gesturestart.
+ * El doble toque y el pellizco del iPhone agrandan la página. Safari ignora
+ * user-scalable, así que se cancela gesturestart. No se detiene la propagación:
+ * el segundo dedo tiene que seguir llegando a su stick.
  * Un campo o la aplicación abierta siguen pudiendo escalar.
  */
 export const LOCKED_VIEWPORT =

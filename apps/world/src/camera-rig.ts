@@ -51,20 +51,3 @@ export function followDistanceAfterWheel(distance: number, deltaY: number, aspec
   const factor = Math.exp(deltaY * 0.0015);
   return clampFollowDistance(distance * factor, aspect);
 }
-
-/** Pellizco: los dedos se separan (escala > 1) y la cámara se acerca. */
-export function followDistanceAfterPinch(distance: number, scale: number, aspect: number): number {
-  if (!(scale > 0) || !Number.isFinite(scale)) return clampFollowDistance(distance, aspect);
-  return clampFollowDistance(distance / scale, aspect);
-}
-
-export function pinchScale(previousSpan: number, nextSpan: number): number | null {
-  if (!(previousSpan > 0) || !(nextSpan > 0)) return null;
-  return nextSpan / previousSpan;
-}
-
-/** Un doble toque es un solo dedo. El alejamiento de la cámara pide dos a la vez. */
-export function shouldApplyPinch(pointerCount: number, scale: number | null): boolean {
-  if (pointerCount < 2 || scale == null || !Number.isFinite(scale)) return false;
-  return Math.abs(scale - 1) >= 0.001;
-}

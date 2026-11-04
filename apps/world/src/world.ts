@@ -54,7 +54,6 @@ import type { DialogueCue } from "./dialogue-cues";
 import { drawTitleCard } from "./title-card";
 import {
   clampFollowDistance,
-  followDistanceAfterPinch,
   followDistanceAfterWheel,
   rigForReturn,
   captureFollowRig,
@@ -633,11 +632,6 @@ export function startWorld(options: {
     touch: options.touchControls
       ? {
           ...options.touchControls,
-          onZoom: (scale) => {
-            if (!canTuneFollow()) return;
-            followDistance = followDistanceAfterPinch(followDistance, scale, camera.aspect);
-            followTuned = true;
-          },
         }
       : undefined,
   });
