@@ -105,6 +105,7 @@ import {
   seatPose,
   workshopSeatCamera,
   workshopSeatSubject,
+  workshopThinkCamera,
   workshopTripSeconds,
   type InventorPose,
 } from "./workshop-cinematic";
@@ -140,7 +141,7 @@ import {
   buildIdeaGeometry,
   cloudAnchor,
   layoutCloudSlots,
-  paintIdeaColors,
+  paintIdeaCanvas,
   type CloudSlot,
   type WorkshopIdeaMesh,
 } from "./workshop-letters";
@@ -241,7 +242,7 @@ export function startWorld(options: {
   onDialogueFrame?: (open: boolean) => void;
   onGesture?: () => void;
   /** Centros en píxeles de pantalla de las ideas de la ronda, para los botones. */
-  onWorkshopHits?: (hits: { id: string; x: number; y: number; size: number }[]) => void;
+  onWorkshopHits?: (hits: { id: string; x: number; y: number; size: number; width: number; height: number }[]) => void;
   /** `false` deja cada malla suelta para medir renderer.info. */
   batch?: boolean;
   perf?: boolean;
@@ -427,6 +428,7 @@ export function startWorld(options: {
   const screenTextures = new Map<string, Texture>();
   let titleCardTexture: CanvasTexture | null = null;
   let screenLoadToken = 0;
+  let armMaterial: MeshLambertMaterial | null = null;
 
   const inventor = buildInventor();
   inventor.position.set(LAYOUT.inventor.x, 0, LAYOUT.inventor.z);
@@ -661,9 +663,14 @@ export function startWorld(options: {
   };
   let workshopTrip: WorkshopTrip | null = null;
   let workshopBeat: DeskBeat = "off";
-  type CloudEntry = { mesh: Mesh; slot: CloudSlot; idea: WorkshopIdeaMesh };
+  type CloudEntry = {
+    mesh: Mesh;
+    slot: CloudSlot;
+    idea: WorkshopIdeaMesh;
+    canvas: HTMLCanvasElement;
+    texture: CanvasTexture;
+  };
   let cloudEntries: CloudEntry[] = [];
-  let cloudMaterial: MeshBasicMaterial | null = null;
   const cloudScratch = new Vector3();
   const cloudFacing = new Vector3();
   const cloudForward = new Vector3(0, 0, 1);
@@ -1373,35 +1380,68 @@ export function startWorld(options: {
     const head = inventor.userData.head as Object3D | undefined;
     const talking = workshopBeat === "talk";
     if (talking) {
-      if (arm) arm.rotation.x = -0.4;
-      if (armL) armL.rotation.x = -0.22;
+      if (arm) arm.rotation.set(-0.4, 0, 0);
+      if (armL) armL.rotation.set(-0.22, 0, 0);
       if (head) {
         head.rotation.x = 0.28;
         head.rotation.y = 0.12;
       }
       return;
     }
-    const write = still ? 0.35 : Math.sin(frame * 6);
-    if (arm) arm.rotation.x = -1.05 + write * 0.32;
-    if (armL) armL.rotation.x = -0.28;
+    if (arm) arm.rotation.set(-0.35, 0, 0.2);
+    if (armL) armL.rotation.set(0.4, -0.6, 2.3);
     if (head) {
-      head.rotation.x = 0.55;
-      head.rotation.y = still ? 0 : Math.sin(frame * 1.3) * 0.08;
+      head.rotation.x = 0.42;
+      head.rotation.y = still ? -0.06 : Math.sin(frame * 1.1) * 0.04;
     }
   }
 
   function setWorkshopBeat(beat: DeskBeat) {
+    const changed = workshopBeat !== beat;
     workshopBeat = beat;
     ambient.setDeskBeat(beat);
+    if (changed) retargetDeskCamera();
+  }
+
+  function deskFraming() {
+    return workshopBeat === "work"
+      ? workshopThinkCamera(camera.aspect, camera.fov)
+      : workshopSeatCamera(camera.aspect, camera.fov);
+  }
+
+  function retargetDeskCamera() {
+    if (dialoguePlace !== "desk" || dialoguePhase === "idle" || dialoguePhase === "leave") return;
+    dialogueFrom.copy(camera.position);
+    dialogueLookFrom.copy(dialogueLook);
+    const framed = deskFraming();
+    dialogueTo.set(framed.x, framed.y, framed.z);
+    dialogueLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
+    if (dialogueTransitionSeconds(calmDialogue) <= 0) {
+      camera.position.copy(dialogueTo);
+      dialogueLook.copy(dialogueLookTo);
+      camera.lookAt(dialogueLook);
+      return;
+    }
+    dialogueElapsed = 0;
+    if (dialoguePhase === "hold") dialoguePhase = "enter";
   }
 
   function disposeWorkshopClouds() {
     for (const entry of cloudEntries) {
+      entry.texture.dispose();
+      const material = entry.mesh.material;
+      if (material instanceof MeshBasicMaterial) material.dispose();
       entry.mesh.geometry.dispose();
       entry.mesh.removeFromParent();
     }
     cloudEntries = [];
     options.onWorkshopHits?.([]);
+  }
+
+  function paintCloud(entry: CloudEntry) {
+    paintIdeaCanvas(entry.canvas, entry.idea.text, entry.idea.role, entry.idea.picked);
+    entry.texture.needsUpdate = true;
+    entry.mesh.renderOrder = entry.idea.role === "past" ? 1 : entry.idea.picked ? 3 : 2;
   }
 
   function setWorkshopIdeas(ideas: WorkshopIdeaMesh[] | null) {
@@ -1418,17 +1458,13 @@ export function startWorld(options: {
       next.forEach((idea, index) => {
         const entry = cloudEntries[index];
         if (!entry || entry.idea.picked === idea.picked) return;
-        paintIdeaColors(entry.mesh.geometry as BufferGeometry, idea.role, idea.picked);
         entry.idea = idea;
+        paintCloud(entry);
       });
       return;
     }
     disposeWorkshopClouds();
     if (next.length === 0) return;
-    if (!cloudMaterial) {
-      cloudMaterial = new MeshBasicMaterial({ vertexColors: true });
-      materials.push(cloudMaterial);
-    }
     const nowCount = next.filter((idea) => idea.role === "now").length;
     const pastCount = next.length - nowCount;
     const laid = layoutCloudSlots(nowCount, pastCount, camera.aspect, camera.fov);
@@ -1436,15 +1472,26 @@ export function startWorld(options: {
     let nowIndex = 0;
     for (const idea of next) {
       const slot = idea.role === "past" ? laid.past[pastIndex++] : laid.now[nowIndex++];
-      if (!slot || !cloudMaterial) continue;
-      const geometry = buildIdeaGeometry(idea.text);
-      paintIdeaColors(geometry, idea.role, idea.picked);
-      const mesh = new Mesh(geometry, cloudMaterial);
+      if (!slot) continue;
+      const canvas = document.createElement("canvas");
+      const texture = new CanvasTexture(canvas);
+      texture.colorSpace = SRGBColorSpace;
+      texture.generateMipmaps = false;
+      texture.minFilter = LinearFilter;
+      texture.magFilter = LinearFilter;
+      const material = new MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const mesh = new Mesh(buildIdeaGeometry(), material);
       mesh.name = `idea-${idea.id}`;
       mesh.userData.noBatch = true;
-      mesh.renderOrder = idea.role === "past" ? 1 : 2;
+      const entry = { mesh, slot, idea, canvas, texture };
+      paintCloud(entry);
       scene.add(mesh);
-      cloudEntries.push({ mesh, slot, idea });
+      cloudEntries.push(entry);
     }
     placeWorkshopClouds(0, true);
   }
@@ -1463,7 +1510,7 @@ export function startWorld(options: {
       const anchor = cloudAnchor(camera, slot, cloudScratch);
       entry.mesh.position.copy(anchor);
       if (!still) entry.mesh.position.y += Math.sin(time * 1.3 + (pastIndex + nowIndex)) * 0.012;
-      entry.mesh.scale.setScalar(slot.scale);
+      entry.mesh.scale.set(slot.scale, slot.scale / slot.aspect, 1);
       cloudFacing.copy(camera.position).sub(entry.mesh.position);
       if (cloudFacing.lengthSq() > 1e-6) {
         cloudFacing.normalize();
@@ -1483,8 +1530,9 @@ export function startWorld(options: {
         const x = (cloudScratch.x * 0.5 + 0.5) * rect.width + rect.left;
         const y = (-cloudScratch.y * 0.5 + 0.5) * rect.height + rect.top;
         const full = 2 * Math.tan((camera.fov * Math.PI) / 360) * Math.max(0.2, entry.slot.depth);
-        const size = (entry.slot.scale / full) * rect.height;
-        return { id: entry.idea.id, x, y, size: Math.max(44, size) };
+        const width = (entry.slot.scale / full) * rect.height;
+        const height = width / entry.slot.aspect;
+        return { id: entry.idea.id, x, y, size: Math.max(width, height), width, height };
       });
     options.onWorkshopHits(hits);
   }
@@ -1570,7 +1618,9 @@ export function startWorld(options: {
   function workshopCloudStats() {
     let triangles = 0;
     for (const entry of cloudEntries) {
-      triangles += entry.mesh.geometry.getAttribute("position").count / 3;
+      const index = entry.mesh.geometry.getIndex();
+      const positions = entry.mesh.geometry.getAttribute("position");
+      triangles += index ? index.count / 3 : positions.count / 3;
     }
     return {
       count: cloudEntries.length,
@@ -1602,7 +1652,7 @@ export function startWorld(options: {
     if (!subject) return;
     const framed =
       dialoguePlace === "desk" && subject.id === "inventor"
-        ? workshopSeatCamera(camera.aspect, camera.fov)
+        ? deskFraming()
         : dialogueCameraPose(subject, camera.aspect, camera.fov);
     dialogueLookTo.set(framed.lookX, framed.lookY, framed.lookZ);
     if (dialoguePhase === "leave") return;
@@ -2342,10 +2392,37 @@ export function startWorld(options: {
   function makeArm(x: number): Group {
     const arm = new Group();
     arm.position.set(x, 1.05, 0);
-    const armMesh = new Mesh(geo(new BoxGeometry(0.12, 0.48, 0.12)), mat(PALETTE.coat));
-    armMesh.position.y = -0.2;
-    arm.add(armMesh);
+    const sleeve = new BoxGeometry(0.12, 0.48, 0.12);
+    sleeve.translate(0, -0.2, 0);
+    paintGeometryColor(sleeve, PALETTE.coat);
+    const hand = new BoxGeometry(0.14, 0.1, 0.12);
+    hand.translate(0, -0.46, 0.05);
+    paintGeometryColor(hand, PALETTE.skin);
+    const geometry = mergeGeometries([sleeve, hand]);
+    sleeve.dispose();
+    hand.dispose();
+    if (!geometry) return arm;
+    geometries.push(geometry);
+    if (!armMaterial) {
+      armMaterial = new MeshLambertMaterial({ vertexColors: true });
+      materials.push(armMaterial);
+    }
+    const mesh = new Mesh(geometry, armMaterial);
+    mesh.castShadow = shadows;
+    arm.add(mesh);
     return arm;
+  }
+
+  function paintGeometryColor(geometry: BufferGeometry, hex: number) {
+    const color = new Color(hex);
+    const count = geometry.getAttribute("position").count;
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i += 1) {
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+    }
+    geometry.setAttribute("color", new BufferAttribute(colors, 3));
   }
 
   function buildPlayer(): Group {

@@ -61,6 +61,8 @@ export type WorkshopScreen =
 export type WorkshopChoice = {
   id: string;
   label: string;
+  /** Sigue en el árbol accesible, sin pintarse en la ronda. */
+  quiet?: boolean;
 };
 
 export function workshopSpeech(screen: WorkshopScreen): string {
@@ -137,9 +139,9 @@ export function workshopIntroChoices(): WorkshopChoice[] {
 
 export function workshopPickChoices(): WorkshopChoice[] {
   return [
-    { id: "choice-workshop-next", label: "Siguiente" },
-    { id: "choice-workshop-stop", label: "Así está bien" },
-    { id: "choice-workshop-back", label: "Volver a mi nota" },
+    { id: "choice-workshop-next", label: "Seguir" },
+    { id: "choice-workshop-stop", label: "Así está bien", quiet: true },
+    { id: "choice-workshop-back", label: "Volver a mi nota", quiet: true },
   ];
 }
 

@@ -897,8 +897,10 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.beat)).toBe("work");
   releaseStart();
   await expect(page.getByTestId("choice-workshop-next")).toBeVisible();
-  await expect(page.getByTestId("choice-workshop-stop")).toBeVisible();
-  await expect(page.getByTestId("choice-workshop-back")).toBeVisible();
+  await expect(page.getByTestId("choice-workshop-next")).toHaveText("Seguir");
+  await expect(page.getByTestId("choice-workshop-stop")).toHaveClass(/sr-only/);
+  await expect(page.getByTestId("choice-workshop-back")).toHaveClass(/sr-only/);
+  await expect.poll(async () => (await page.locator("#dialogue .dialogue-head").boundingBox())?.width ?? 99).toBeLessThan(4);
   await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 1 de 3");
   await expect(page.getByTestId("workshop-option")).toHaveCount(4);
   await expect(page.getByTestId("workshop-skip")).toBeHidden();
@@ -907,7 +909,7 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   const seated = await page.evaluate(() => window.__protoLab?.workshopView?.());
   expect(seated?.place).toBe("desk");
   expect(seated?.sit).toBe(1);
-  await page.getByTestId("choice-workshop-back").click();
+  await page.getByTestId("choice-workshop-back").dispatchEvent("click");
   await expect(page.getByTestId("choice-confirm")).toBeVisible();
   await expect(page.getByTestId("dialogue-text")).toContainText("Cometa lunar");
   const home = await page.evaluate(() => window.__protoLab?.workshopView?.());
@@ -936,7 +938,7 @@ test("el resumen del escritorio envía solo el título y el texto finales", asyn
   await page.getByTestId("workshop-begin").click();
   await page.getByTestId("workshop-option").first().click();
   await expect(page.getByTestId("workshop-option").first()).toHaveAttribute("aria-pressed", "true");
-  await page.getByTestId("choice-workshop-stop").click();
+  await page.getByTestId("choice-workshop-stop").dispatchEvent("click");
   await expect(page.getByTestId("workshop-title")).toHaveValue(workshopSummaryDraft.title);
   await expect(page.getByTestId("workshop-kind")).toHaveText("Propuesta nueva");
   await expect(page.getByTestId("workshop-description")).toHaveValue(workshopSummaryDraft.description);

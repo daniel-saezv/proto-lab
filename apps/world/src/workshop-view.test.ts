@@ -41,9 +41,13 @@ describe("vista del taller", () => {
 
   it("deja marcar ideas y cerrar la ronda, o enviar el resumen", () => {
     expect(workshopPickChoices().map((choice) => choice.label)).toEqual([
-      "Siguiente",
+      "Seguir",
       "Así está bien",
       "Volver a mi nota",
+    ]);
+    expect(workshopPickChoices().filter((choice) => choice.quiet).map((choice) => choice.id)).toEqual([
+      "choice-workshop-stop",
+      "choice-workshop-back",
     ]);
     expect(workshopFailedChoices().map((choice) => choice.id)).toEqual(["choice-workshop-retry", "choice-workshop-back"]);
     expect(workshopSummaryChoices().map((choice) => choice.label)).toEqual(["Envíalo así", "Vuelve a mi nota"]);

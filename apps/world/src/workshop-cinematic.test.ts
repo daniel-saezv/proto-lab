@@ -12,6 +12,7 @@ import {
   seatPose,
   workshopSeatCamera,
   workshopSeatSubject,
+  workshopThinkCamera,
   workshopTableClear,
   workshopTableFrontZ,
   workshopTablePoint,
@@ -103,6 +104,22 @@ describe("cinemática del escritorio", () => {
       expect(pose.x).toBeGreaterThan(ROOM_INNER.minX);
       expect(pose.x).toBeLessThan(ROOM_INNER.maxX);
       expect(pose.z).toBeLessThan(ROOM_INNER.maxZ);
+    }
+  });
+
+  it("acerca la cámara al busto durante las rondas", () => {
+    const subject = workshopSeatSubject();
+    const views = [...VIEWS, { name: "escritorio", aspect: 1280 / 800, fov: 58 }];
+    for (const view of views) {
+      const pose = workshopThinkCamera(view.aspect, view.fov);
+      const seat = workshopSeatCamera(view.aspect, view.fov);
+      const head = Math.hypot(pose.x - subject.x, pose.y - subject.headY, pose.z - subject.z);
+      const wide = Math.hypot(seat.x - subject.x, seat.y - subject.headY, seat.z - subject.z);
+      expect(head, view.name).toBeGreaterThan(0.9);
+      expect(head, view.name).toBeLessThan(wide);
+      expect(pose.z, view.name).toBeGreaterThan(workshopTableFrontZ());
+      expect(pose.lookY, view.name).toBeGreaterThan(1.15);
+      expect(pose.y).toBeLessThanOrEqual(CAMERA_CEILING_Y);
     }
   });
 });

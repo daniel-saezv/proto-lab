@@ -542,7 +542,86 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   font-size: 0.75rem;
   line-height: 1;
 }
-#dialogue.is-workshop[data-workshop="pick"] { overflow: visible; }
+#dialogue.is-workshop[data-workshop="pick"] {
+  transform: none;
+  left: 0;
+  right: 0;
+  width: auto;
+  max-height: none;
+  padding: 0 16px calc(14px + env(safe-area-inset-bottom));
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  pointer-events: none;
+  align-items: center;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialog-dismiss,
+#dialogue.is-workshop[data-workshop="pick"] .workshop-cloud-hit,
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-choice,
+#dialogue.is-workshop[data-workshop="pick"] .workshop-actions {
+  pointer-events: auto;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialog-dismiss {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top));
+  left: calc(8px + env(safe-area-inset-left));
+  right: auto;
+  z-index: 8;
+  color: #f6f1e7;
+  opacity: 1;
+  background: rgba(10, 12, 24, 0.55);
+  border-radius: 999px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.65));
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-choice::before {
+  content: none;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-head,
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-text,
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-more {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-sheet {
+  overflow: visible;
+  flex: 0 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+#dialogue.is-workshop[data-workshop="pick"] .workshop-counter {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f4efe4;
+  opacity: 1;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+#dialogue.is-workshop[data-workshop="pick"] .workshop-actions {
+  width: min(280px, calc(100% - 8px));
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-choice:not(.sr-only) {
+  width: 100%;
+  margin: 0;
+  min-height: 52px;
+  border: 2px solid #e2b15a;
+  border-radius: 14px;
+  background: linear-gradient(#1a3d78, #0c234d);
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
 .workshop-cloud-hits {
   position: absolute;
   inset: 0;
@@ -571,9 +650,12 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   outline: 3px solid var(--amber);
   outline-offset: 2px;
 }
+.workshop-cloud-hit,
+.workshop-cloud-hit:focus,
 .workshop-cloud-hit[aria-pressed="true"] {
-  border-color: var(--amber);
-  background: rgba(255, 183, 3, 0.2);
+  border-color: transparent;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
 }
 @keyframes workshop-rise {
   from { opacity: 0; transform: translateY(8px); }

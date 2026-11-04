@@ -76,7 +76,10 @@ async function openRound(page: Page) {
   await expect(page.getByTestId("dialogue-text")).toContainText("tres rondas");
   await page.getByTestId("workshop-begin").click();
   await expect(page.getByTestId("workshop-option")).toHaveCount(4);
-  await expect.poll(async () => (await page.getByTestId("workshop-option").first().boundingBox())?.x ?? -1).toBeGreaterThan(0);
+  await expect(page.getByTestId("choice-workshop-next")).toHaveText("Seguir");
+  await expect.poll(async () => (await page.locator("#dialogue .dialogue-head").boundingBox())?.width ?? 99).toBeLessThan(4);
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.camY ?? 0)).toBeGreaterThan(0.9);
+  await expect.poll(async () => (await page.getByTestId("workshop-option").first().boundingBox())?.x ?? -2).toBeGreaterThanOrEqual(-1);
 }
 
 async function expectTargets(page: Page, width: number, height: number) {

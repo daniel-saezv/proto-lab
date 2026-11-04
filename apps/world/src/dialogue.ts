@@ -564,10 +564,10 @@ export function createDialogue(options: {
     return { views, caret };
   }
 
-  function addChoice(parent: HTMLElement, id: string, label: string, run: () => void) {
+  function addChoice(parent: HTMLElement, id: string, label: string, run: () => void, quiet = false) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "dialogue-choice";
+    button.className = quiet ? "dialogue-choice sr-only" : "dialogue-choice";
     button.dataset.testid = id;
     button.textContent = label;
     button.addEventListener("click", run);
@@ -769,7 +769,7 @@ export function createDialogue(options: {
         const decision = choice.id === "choice-workshop-stop" ? "stop" : "next";
         pendingPick = { round: screen.round, ideas: [...picked] };
         beginModelTurn({ op: "turn", sessionId: workshopSession, decision, picked: [...picked] });
-      });
+      }, choice.quiet === true);
     }
     focusWorkshop(list.querySelector("button"));
   }
