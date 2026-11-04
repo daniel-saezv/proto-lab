@@ -131,6 +131,9 @@ const dialogue = createDialogue({
   onEmphasis: () => {
     world?.pulseDialogue();
   },
+  onWorkshopBeat: (beat) => {
+    world?.setWorkshopBeat(beat);
+  },
 });
 
 workshopSkip.addEventListener("click", () => {

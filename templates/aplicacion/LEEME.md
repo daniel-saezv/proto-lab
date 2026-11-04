@@ -32,4 +32,4 @@ El puente de datos (`load`, `json`, `blobUrl`) admite 64 rutas, 4 MiB por archiv
 
 La aplicación es móvil primero. El HTML servido lleva `<meta name="viewport" content="width=device-width, …">` y `touch-action: none` en el documento o en el canvas (esta plantilla ya los trae). El chequeo está en `scripts/app-budget.mjs` y falla el build, dentro de `verificar`. No hay un smoke de WebKit por aplicación: la fluidez en el iPhone la confirma el dueño. Antes de las skills de Phaser, lee `.agents/skills/proto-lab-app/SKILL.md`.
 
-El contrato con el laboratorio está en `AGENTS.md`. Workers AI, R2, Durable Objects e Images no están activos: cuándo entrarían está en `docs/tecnologias-bajo-demanda.md`.
+El contrato con el laboratorio está en `AGENTS.md`. Workers AI lo usa solo el taller del Inventor; esta aplicación no lo declara ni lo llama. R2, Durable Objects e Images no están activos: el detalle está en `docs/tecnologias-bajo-demanda.md`.

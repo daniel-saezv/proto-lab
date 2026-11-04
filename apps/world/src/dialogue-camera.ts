@@ -97,8 +97,12 @@ export function dialogueCameraPose(subject: DialogueSubject, aspect: number, fov
   };
 }
 
-/** 0 es el borde superior del encuadre y 1 el inferior. NaN si la cara queda detrás. */
-export function dialogueHeadFromTop(pose: DialoguePose, subject: DialogueSubject, fovDeg: number): number {
+/** 0 es el borde superior del encuadre y 1 el inferior. NaN si el punto queda detrás. */
+export function dialoguePointFromTop(
+  pose: DialoguePose,
+  point: { x: number; y: number; z: number },
+  fovDeg: number,
+): number {
   const fx = pose.lookX - pose.x;
   const fy = pose.lookY - pose.y;
   const fz = pose.lookZ - pose.z;
@@ -121,15 +125,20 @@ export function dialogueHeadFromTop(pose: DialoguePose, subject: DialogueSubject
   const yx = zy * xz - zz * xy;
   const yy = zz * xx - zx * xz;
   const yz = zx * xy - zy * xx;
-  const hx = subject.x - pose.x;
-  const hy = subject.headY - pose.y;
-  const hz = subject.z - pose.z;
+  const hx = point.x - pose.x;
+  const hy = point.y - pose.y;
+  const hz = point.z - pose.z;
   const depth = hx * fvx + hy * fvy + hz * fvz;
   if (depth <= 0.05) return Number.NaN;
   const up = hx * yx + hy * yy + hz * yz;
   const halfFov = ((fovDeg * Math.PI) / 180) / 2;
   const ndcY = up / depth / Math.tan(halfFov);
   return (1 - ndcY) / 2;
+}
+
+/** 0 es el borde superior del encuadre y 1 el inferior. NaN si la cara queda detrás. */
+export function dialogueHeadFromTop(pose: DialoguePose, subject: DialogueSubject, fovDeg: number): number {
+  return dialoguePointFromTop(pose, { x: subject.x, y: subject.headY, z: subject.z }, fovDeg);
 }
 
 function clamp(value: number, min: number, max: number): number {

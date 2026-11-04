@@ -39,6 +39,8 @@ interface Window {
       camX: number;
       camY: number;
       camZ: number;
+      beat?: string;
+      headX?: number;
     };
   };
   __chispa?: {

@@ -119,7 +119,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - El guardado de una persona pasa por `__protoLabData` si `capabilities` incluye `save`. El laboratorio lo escribe en `localStorage` bajo `proto-lab:app:<slug>`. La aplicación deja `localStorage` y `sessionStorage` sin tocar.
 - Las pistas del lobby (`/protos/audio/*.m4a`) se sirven con caché larga e inmutable. `pnpm build` copia cada archivo a un nombre con hash de contenido y reescribe el bundle para que un cambio de pista cambie la URL. El service worker sigue sin interceptar `/protos/`.
 - Al implementar una iteración, el manifiesto y su historial forman parte del cambio, no un extra opcional.
-- Cada aplicación es móvil primero: viewport `width=device-width`, `touch-action: none`, imágenes y audio ligeros (el build falla a 1,5 MiB). Un proyecto Godot usa el preset de teléfono descrito en el contrato. Workers AI, R2, Durable Objects e Images no están activos; cuándo entrarían está en [`docs/tecnologias-bajo-demanda.md`](docs/tecnologias-bajo-demanda.md).
+- Cada aplicación es móvil primero: viewport `width=device-width`, `touch-action: none`, imágenes y audio ligeros (el build falla a 1,5 MiB). Un proyecto Godot usa el preset de teléfono descrito en el contrato. Workers AI lo usa solo el taller del Inventor (`POST /api/workshop`); una aplicación no declara `ai`. R2, Durable Objects e Images no están activos. El detalle está en [`docs/tecnologias-bajo-demanda.md`](docs/tecnologias-bajo-demanda.md).
 
 ## Aplicaciones (`protos/<slug>/`)
 

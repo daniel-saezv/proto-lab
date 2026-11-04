@@ -30,3 +30,11 @@ database_id = "797b147d-e5c7-4198-a20e-fe378758217a"
 [[kv_namespaces]]
 binding = "PROPOSALS"
 id = "80ac94ce81e8459fb3882e9fe2a68330"
+
+# Workers AI. Solo lo llama POST /api/workshop (el taller del Inventor).
+# `ai` no se hereda: preview lo repite. Las aplicaciones no declaran esta capacidad.
+[ai]
+binding = "AI"
+
+[env.preview.ai]
+binding = "AI"

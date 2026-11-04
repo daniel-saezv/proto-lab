@@ -52,17 +52,14 @@ describe("fases del Inventor", () => {
     expect(choices[2]?.action).toEqual({ type: "phase", phase: { name: "title", mode: "propuesta" } });
   });
 
-  it("el marcador vuelve a la nota o envía el mismo borrador", () => {
+  it("el escritorio no envía la nota por su cuenta", () => {
     const note: ProposalDraft = {
       kind: "iteracion",
       title: "Farol",
       description: "Una app para anotar turnos.",
       slug: "chispa",
     };
-    const choices = inventorChoices({ name: "workshop" }, note, []);
-    expect(choices.map((choice) => choice.label)).toEqual(["Volver a mi nota", "Enviar tal cual"]);
-    expect(choices[0]?.action).toEqual({ type: "trip", dest: "home" });
-    expect(choices[1]?.action).toEqual({ type: "send" });
+    expect(inventorChoices({ name: "workshop" }, note, [])).toEqual([]);
     expect(phaseAfterWorkshopTrip("home")).toEqual({ name: "confirm" });
     expect(phaseAfterWorkshopTrip("desk")).toEqual({ name: "workshop" });
     const back = inventorChoices(phaseAfterWorkshopTrip("home"), note, [chispa]);
