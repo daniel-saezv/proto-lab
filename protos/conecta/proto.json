@@ -1,0 +1,26 @@
+{
+  "slug": "conecta",
+  "title": "Conecta",
+  "description": "Planes con amigos: proponer una cita y su motivo, confirmar o anular la asistencia, ver el mes, votar opciones, comentar el detalle, dejar un recuerdo con una foto pequeña y recibir un aviso mientras la aplicación está abierta.",
+  "author": "daniel-saezv",
+  "date": "2026-11-04",
+  "tags": [
+    "planes",
+    "calendario",
+    "amigos"
+  ],
+  "cover": null,
+  "version": "0.1.0",
+  "capabilities": [
+    "save",
+    "shared"
+  ],
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-04",
+      "note": "Agenda compartida con asistencia, calendario, votos, charla, recuerdos y avisos en la sesión."
+    }
+  ],
+  "preview": "preview.webp"
+}
