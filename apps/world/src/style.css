@@ -104,21 +104,37 @@ button, input, textarea { font: inherit; color: inherit; }
   color: rgba(246, 241, 231, 0.55);
 }
 
-#board-back {
+.dialog-dismiss {
   position: absolute;
-  top: calc(12px + env(safe-area-inset-top));
-  left: calc(12px + env(safe-area-inset-left));
-  z-index: 8;
-  min-height: 36px;
-  padding: 0 12px;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
   border-radius: 999px;
   border: 2px solid rgba(246, 241, 231, 0.4);
   background: rgba(10, 12, 24, 0.72);
   color: var(--ink);
-  font-weight: 700;
-  font-size: 0.8rem;
+  font-size: 1.6rem;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
   touch-action: manipulation;
+}
+.dialog-dismiss:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+.dialog-dismiss--screen {
+  top: calc(12px + env(safe-area-inset-top));
+  left: calc(12px + env(safe-area-inset-left));
+  right: auto;
+  z-index: 8;
 }
 #board-back[hidden] { display: none; }
 
@@ -371,11 +387,11 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
 #dialogue {
   position: absolute;
   left: 50%;
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  bottom: calc(12px + env(safe-area-inset-bottom) + var(--dialogue-kb, 0px));
   transform: translateX(-50%);
   z-index: 7;
   width: min(640px, calc(100% - 24px));
-  max-height: min(70vh, 520px);
+  max-height: min(78dvh, calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px)));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -386,20 +402,25 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
 }
 #dialogue.is-workshop {
-  max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
   overflow-y: auto;
   bottom: calc(12px + env(safe-area-inset-bottom) + var(--workshop-kb, 0px));
 }
+#dialogue.is-workshop[data-workshop="intro"],
+#dialogue.is-workshop[data-workshop="summary"] {
+  overflow: hidden;
+}
 #dialogue.is-workshop .dialogue-text {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   max-height: 4.8rem;
   min-height: 1.4rem;
 }
-#dialogue.is-workshop[data-workshop="loading"] .dialogue-text {
+#dialogue.is-workshop[data-workshop="loading"] .dialogue-text,
+#dialogue.is-workshop[data-workshop="intro"] .dialogue-text {
   max-height: none;
 }
 #dialogue.is-workshop .dialogue-choice,
-#dialogue.is-workshop .dialogue-input {
+#dialogue.is-workshop .dialogue-input:not(.long-text-body) {
   min-height: 44px;
   touch-action: manipulation;
 }
@@ -426,6 +447,46 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   text-transform: uppercase;
 }
 .workshop-card p { margin: 0; white-space: pre-wrap; }
+.workshop-trail {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  flex-shrink: 0;
+}
+.workshop-trail-mark {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 2px solid rgba(255, 183, 3, 0.45);
+  border-radius: 12px;
+  background: rgba(255, 183, 3, 0.1);
+  animation: workshop-rise 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.workshop-trail-mark + .workshop-trail-mark::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 16px;
+  width: 8px;
+  height: 2px;
+  background: var(--amber);
+}
+.workshop-trail-mark strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.workshop-trail-mark span {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
 .workshop-options,
 .workshop-actions { flex-shrink: 0; }
 .workshop-options {
@@ -435,6 +496,10 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   margin: 0 0 8px;
 }
 .workshop-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   min-height: 44px;
   padding: 8px 12px;
   text-align: left;
@@ -445,10 +510,46 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   border-radius: 12px;
   cursor: pointer;
   touch-action: manipulation;
+  animation: workshop-rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.workshop-option:nth-child(2) { animation-delay: 60ms; }
+.workshop-option:nth-child(3) { animation-delay: 120ms; }
+.workshop-option:nth-child(4) { animation-delay: 180ms; }
+.workshop-option::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  border: 2px solid var(--line);
 }
 .workshop-option[aria-pressed="true"] {
   border-color: var(--amber);
-  background: rgba(255, 183, 3, 0.2);
+  background: rgba(255, 183, 3, 0.22);
+  box-shadow: inset 4px 0 0 var(--amber);
+  font-weight: 700;
+}
+.workshop-option[aria-pressed="true"]::after {
+  content: "✓";
+  display: grid;
+  place-items: center;
+  border-color: var(--amber);
+  background: var(--amber);
+  color: #1a1203;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+@keyframes workshop-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.dialogue-still .workshop-option,
+.dialogue-still .workshop-trail-mark {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workshop-option,
+  .workshop-trail-mark { animation: none; }
 }
 .workshop-actions {
   display: grid;
@@ -456,7 +557,7 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   gap: 6px;
 }
 .workshop-actions .dialogue-choice { margin-top: 0; }
-.dialogue-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-shrink: 0; }
+.dialogue-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding-right: 40px; flex-shrink: 0; }
 .dialogue-name { margin: 0; color: #1a1203; background: var(--amber); border-radius: 999px; padding: 2px 10px; font-weight: 800; }
 .portrait {
   width: 42px;
@@ -498,11 +599,13 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   width: 100%;
   margin-top: 8px;
   padding: 12px 14px;
+  min-height: 44px;
   text-align: left;
   background: transparent;
   border: 2px solid var(--line);
   border-radius: 12px;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .dialogue-choice::before { content: "▸ "; color: var(--amber); }
 .dialogue-choice:hover, .dialogue-choice:focus-visible { border-color: var(--amber); background: rgba(255, 183, 3, 0.12); }
@@ -515,21 +618,119 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   border-bottom: 2px solid var(--amber);
   border-radius: 0;
   background: transparent;
-  font-size: 1.05rem;
+  font-size: 16px;
   resize: none;
 }
 .dialogue-input:focus { outline: 2px solid transparent; border-bottom-color: #fff; }
 .dialogue-input::placeholder { color: rgba(246, 241, 231, 0.45); }
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-height: 0;
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.field-label > span { flex-shrink: 0; }
+#dialogue:has(.long-text) {
+  height: min(78dvh, calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px)));
+}
+#dialogue.is-workshop:has(.long-text) {
+  top: calc(56px + env(safe-area-inset-top));
+  height: auto;
+}
+#dialogue.is-workshop[data-workshop="summary"] .dialogue-text {
+  max-height: 3.2rem;
+  margin-bottom: 4px;
+}
+#dialogue.is-workshop[data-workshop="summary"] .workshop-counter,
+#dialogue.is-workshop[data-workshop="summary"] .workshop-kind,
+#dialogue.is-workshop[data-workshop="summary"] .workshop-diff {
+  margin-bottom: 4px;
+}
+.long-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 0 6px;
+  overflow: hidden;
+}
+.long-text .field-label {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+#dialogue .long-text .dialogue-input,
+#dialogue .long-read {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: rgba(8, 10, 22, 0.45);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+  scrollbar-width: thin;
+  scrollbar-color: var(--amber) transparent;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+textarea.long-text-body { resize: none; }
+#dialogue .long-text .dialogue-input::-webkit-scrollbar,
+#dialogue .long-read::-webkit-scrollbar { width: 8px; }
+#dialogue .long-text .dialogue-input::-webkit-scrollbar-thumb,
+#dialogue .long-read::-webkit-scrollbar-thumb {
+  background: var(--amber);
+  border-radius: 999px;
+}
+#dialogue .long-read:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+#dialogue .long-text.is-overflowing .dialogue-input,
+#dialogue .long-text.is-overflowing .long-read {
+  box-shadow: inset 0 -8px 6px -6px rgba(255, 183, 3, 0.95);
+}
+#dialogue .field-label .dialogue-input { color: var(--ink); }
+.scroll-cue {
+  flex-shrink: 0;
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: right;
+  color: var(--amber);
+}
+#dialogue[data-phase="confirm"] .dialogue-text,
+#dialogue[data-phase="body"] .dialogue-text {
+  flex: 0 1 auto;
+  max-height: 6.5rem;
+}
+#dialogue.is-keyboard:has(.long-text) {
+  height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
+}
 
 @media (max-height: 500px) {
   #dialogue {
-    bottom: calc(8px + env(safe-area-inset-bottom));
+    bottom: calc(8px + env(safe-area-inset-bottom) + var(--dialogue-kb, 0px));
     width: min(640px, calc(100% - 16px));
-    max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
     padding: 8px 12px;
   }
   #dialogue.is-workshop {
-    max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
     bottom: calc(8px + env(safe-area-inset-bottom) + var(--workshop-kb, 0px));
   }
   .dialogue-head { margin-bottom: 4px; }
@@ -551,7 +752,44 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
     padding: 6px 8px;
     font-size: 0.85rem;
   }
-  #dialogue.is-workshop .dialogue-input { max-height: 4.2rem; }
+  #dialogue:has(.long-text) {
+    height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
+  }
+  #dialogue.is-workshop:has(.long-text) {
+    top: calc(8px + env(safe-area-inset-top));
+    height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
+    max-height: none;
+  }
+  #dialogue.is-workshop[data-workshop="summary"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto auto minmax(6.5rem, 1fr) auto auto;
+    row-gap: 2px;
+    column-gap: 12px;
+  }
+  #dialogue.is-workshop[data-workshop="summary"] > :is(.dialogue-head, .dialogue-text, .field-label, .long-text, .workshop-diff, .workshop-actions) {
+    grid-column: 1 / -1;
+  }
+  #dialogue.is-workshop[data-workshop="summary"] > :is(.dialogue-head, .dialogue-text, .workshop-counter, .workshop-kind, .field-label, .long-text, .workshop-diff) {
+    margin-bottom: 0;
+  }
+  #dialogue.is-workshop[data-workshop="summary"] > .field-label {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  #dialogue.is-workshop[data-workshop="summary"] > .field-label .dialogue-input {
+    flex: 1 1 auto;
+    width: auto;
+    margin-top: 0;
+  }
+  #dialogue.is-workshop[data-workshop="summary"] > .workshop-kind { justify-self: end; }
+  #dialogue.is-workshop[data-workshop="summary"] .long-text { min-height: 0; }
+  #dialogue.is-workshop[data-workshop="summary"] .dialogue-text { max-height: 2.6rem; }
+  #dialogue .long-text .dialogue-input,
+  #dialogue .long-read { font-size: 16px; }
+  #dialogue[data-phase="confirm"] .dialogue-text,
+  #dialogue[data-phase="body"] .dialogue-text { max-height: 3.2rem; }
 }
 
 body.prototype-open #viewport,
@@ -838,6 +1076,7 @@ body.dialogue-open #labels {
   justify-content: center;
 }
 .selector-panel {
+  position: relative;
   width: min(680px, 100%);
   max-height: 100%;
   overflow: auto;
@@ -850,6 +1089,7 @@ body.dialogue-open #labels {
 }
 .selector-panel h2 {
   margin: 0 0 10px;
+  padding-right: 40px;
   font-size: 1.05rem;
 }
 .selector-preview-wrap {

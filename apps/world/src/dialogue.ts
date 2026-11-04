@@ -1,3 +1,4 @@
+import { createDialogCloseButton } from "./dialog-dismiss";
 import type { DialogueCue } from "./dialogue-cues";
 import { inventorChoices, phaseAfterWorkshopTrip, type ChoiceAction } from "./dialogue-flow";
 import { lineRuns, type EmphasisKind, type LineRun } from "./dialogue-emphasis";
@@ -5,22 +6,29 @@ import { INVENTOR_RESULT_OK, inventorSpeech, type DialoguePhase } from "./dialog
 import { chooseScript, scriptNode, startScript, type DialogueScript, type ScriptCursor } from "./dialogue-script";
 import { typeDelayMs } from "./dialogue-type";
 import { LIMITS } from "./limits";
+import { createLongText, keyboardOverlap, type LongTextHandle } from "./long-field";
 import type { CatalogEntry, ProposalDraft, SubmitOutcome } from "./types";
 import { postWorkshop } from "./workshop-api";
 import {
+  WORKSHOP_BEGIN_ID,
   WORKSHOP_UI,
+  rememberWorkshopPick,
   workshopCounter,
   workshopDiffLine,
   workshopFailedChoices,
+  workshopIntroChoices,
   workshopKindLabel,
   workshopPickChoices,
   workshopSpeech,
   workshopSummaryChoices,
   workshopSummaryError,
+  workshopTrailBefore,
+  workshopTrailLine,
   type WorkshopDraftView,
   type WorkshopRequest,
   type WorkshopResult,
   type WorkshopScreen,
+  type WorkshopTrailMark,
 } from "./workshop-view";
 
 export const INVENTOR_NAME = "Inventor";
@@ -80,17 +88,29 @@ export function createDialogue(options: {
   let workshopSession: string | null = null;
   let workshopScreen: WorkshopScreen | null = null;
   let workshopClosing = false;
+  let workshopTrail: WorkshopTrailMark[] = [];
+  let pendingPick: WorkshopTrailMark | null = null;
+  let longText: LongTextHandle | null = null;
   let nextNotice: string | undefined;
   const askWorkshopRemote = options.workshop ?? postWorkshop;
 
   const viewport = window.visualViewport;
   const liftKeyboard = () => {
-    if (!viewport || !options.root.classList.contains("is-workshop")) {
+    const overlap =
+      !viewport || options.root.hidden
+        ? 0
+        : keyboardOverlap(window.innerHeight, viewport.height, viewport.offsetTop);
+    if (overlap <= 0) {
+      options.root.style.removeProperty("--dialogue-kb");
       options.root.style.removeProperty("--workshop-kb");
-      return;
+      options.root.classList.remove("is-keyboard");
+    } else {
+      const px = `${overlap}px`;
+      options.root.style.setProperty("--dialogue-kb", px);
+      options.root.style.setProperty("--workshop-kb", px);
+      options.root.classList.add("is-keyboard");
     }
-    const overlap = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-    options.root.style.setProperty("--workshop-kb", `${Math.round(overlap)}px`);
+    longText?.refresh();
   };
   viewport?.addEventListener("resize", liftKeyboard);
   viewport?.addEventListener("scroll", liftKeyboard);
@@ -104,6 +124,11 @@ export function createDialogue(options: {
     if (typingFrame !== 0) cancelAnimationFrame(typingFrame);
     typingFrame = 0;
     skipTyping = null;
+  }
+
+  function releaseLongText() {
+    longText?.destroy();
+    longText = null;
   }
 
   function flashEmphasis() {
@@ -167,11 +192,17 @@ export function createDialogue(options: {
     if (id) void askWorkshopRemote({ op: "abandon", sessionId: id });
   }
 
+  function clearWorkshopMemory() {
+    workshopTrail = [];
+    pendingPick = null;
+  }
+
   function leaveDesk(message?: string) {
     restoreOriginalNote();
     abandonSession();
     workshopScreen = null;
     workshopClosing = false;
+    clearWorkshopMemory();
     options.onWorkshopBeat?.("off");
     if (message) nextNotice = message;
     beginWorkshopTrip("home");
@@ -207,8 +238,15 @@ export function createDialogue(options: {
     askWorkshop(body);
   }
 
+  function commitPendingPick() {
+    if (!pendingPick) return;
+    workshopTrail = rememberWorkshopPick(workshopTrail, pendingPick.round, pendingPick.ideas);
+    pendingPick = null;
+  }
+
   function applyWorkshop(result: WorkshopResult) {
     if (!result.ok) {
+      pendingPick = null;
       if (result.restore) {
         leaveDesk(result.message);
         return;
@@ -220,6 +258,7 @@ export function createDialogue(options: {
       return;
     }
     draft = { ...draft, title: result.draft.title, description: result.draft.description };
+    commitPendingPick();
     if (result.phase === "summary") {
       workshopSession = null;
       workshopClosing = false;
@@ -236,6 +275,7 @@ export function createDialogue(options: {
       options: result.options,
       round: result.round,
       maxRounds: result.maxRounds,
+      trail: workshopTrailBefore(workshopTrail, result.round),
     };
     options.onWorkshopBeat?.("talk");
     render();
@@ -312,16 +352,17 @@ export function createDialogue(options: {
         originalNote = { kind: draft.kind, title: draft.title, description: draft.description, slug: draft.slug };
         workshopSession = null;
         workshopClosing = false;
-        workshopScreen = { kind: "loading", purpose: "intro" };
-        options.onWorkshopBeat?.("work");
+        clearWorkshopMemory();
+        workshopScreen = { kind: "intro" };
+        options.onWorkshopBeat?.("talk");
       } else {
         workshopScreen = null;
         workshopClosing = false;
+        clearWorkshopMemory();
       }
       options.root.hidden = false;
       bumpBubble();
       render();
-      if (dest === "desk" && originalNote) askWorkshop({ op: "start", draft: draftPayload(originalNote) });
     };
     if (!options.onWorkshopTravel) {
       finish();
@@ -335,9 +376,12 @@ export function createDialogue(options: {
     stopTyping();
     window.clearTimeout(emphTimer);
     delete options.root.dataset.emph;
+    releaseLongText();
     options.root.replaceChildren();
+    options.root.dataset.phase = phase.name;
     options.root.dataset.outcome = phase.name === "done" ? phase.outcome : "";
     options.root.classList.toggle("is-workshop", phase.name === "workshop");
+    options.root.append(createDialogCloseButton(() => close()));
     if (phase.name === "workshop" && workshopScreen) options.root.dataset.workshop = workshopScreen.kind;
     else delete options.root.dataset.workshop;
     liftKeyboard();
@@ -379,6 +423,7 @@ export function createDialogue(options: {
       if (my !== token) return;
       text.dataset.typing = "0";
       line.caret.remove();
+      if (phase.name === "confirm") showConfirmNote(my);
       if (phase.name === "title" || phase.name === "body") showInput(my);
       else if (phase.name === "workshop") showWorkshop(my);
       else showChoices(my);
@@ -486,12 +531,51 @@ export function createDialogue(options: {
     return row;
   }
 
+  function showTrail(trail: WorkshopTrailMark[]) {
+    if (trail.length === 0) return;
+    const list = document.createElement("ol");
+    list.className = "workshop-trail";
+    list.dataset.testid = "workshop-trail";
+    list.setAttribute("aria-label", "Ideas elegidas");
+    for (const mark of trail) {
+      const item = document.createElement("li");
+      item.className = "workshop-trail-mark";
+      item.dataset.testid = "workshop-trail-mark";
+      item.dataset.round = String(mark.round);
+      const label = document.createElement("strong");
+      label.textContent = `Ronda ${mark.round}`;
+      const picks = document.createElement("span");
+      picks.textContent = workshopTrailLine(mark.ideas);
+      item.append(label, picks);
+      list.append(item);
+    }
+    options.root.append(list);
+  }
+
   function showWorkshop(my: number) {
     if (my !== token || phase.name !== "workshop" || !workshopScreen) return;
     const screen = workshopScreen;
+    if (screen.kind === "intro") {
+      const actions = actionRow();
+      for (const choice of workshopIntroChoices()) {
+        addChoice(actions, choice.id, choice.label, () => {
+          if (choice.id !== WORKSHOP_BEGIN_ID) {
+            leaveDesk();
+            return;
+          }
+          if (!originalNote) {
+            leaveDesk(WORKSHOP_UI.closed);
+            return;
+          }
+          beginModelTurn({ op: "start", draft: draftPayload(originalNote) });
+        });
+      }
+      focusWorkshop(options.root.querySelector(`[data-testid='${WORKSHOP_BEGIN_ID}']`));
+      return;
+    }
     if (screen.kind === "loading") {
       addChoice(actionRow(), "choice-workshop-back", "Volver a mi nota", () => leaveDesk());
-      focusWorkshop(options.root.querySelector("button"));
+      focusWorkshop(options.root.querySelector(".dialogue-choice"));
       return;
     }
     if (screen.kind === "failed") {
@@ -507,7 +591,7 @@ export function createDialogue(options: {
           else leaveDesk(WORKSHOP_UI.closed);
         });
       }
-      focusWorkshop(options.root.querySelector("button"));
+      focusWorkshop(options.root.querySelector(".dialogue-choice"));
       return;
     }
     if (screen.kind === "summary") {
@@ -528,15 +612,22 @@ export function createDialogue(options: {
       title.spellcheck = true;
       title.setAttribute("aria-label", "Título");
       title.value = draft.title;
-      const description = document.createElement("textarea");
-      description.className = "dialogue-input";
-      description.dataset.testid = "workshop-description";
-      description.rows = 3;
-      description.maxLength = LIMITS.descriptionMax;
-      description.autocomplete = "off";
-      description.spellcheck = true;
-      description.setAttribute("aria-label", "Descripción");
-      description.value = draft.description;
+      const titleLabel = document.createElement("label");
+      titleLabel.className = "field-label";
+      const titleCaption = document.createElement("span");
+      titleCaption.textContent = "Título";
+      titleLabel.append(titleCaption, title);
+      const descriptionField = createLongText({
+        mode: "edit",
+        value: draft.description,
+        label: "Descripción",
+        testId: "workshop-description",
+        maxLength: LIMITS.descriptionMax,
+        placeholder: "El texto de la nota",
+      });
+      longText = descriptionField;
+      const description = descriptionField.body;
+      if (!(description instanceof HTMLTextAreaElement)) return;
       const diff = document.createElement("p");
       diff.className = "workshop-diff";
       diff.dataset.testid = "workshop-diff";
@@ -546,7 +637,7 @@ export function createDialogue(options: {
       paintDiff();
       title.addEventListener("input", paintDiff);
       description.addEventListener("input", paintDiff);
-      options.root.append(counter, kind, title, description, diff);
+      options.root.append(counter, kind, titleLabel, descriptionField.root, diff);
       const submit = () => {
         const error = workshopSummaryError(title.value, description.value);
         if (error) {
@@ -576,6 +667,7 @@ export function createDialogue(options: {
     counter.dataset.testid = "workshop-counter";
     counter.textContent = workshopCounter(screen.round, screen.maxRounds);
     options.root.append(counter);
+    showTrail(screen.trail);
     const picked = new Set<string>();
     const list = document.createElement("div");
     list.className = "workshop-options";
@@ -608,6 +700,7 @@ export function createDialogue(options: {
           return;
         }
         const decision = choice.id === "choice-workshop-stop" ? "stop" : "next";
+        pendingPick = { round: screen.round, ideas: [...picked] };
         beginModelTurn({ op: "turn", sessionId: workshopSession, decision, picked: [...picked] });
       });
     }
@@ -630,60 +723,91 @@ export function createDialogue(options: {
       button.addEventListener("click", choice.run);
       options.root.append(button);
     }
-    const first = options.root.querySelector("button");
+    const first = options.root.querySelector(".dialogue-choice");
     if (first instanceof HTMLButtonElement) first.focus();
+  }
+
+  function showConfirmNote(my: number) {
+    if (my !== token || phase.name !== "confirm" || !draft.description.trim()) return;
+    const note = createLongText({
+      mode: "read",
+      value: draft.description,
+      label: "Descripción",
+      testId: "dialogue-note",
+    });
+    longText = note;
+    options.root.append(note.root);
   }
 
   function showInput(my: number) {
     if (my !== token || (phase.name !== "title" && phase.name !== "body")) return;
-    const multiline = phase.name === "body";
-    const field = document.createElement(multiline ? "textarea" : "input");
-    if (field instanceof HTMLInputElement) field.type = "text";
-    if (field instanceof HTMLTextAreaElement) field.rows = 3;
-    field.className = "dialogue-input";
-    field.dataset.testid = "dialogue-input";
-    field.maxLength = phase.name === "title" ? LIMITS.titleMax : LIMITS.descriptionMax;
-    field.autocomplete = "off";
-    field.spellcheck = true;
-    field.placeholder = phase.name === "title" ? "Un nombre corto" : "Cuéntaselo al Inventor";
-    field.setAttribute("aria-label", phase.name === "title" ? "Título" : "Descripción");
-    field.enterKeyHint = "send";
-    field.value = phase.name === "title" ? draft.title : draft.description;
-
     const say = document.createElement("button");
     say.type = "button";
     say.className = "dialogue-choice";
     say.dataset.testid = "dialogue-send";
     say.textContent = "Decir";
 
-    const accept = () => {
-      const value = field.value;
-      const min = phase.name === "title" ? LIMITS.titleMin : LIMITS.descriptionMin;
-      const cleaned = value.trim();
-      if (cleaned.length < min) {
-        render("Un poco más, que si no no sé qué apuntar.");
-        return;
-      }
-      if (phase.name === "title") {
-        draft.title = cleaned.replace(/\s+/g, " ");
-        phase = { name: "body", mode: phase.mode };
-      } else if (phase.name === "body") {
-        draft.description = cleaned;
-        phase = { name: "confirm" };
-      }
-      render();
-    };
+    if (phase.name === "body") {
+      const note = createLongText({
+        mode: "edit",
+        value: draft.description,
+        label: "Descripción",
+        testId: "dialogue-input",
+        maxLength: LIMITS.descriptionMax,
+        placeholder: "Cuéntaselo al Inventor",
+      });
+      longText = note;
+      const field = note.body;
+      if (!(field instanceof HTMLTextAreaElement)) return;
+      const accept = () => acceptField(field);
+      say.addEventListener("click", accept);
+      options.root.append(note.root, say);
+      field.focus({ preventScroll: true });
+      return;
+    }
 
+    const field = document.createElement("input");
+    field.type = "text";
+    field.className = "dialogue-input";
+    field.dataset.testid = "dialogue-input";
+    field.maxLength = LIMITS.titleMax;
+    field.autocomplete = "off";
+    field.spellcheck = true;
+    field.placeholder = "Un nombre corto";
+    field.setAttribute("aria-label", "Título");
+    field.enterKeyHint = "send";
+    field.value = draft.title;
+
+    const accept = () => acceptField(field);
     say.addEventListener("click", accept);
     field.addEventListener("keydown", (event: Event) => {
       if (!(event instanceof KeyboardEvent)) return;
-      if (event.key === "Enter" && !event.shiftKey && !(field instanceof HTMLTextAreaElement)) {
+      if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         accept();
       }
     });
     options.root.append(field, say);
-    field.focus();
+    field.focus({ preventScroll: true });
+  }
+
+  function acceptField(field: HTMLInputElement | HTMLTextAreaElement) {
+    if (phase.name !== "title" && phase.name !== "body") return;
+    const value = field.value;
+    const min = phase.name === "title" ? LIMITS.titleMin : LIMITS.descriptionMin;
+    const cleaned = value.trim();
+    if (cleaned.length < min) {
+      render("Un poco más, que si no no sé qué apuntar.");
+      return;
+    }
+    if (phase.name === "title") {
+      draft.title = cleaned.replace(/\s+/g, " ");
+      phase = { name: "body", mode: phase.mode };
+    } else {
+      draft.description = cleaned;
+      phase = { name: "confirm" };
+    }
+    render();
   }
 
   async function send() {
@@ -710,6 +834,7 @@ export function createDialogue(options: {
     token += 1;
     stopTyping();
     window.clearTimeout(emphTimer);
+    releaseLongText();
     if (away) options.onInventorReset?.();
     document.body.classList.remove("dialogue-open");
     options.root.hidden = true;
@@ -720,11 +845,14 @@ export function createDialogue(options: {
     delete options.root.dataset.emph;
     delete options.root.dataset.outcome;
     delete options.root.dataset.workshop;
-    options.root.classList.remove("is-workshop");
+    delete options.root.dataset.phase;
+    options.root.classList.remove("is-workshop", "is-keyboard");
     options.root.style.removeProperty("--workshop-kb");
+    options.root.style.removeProperty("--dialogue-kb");
     abandonSession();
     workshopScreen = null;
     workshopClosing = false;
+    clearWorkshopMemory();
     originalNote = null;
     options.onWorkshopBeat?.("off");
     phase = { name: "greet" };

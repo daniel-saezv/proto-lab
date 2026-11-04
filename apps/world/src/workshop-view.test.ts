@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   readWorkshopResult,
+  rememberWorkshopPick,
   workshopDiffLine,
   workshopFailedChoices,
+  workshopIntroChoices,
   workshopKindLabel,
   workshopPickChoices,
   workshopSummaryChoices,
   workshopSummaryError,
+  workshopTrailBefore,
+  workshopTrailLine,
 } from "./workshop-view";
 
 const draft = {
@@ -23,6 +27,18 @@ const options = [
 ];
 
 describe("vista del taller", () => {
+  it("la explicación espera a Empezar y el rastro guarda lo elegido", () => {
+    expect(workshopIntroChoices().map((choice) => choice.label)).toEqual(["Empezar", "Volver a mi nota"]);
+    expect(workshopTrailLine([])).toBe("Ninguna");
+    expect(workshopTrailLine(["  ¿Y si dejara un rastro?  "])).toBe("¿Y si dejara un rastro?");
+    const trail = rememberWorkshopPick([], 1, ["¿Y si dejara un rastro?"]);
+    const both = rememberWorkshopPick(trail, 2, []);
+    expect(workshopTrailBefore(both, 2).map((mark) => mark.round)).toEqual([1]);
+    expect(workshopTrailBefore(both, 3)).toHaveLength(2);
+    expect(workshopTrailLine(both[1]?.ideas ?? [])).toBe("Ninguna");
+    expect(rememberWorkshopPick(both, 1, ["otra"])[0]?.ideas).toEqual(["otra"]);
+  });
+
   it("deja marcar ideas y cerrar la ronda, o enviar el resumen", () => {
     expect(workshopPickChoices().map((choice) => choice.label)).toEqual([
       "Siguiente",

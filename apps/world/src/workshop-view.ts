@@ -46,9 +46,15 @@ export type WorkshopFail = {
 
 export type WorkshopResult = WorkshopOk | WorkshopFail;
 
+export type WorkshopTrailMark = {
+  round: number;
+  ideas: string[];
+};
+
 export type WorkshopScreen =
-  | { kind: "loading"; purpose: "model" | "summary" | "intro" }
-  | { kind: "pick"; speech: string; options: string[]; round: number; maxRounds: number }
+  | { kind: "intro" }
+  | { kind: "loading"; purpose: "model" | "summary" }
+  | { kind: "pick"; speech: string; options: string[]; round: number; maxRounds: number; trail: WorkshopTrailMark[] }
   | { kind: "failed"; message: string }
   | { kind: "summary"; speech: string; round: number; maxRounds: number };
 
@@ -58,13 +64,37 @@ export type WorkshopChoice = {
 };
 
 export function workshopSpeech(screen: WorkshopScreen): string {
+  if (screen.kind === "intro") return WORKSHOP_UI.intro;
   if (screen.kind === "loading") {
     if (screen.purpose === "summary") return WORKSHOP_UI.summarizing;
-    if (screen.purpose === "intro") return WORKSHOP_UI.intro;
     return WORKSHOP_UI.thinking;
   }
   if (screen.kind === "failed") return screen.message;
   return screen.speech;
+}
+
+export const WORKSHOP_BEGIN_ID = "workshop-begin";
+
+export function workshopTrailLine(ideas: readonly string[]): string {
+  const clean = ideas.map((idea) => idea.trim()).filter(Boolean);
+  if (clean.length === 0) return "Ninguna";
+  return clean.join(" · ");
+}
+
+/** Marcas de rondas anteriores, en orden. */
+export function workshopTrailBefore(trail: readonly WorkshopTrailMark[], round: number): WorkshopTrailMark[] {
+  return trail.filter((mark) => mark.round < round).sort((a, b) => a.round - b.round);
+}
+
+export function rememberWorkshopPick(
+  trail: readonly WorkshopTrailMark[],
+  round: number,
+  ideas: readonly string[],
+): WorkshopTrailMark[] {
+  const next = trail.filter((mark) => mark.round !== round);
+  next.push({ round, ideas: [...ideas] });
+  next.sort((a, b) => a.round - b.round);
+  return next;
 }
 
 export function workshopCounter(round: number, maxRounds: number): string {
@@ -96,6 +126,13 @@ export function workshopSummaryError(title: string, description: string): string
     return "El texto tiene que ir entre 10 y 2000 caracteres.";
   }
   return null;
+}
+
+export function workshopIntroChoices(): WorkshopChoice[] {
+  return [
+    { id: WORKSHOP_BEGIN_ID, label: "Empezar" },
+    { id: "choice-workshop-back", label: "Volver a mi nota" },
+  ];
 }
 
 export function workshopPickChoices(): WorkshopChoice[] {

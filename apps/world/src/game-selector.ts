@@ -1,3 +1,4 @@
+import { createDialogCloseButton } from "./dialog-dismiss";
 import type { CatalogEntry } from "./types";
 import { selectorKeyAction, stepIndex, wrapIndex } from "./game-selector-logic";
 import { titleCardDataUrl } from "./title-card";
@@ -138,7 +139,7 @@ export function createGameSelector(options: {
     });
     actions.append(back, play);
 
-    panel.append(heading, previewWrap, nav, meta, actions);
+    panel.append(createDialogCloseButton(() => close()), heading, previewWrap, nav, meta, actions);
     options.root.append(panel);
 
     previewWrap.addEventListener(
