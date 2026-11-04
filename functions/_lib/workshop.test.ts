@@ -5,7 +5,10 @@ import {
   WORKSHOP_SYSTEM,
   buildWorkshopMessages,
   estimateNeurons,
+  messageChars,
   parseWorkshopJson,
+  trimWorkshopMemory,
+  workshopMemoryLine,
   workshopModelText,
   workshopPayloadShape,
 } from "./workshop";
@@ -44,6 +47,91 @@ describe("taller, prompt y lectura", () => {
     });
     expect(last[1]?.content).toContain("último turno");
     expect(last[1]?.content).toContain("más corto");
+    expect(last[1]?.content).not.toContain("ready en true");
+  });
+
+  const gameWords = /\b(juego|jugar|jugador|partida|nivel|enemigo|misi[oó]n|puntuaci[oó]n|princesa|orco|cometa)\b/i;
+
+  it("el prompt no habla de un tipo concreto de aplicación", () => {
+    expect(WORKSHOP_SYSTEM).not.toMatch(gameWords);
+    expect(WORKSHOP_SYSTEM).toContain("cualquier aplicación web");
+    expect(WORKSHOP_SYSTEM).toContain("ready es siempre false");
+    const neutral = buildWorkshopMessages({
+      original: { kind: "propuesta", title: "Farol", description: "Una página para apuntar lo que falta en casa." },
+      current: { kind: "propuesta", title: "Farol", description: "Una página para apuntar lo que falta en casa." },
+      turn: 1,
+    });
+    expect(neutral[0]?.content).not.toMatch(gameWords);
+    expect(neutral[1]?.content).not.toMatch(gameWords);
+  });
+
+  it("pasa el historial entero y lo corta por el turno más viejo", () => {
+    const princess = {
+      kind: "propuesta" as const,
+      title: "Un mundo de fantasía en 3d, donde debas rescartar a una princesa",
+      description: "La princesa ha sido raptada por unos orcos y tu debes ir a rescatarla",
+    };
+    const tool = {
+      kind: "propuesta" as const,
+      title: "Lista de la casa",
+      description: "Una página para apuntar lo que falta en casa y tacharlo.",
+    };
+    const princessHistory = [
+      {
+        turn: 1,
+        speech: "El título no dice qué se hace. ¿Lo dejamos en «Rescate en la isla» y el texto cuenta el recorrido de noche y la salida en barca?",
+        proposal: "Rescate en la isla",
+        friend: "reject" as const,
+        said: null,
+      },
+      {
+        turn: 2,
+        speech: "Dejo el título como lo escribiste y añado al texto el recorrido de noche y la barca.",
+        proposal: princess.title,
+        friend: "reply" as const,
+        said: "De noche, el lugar está en una isla y se sale en una barca.",
+      },
+    ];
+    const toolHistory = [
+      {
+        turn: 1,
+        speech: "¿La lista la ve una sola persona o varias? Puedo añadir al texto que cada cosa lleva quién la trae.",
+        proposal: null,
+        friend: "reply" as const,
+        said: "La vemos varias, y cada cosa tiene quién la trae.",
+      },
+    ];
+    const princessTurn = buildWorkshopMessages({ original: princess, current: princess, turn: 3, history: princessHistory });
+    const toolTurn = buildWorkshopMessages({ original: tool, current: tool, turn: 2, history: toolHistory });
+    const princessUser = princessTurn[1]?.content ?? "";
+    const toolUser = toolTurn[1]?.content ?? "";
+    expect(princessTurn[0]?.content).toBe(WORKSHOP_SYSTEM);
+    expect(princessUser).toContain("Rescate en la isla");
+    expect(princessUser).toContain("El amigo rechazó esa propuesta.");
+    expect(princessUser).toContain("De noche, el lugar está en una isla");
+    expect(princessUser).toContain(princess.description);
+    expect(toolUser).toContain("quién la trae");
+    expect(toolUser).toContain("La vemos varias");
+    expect(toolUser).not.toMatch(gameWords);
+    const open = estimateNeurons(messageChars(buildWorkshopMessages({ original: tool, current: tool, turn: 1 })));
+    const later = estimateNeurons(messageChars(toolTurn));
+    expect(later).toBeGreaterThanOrEqual(open);
+    const bulky = Array.from({ length: 12 }, (_, index) => ({
+      turn: index + 1,
+      speech: "a".repeat(800),
+      proposal: "b".repeat(80),
+      friend: "reply" as const,
+      said: "c".repeat(400),
+    }));
+    const trimmed = trimWorkshopMemory(bulky);
+    expect(trimmed.omitted).toBeGreaterThan(0);
+    expect(trimmed.text.length).toBeLessThanOrEqual(WORKSHOP_LIMITS.historyMaxChars);
+    expect(trimmed.text).toContain("a".repeat(80));
+    expect(trimmed.text).not.toContain(`Turno 1. Inventor: «${"a".repeat(800)}»`);
+    const capped = buildWorkshopMessages({ original: tool, current: tool, turn: 12, history: bulky });
+    const whole = bulky.map(workshopMemoryLine).join("\n").length;
+    expect(messageChars(capped)).toBeLessThan(whole);
+    expect(estimateNeurons(messageChars(capped))).toBeGreaterThan(open);
   });
 
   it("descarta html, urls y marcas del diálogo", () => {

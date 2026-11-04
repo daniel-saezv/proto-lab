@@ -302,7 +302,7 @@ export function createDialogue(options: {
         originalNote = { kind: draft.kind, title: draft.title, description: draft.description, slug: draft.slug };
         workshopSession = null;
         workshopCorrecting = false;
-        workshopScreen = { kind: "loading", purpose: "model" };
+        workshopScreen = { kind: "loading", purpose: "intro" };
         options.onWorkshopBeat?.("work");
       } else {
         workshopScreen = null;
@@ -556,7 +556,11 @@ export function createDialogue(options: {
     counter.className = "workshop-counter";
     counter.dataset.testid = "workshop-counter";
     counter.textContent = workshopCounter(screen.turn, screen.maxTurns);
-    options.root.append(counter);
+    const hint = document.createElement("p");
+    hint.className = "workshop-counter";
+    hint.dataset.testid = "workshop-hint";
+    hint.textContent = "Un retoque cada vez. Tú aceptas, rechazas o corriges. Como mucho cinco turnos.";
+    options.root.append(counter, hint);
     if (screen.change) {
       options.root.append(
         workshopCard("workshop-now", "Ahora", [draft.title, draft.description]),
@@ -578,7 +582,7 @@ export function createDialogue(options: {
       utterance.autocomplete = "off";
       utterance.spellcheck = true;
       utterance.setAttribute("aria-label", "Tu respuesta");
-      utterance.placeholder = "Cuéntaselo al Inventor";
+      utterance.placeholder = workshopCorrecting ? "Cómo prefieres dejarlo" : "Tu respuesta";
       options.root.append(utterance);
     }
     const say = () => {
@@ -606,11 +610,11 @@ export function createDialogue(options: {
         say();
       }
     });
-    const turnChoices = workshopTurnChoices({ hasChange: Boolean(screen.change), turn: screen.turn }).filter(
+    const turnChoices = workshopTurnChoices({ hasChange: Boolean(screen.change) }).filter(
       (choice) => !(choice.id === "choice-workshop-correct" && workshopCorrecting),
     );
     if (needsField && !turnChoices.some((choice) => choice.id === "choice-workshop-say")) {
-      turnChoices.unshift({ id: "choice-workshop-say", label: "Decir" });
+      turnChoices.unshift({ id: "choice-workshop-say", label: "Envío la corrección" });
     }
     for (const choice of turnChoices) {
       addChoice(choice.id, choice.label, () => {

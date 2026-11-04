@@ -1,4 +1,5 @@
 import type { CatalogEntry, ProposalDraft } from "./types";
+import { WORKSHOP_UI } from "./workshop-view";
 
 export type DialoguePhase =
   | { name: "greet" }
@@ -15,7 +16,7 @@ export const INVENTOR_RESULT_OK =
 const ITERATION_FALLBACK = "ese mundo";
 
 const DESK_OFFER =
-  "\n\nSi te apetece, la afinamos juntos en el {em}escritorio{/em}. Tú traes la idea y yo el banco; no la envío hasta que lo digas.";
+  "\n\nSi te apetece, la afinamos juntos en el {em}escritorio{/em}. Yo propongo un retoque cada vez y tú decides. Como mucho cinco turnos. No la envío hasta que lo digas.";
 
 export function inventorSpeech(
   phase: DialoguePhase,
@@ -46,7 +47,7 @@ export function inventorSpeech(
         DESK_OFFER
       );
     case "workshop":
-      return "Me siento a la mesa. La {em}máquina{/em} está pensando.";
+      return WORKSHOP_UI.intro;
     case "sending":
       return "Un momento, que mojo la {em}pluma{/em}…";
   }

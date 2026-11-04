@@ -99,7 +99,47 @@ async function readSession(kv: KvLike, id: string, email: string): Promise<Works
   const body = parsed as WorkshopSession;
   if (body.email !== email) return null;
   if (!body.original || !body.current) return null;
+  body.history = readMemory(body.history);
   return body;
+}
+
+function readMemory(value: unknown): WorkshopSession["history"] {
+  if (!Array.isArray(value)) return [];
+  const turns: WorkshopSession["history"] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as WorkshopSession["history"][number];
+    if (typeof entry.speech !== "string" || typeof entry.turn !== "number") continue;
+    const friend = entry.friend;
+    const allowed =
+      friend === "accept" || friend === "reject" || friend === "reply" || friend === "correct" || friend === "retry";
+    turns.push({
+      turn: entry.turn,
+      speech: entry.speech,
+      proposal: typeof entry.proposal === "string" ? entry.proposal : null,
+      friend: allowed ? friend : null,
+      said: typeof entry.said === "string" ? entry.said : null,
+    });
+  }
+  return turns;
+}
+
+function rememberInventor(session: WorkshopSession, turn: number, speech: string, proposal: string | null): void {
+  session.history.push({ turn, speech, proposal, friend: null, said: null });
+}
+
+function rememberFriend(
+  session: WorkshopSession,
+  friend: NonNullable<WorkshopSession["history"][number]["friend"]>,
+  said: string | null,
+): void {
+  const last = session.history.at(-1);
+  if (!last || last.friend) {
+    session.history.push({ turn: session.turn, speech: "", proposal: null, friend, said });
+    return;
+  }
+  last.friend = friend;
+  last.said = said;
 }
 
 async function writeSession(kv: KvLike, id: string, session: WorkshopSession): Promise<void> {
@@ -312,6 +352,7 @@ async function startSession(
     pending: null,
     ready: false,
     rejection: null,
+    history: [],
   };
   const sessionId = newSessionId();
   const spoken = await speak(ai, messages, session, knownSlugs, 1, kv, day);
@@ -321,10 +362,6 @@ async function startSession(
   }
   session.turn = spoken.view.turn;
   await writeSession(kv, sessionId, session);
-  if (spoken.view.ready && !spoken.view.change) {
-    await deleteSession(kv, sessionId);
-    return json(200, summaryBody(session, spoken.view.speech));
-  }
   return json(200, turnBody({ phase: "turn", sessionId, ...spoken.view, draft: session.current, original: session.original }));
 }
 
@@ -344,6 +381,12 @@ async function continueSession(
     return json(200, summaryBody(session, WORKSHOP_COPY.summary));
   }
 
+  const utterance = decision === "reply" || decision === "correct" ? cleanUtterance(utteranceRaw) : "";
+  if ((decision === "reply" || decision === "correct") && utterance.length < 1) {
+    return fail(400, "validation", "Dime algo, aunque sea corto.");
+  }
+  rememberFriend(session, decision, utterance || null);
+
   if (decision === "accept") {
     if (!session.pending) return fail(400, "validation", "No hay un cambio pendiente.");
     session.current = {
@@ -353,56 +396,18 @@ async function continueSession(
     };
     session.pending = null;
     session.rejection = null;
-    if (session.ready || session.turn >= WORKSHOP_LIMITS.maxTurns) {
-      await deleteSession(kv, sessionId);
-      return json(200, summaryBody(session, WORKSHOP_COPY.summary));
-    }
   } else if (decision === "reject") {
     session.rejection = session.pending?.title ?? session.rejection;
     session.pending = null;
-    if (session.ready || session.turn >= WORKSHOP_LIMITS.maxTurns) {
-      await deleteSession(kv, sessionId);
-      return json(200, summaryBody(session, WORKSHOP_COPY.summary));
-    }
-  } else if (decision === "retry") {
-    if (session.turn >= WORKSHOP_LIMITS.maxTurns && session.pending == null && session.ready) {
-      await deleteSession(kv, sessionId);
-      return json(200, summaryBody(session, WORKSHOP_COPY.summary));
-    }
-  } else {
-    const utterance = cleanUtterance(utteranceRaw);
-    if (utterance.length < 1) return fail(400, "validation", "Dime algo, aunque sea corto.");
-    if (session.turn >= WORKSHOP_LIMITS.maxTurns) {
-      await deleteSession(kv, sessionId);
-      return json(200, summaryBody(session, WORKSHOP_COPY.summary));
-    }
+  } else if (decision !== "retry") {
     session.rejection = null;
     session.pending = null;
-    const nextTurn = session.turn + 1;
-    const messages = buildWorkshopMessages({
-      original: session.original,
-      current: session.current,
-      turn: nextTurn,
-      decision: { kind: decision, utterance },
-    });
-    const blocked = await neuronQuota(kv, day, messages);
-    if (blocked) {
-      await deleteSession(kv, sessionId);
-      return blocked;
-    }
-    await spendNeurons(kv, day, messages);
-    const spoken = await speak(ai, messages, session, knownSlugs, nextTurn, kv, day);
-    if (!spoken.ok) {
-      await writeSession(kv, sessionId, session);
-      return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: session.turn });
-    }
-    session.turn = nextTurn;
-    await writeSession(kv, sessionId, session);
-    if (spoken.view.ready && !spoken.view.change) {
-      await deleteSession(kv, sessionId);
-      return json(200, summaryBody(session, spoken.view.speech));
-    }
-    return json(200, turnBody({ phase: "turn", sessionId, ...spoken.view, draft: session.current, original: session.original }));
+  }
+
+  if (session.turn >= WORKSHOP_LIMITS.maxTurns) {
+    await deleteSession(kv, sessionId);
+    const speech = utterance ? `${WORKSHOP_COPY.summary} Has dejado esto: «${utterance}».` : WORKSHOP_COPY.summary;
+    return json(200, summaryBody(session, speech));
   }
 
   const nextTurn = session.turn + 1;
@@ -410,8 +415,10 @@ async function continueSession(
     original: session.original,
     current: session.current,
     turn: nextTurn,
+    history: session.history,
     decision: {
-      kind: decision === "reject" ? "reject" : decision === "retry" ? "retry" : "accept",
+      kind: decision,
+      utterance: utterance || undefined,
       rejected: session.rejection ?? undefined,
     },
   });
@@ -428,10 +435,6 @@ async function continueSession(
   }
   session.turn = nextTurn;
   await writeSession(kv, sessionId, session);
-  if (spoken.view.ready && !spoken.view.change) {
-    await deleteSession(kv, sessionId);
-    return json(200, summaryBody(session, spoken.view.speech));
-  }
   return json(200, turnBody({ phase: "turn", sessionId, ...spoken.view, draft: session.current, original: session.original }));
 }
 
@@ -470,18 +473,18 @@ async function speak(
     logWorkshop("model-error", { kind: workshopErrorKind(error) });
     return { ok: false };
   }
-  const forcedReady = turn >= WORKSHOP_LIMITS.maxTurns;
   if (!parsed) {
     session.pending = null;
-    session.ready = forcedReady;
+    session.ready = false;
+    rememberInventor(session, turn, WORKSHOP_COPY.badJson, null);
     return {
       ok: true,
-      view: { speech: WORKSHOP_COPY.badJson, change: null, turn, ready: forcedReady },
+      view: { speech: WORKSHOP_COPY.badJson, change: null, turn, ready: false },
     };
   }
   const change = offerChange(parsed.change, session.current, knownSlugs);
-  const ready = forcedReady || parsed.ready;
   session.pending = change;
-  session.ready = ready;
-  return { ok: true, view: { speech: parsed.speech, change, turn, ready } };
+  session.ready = false;
+  rememberInventor(session, turn, parsed.speech, change?.title ?? null);
+  return { ok: true, view: { speech: parsed.speech, change, turn, ready: false } };
 }

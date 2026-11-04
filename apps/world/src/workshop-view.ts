@@ -4,7 +4,9 @@ import { LIMITS } from "./limits";
 export const WORKSHOP_UTTERANCE_MAX = 500;
 
 export const WORKSHOP_UI = {
-  thinking: "La máquina está pensando…",
+  intro:
+    "Esto es para dejar la nota más clara antes del {em}tablón{/em}. Yo te propongo un retoque cada vez, o te pregunto lo que falta, y tú aceptas, rechazas o lo corriges. Como mucho cinco turnos. Cuando te valga, di que así está bien. No la envío hasta que lo digas.",
+  thinking: "Estoy mirando la nota…",
   summarizing: "Estoy pasando a limpio el resumen.",
   needWords: "Dime algo, aunque sea corto.",
   closed: "Esta charla ya se ha cerrado. Tu nota sigue como la dejaste.",
@@ -56,7 +58,7 @@ export type WorkshopFail = {
 export type WorkshopResult = WorkshopOk | WorkshopFail;
 
 export type WorkshopScreen =
-  | { kind: "loading"; purpose: "model" | "summary" }
+  | { kind: "loading"; purpose: "model" | "summary" | "intro" }
   | { kind: "turn"; speech: string; change: WorkshopChangeView | null; turn: number; maxTurns: number }
   | { kind: "failed"; message: string }
   | { kind: "summary"; speech: string; turn: number; maxTurns: number };
@@ -67,7 +69,11 @@ export type WorkshopChoice = {
 };
 
 export function workshopSpeech(screen: WorkshopScreen): string {
-  if (screen.kind === "loading") return screen.purpose === "summary" ? WORKSHOP_UI.summarizing : WORKSHOP_UI.thinking;
+  if (screen.kind === "loading") {
+    if (screen.purpose === "summary") return WORKSHOP_UI.summarizing;
+    if (screen.purpose === "intro") return WORKSHOP_UI.intro;
+    return WORKSHOP_UI.thinking;
+  }
   if (screen.kind === "failed") return screen.message;
   return screen.speech;
 }
@@ -103,19 +109,18 @@ export function workshopSummaryError(title: string, description: string): string
   return null;
 }
 
-export function workshopTurnChoices(input: { hasChange: boolean; turn: number }): WorkshopChoice[] {
+export function workshopTurnChoices(input: { hasChange: boolean }): WorkshopChoice[] {
   if (input.hasChange) {
-    const list: WorkshopChoice[] = [
-      { id: "choice-workshop-accept", label: "Me vale" },
-      { id: "choice-workshop-reject", label: "Así no" },
-      { id: "choice-workshop-correct", label: "Lo digo yo" },
+    return [
+      { id: "choice-workshop-accept", label: "Que entre en la nota" },
+      { id: "choice-workshop-reject", label: "Que no entre" },
+      { id: "choice-workshop-correct", label: "Lo corrijo yo" },
+      { id: "choice-workshop-stop", label: "Así está bien" },
+      { id: "choice-workshop-back", label: "Volver a mi nota" },
     ];
-    if (input.turn >= 2) list.push({ id: "choice-workshop-stop", label: "Terminar y ver el resumen" });
-    list.push({ id: "choice-workshop-back", label: "Volver a mi nota" });
-    return list;
   }
   return [
-    { id: "choice-workshop-say", label: "Decir" },
+    { id: "choice-workshop-say", label: "Contesto" },
     { id: "choice-workshop-stop", label: "Así está bien" },
     { id: "choice-workshop-back", label: "Volver a mi nota" },
   ];

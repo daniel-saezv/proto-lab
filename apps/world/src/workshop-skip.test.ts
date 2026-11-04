@@ -23,12 +23,13 @@ describe("salto de la cinemática del escritorio", () => {
 
   it("en horizontal el diálogo encoge el texto para que quepan cuatro acciones", () => {
     const css = readFileSync(join(here, "style.css"), "utf8");
-    const query = css.slice(css.indexOf("@media (max-height: 500px)"));
+    const query = css.slice(css.lastIndexOf("@media (max-height: 500px)"));
     expect(query).toContain(".dialogue-choice");
     expect(query).toContain("min-height: 44px");
     expect(query).toContain("touch-action: manipulation");
-    expect(query).toContain("#dialogue.is-workshop");
-    expect(query).toContain("max-height: 48%");
-    expect(query).toContain("--workshop-kb");
+    const workshop = query.slice(query.indexOf("#dialogue.is-workshop"), query.indexOf(".dialogue-head"));
+    expect(workshop).toContain("max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))");
+    expect(workshop).toContain("--workshop-kb");
+    expect(workshop).not.toContain("48%");
   });
 });

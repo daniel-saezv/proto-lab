@@ -172,6 +172,56 @@ describe("POST /api/workshop", () => {
     expect([...kv.store.keys()].some((key) => key.includes(":calls:"))).toBe(false);
   });
 
+  it("la segunda llamada lleva el historial y no cierra porque el modelo ponga ready", async () => {
+    const kv = memoryKv();
+    const tool = {
+      kind: "propuesta",
+      title: "Lista de la casa",
+      description: "Una página para apuntar lo que falta en casa y tacharlo.",
+    };
+    const firstSpeech = "¿La lista la ve una persona o varias? Puedo añadir quién la trae.";
+    const ai = aiOf({ response: JSON.stringify({ speech: firstSpeech, change: null, ready: true }) });
+    const started = await bodyOf(
+      await handleWorkshop(request({ op: "start", draft: tool }), envOf(kv, ai), { now: NOW }),
+    );
+    expect(started.phase).toBe("turn");
+    expect(started.ready).toBe(false);
+    expect(kv.store.has(workshopSessionKey(String(started.sessionId)))).toBe(true);
+    const said = "La vemos varias, y cada cosa tiene quién la trae.";
+    ai.run = async (model, input) => {
+      ai.calls.push({ model, input });
+      return {
+        response: JSON.stringify({
+          speech: "Dejo en el texto que varias personas la ven y cada cosa lleva quién la trae.",
+          change: null,
+          ready: true,
+        }),
+      };
+    };
+    const next = await bodyOf(
+      await handleWorkshop(
+        request({ op: "turn", sessionId: started.sessionId, decision: "reply", utterance: said }),
+        envOf(kv, ai),
+        { now: NOW },
+      ),
+    );
+    expect(next.phase).toBe("turn");
+    expect(next.ready).toBe(false);
+    const first = ai.calls[0] as { input: { messages: { content: string }[] } };
+    const second = ai.calls[1] as { input: { messages: { content: string }[] } };
+    const joined = second.input.messages.map((message) => message.content).join("\n");
+    expect(joined).toContain(firstSpeech);
+    expect(joined).toContain(said);
+    expect(joined).toContain(tool.title);
+    const firstChars = first.input.messages.reduce((sum, message) => sum + message.content.length, 0);
+    const secondChars = second.input.messages.reduce((sum, message) => sum + message.content.length, 0);
+    expect(secondChars).toBeGreaterThan(firstChars);
+    const firstCost = estimateNeurons(firstChars);
+    const secondCost = estimateNeurons(secondChars);
+    expect(secondCost).toBeGreaterThanOrEqual(firstCost);
+    expect(kv.store.get(workshopNeuronsKey(DAY))).toBe(String(firstCost + secondCost));
+  });
+
   it("no aplica el cambio hasta que el amigo lo acepta, y el tipo no cambia", async () => {
     const kv = memoryKv();
     const ai = aiOf(changeReply());

@@ -16,16 +16,16 @@ const draft = {
 };
 
 describe("vista del taller", () => {
-  it("ofrece aceptar, rechazar o corregir, y el resumen desde el segundo turno", () => {
-    expect(workshopTurnChoices({ hasChange: true, turn: 1 }).map((choice) => choice.label)).toEqual([
-      "Me vale",
-      "Así no",
-      "Lo digo yo",
+  it("ofrece aceptar, rechazar o corregir, y cerrar en cualquier turno", () => {
+    expect(workshopTurnChoices({ hasChange: true }).map((choice) => choice.label)).toEqual([
+      "Que entre en la nota",
+      "Que no entre",
+      "Lo corrijo yo",
+      "Así está bien",
       "Volver a mi nota",
     ]);
-    expect(workshopTurnChoices({ hasChange: true, turn: 2 }).map((choice) => choice.id)).toContain("choice-workshop-stop");
-    expect(workshopTurnChoices({ hasChange: false, turn: 1 }).map((choice) => choice.label)).toEqual([
-      "Decir",
+    expect(workshopTurnChoices({ hasChange: false }).map((choice) => choice.label)).toEqual([
+      "Contesto",
       "Así está bien",
       "Volver a mi nota",
     ]);
