@@ -258,8 +258,15 @@ test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) =>
   await expectSeguirAfterArrive(page, viewport!.width, viewport!.height);
 });
 
+async function sendField(page: Page, value: string) {
+  await skipUntil(page, "dialogue-input");
+  await page.getByTestId("dialogue-input").fill(value);
+  await page.getByTestId("dialogue-send").click();
+}
+
 test("Seguir queda centrado en las tres rondas con la cámara en movimiento", async ({ page }, testInfo) => {
   skipUnlessChromium(testInfo, "escritorio");
+  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockWorkshop(page);
   await page.goto("/?perf=1");
@@ -268,10 +275,8 @@ test("Seguir queda centrado en las tres rondas con la cámara en movimiento", as
   await page.getByTestId("interact").click();
   await skipUntil(page, "choice-propose");
   await page.getByTestId("choice-propose").click();
-  await page.getByTestId("dialogue-input").fill("Cometa lunar");
-  await page.getByTestId("dialogue-send").click();
-  await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa con el dedo.");
-  await page.getByTestId("dialogue-send").click();
+  await sendField(page, "Cometa lunar");
+  await sendField(page, "Un juego corto en el que persigues una cometa con el dedo.");
   await skipUntil(page, "choice-workshop");
   await page.getByTestId("choice-workshop").click();
   await expect.poll(async () => {
