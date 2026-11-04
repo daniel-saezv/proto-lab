@@ -41,6 +41,8 @@ Al iterar, sube `version` en `proto.json` y añade la entrada en `history` con e
 
 Al crear o modificar la aplicación, ejecuta `pnpm previews` y commitea en el mismo PR `preview.webp`, `preview.mp4` y `preview-src.sha256`. La CI comprueba el clip y no lo graba.
 
+La foto fija queda en **640×360 (16:9)**, como mucho 150 KB. `pnpm previews` mete la captura entera y centrada; si no es 16:9, rellena las bandas con el color de las esquinas. Lo que no se puede recortar (título, HUD) va en la zona segura: el **16:10 central**, 32 px a cada lado. El arcade y el selector son 16:10 y usan `cover` centrado (recortan un 5 % lateral de una foto 16:9). La tele es 16:9 y usa `contain`, igual que el clip de 320×180. Una captura de teléfono no se estira. El test `scripts/preview-frame.test.mjs` falla si la foto no cumple el tamaño.
+
 ## Godot
 
 El agente no exporta en la máquina: no hay binario de Godot en el entorno. El workflow `.github/workflows/exportar-godot.yml` exporta el proyecto que toca el diff y sube el artefacto `godot-export-<slug>`. Descárgalo con `gh run download` (lectura) y copia los archivos a `protos/<slug>/` sin pisar `proto.json` ni `godot/`. El procedimiento está en `templates/export-estatico/LEEME.md`. El workflow no hace push y no tiene secretos.

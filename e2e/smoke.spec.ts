@@ -137,7 +137,7 @@ test("ver la pizarra encuadra la cámara y vuelve sin abrir un diálogo", async 
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-screen", "list");
   const back = page.getByTestId("board-back");
   await expect(back).toBeVisible();
-  await expect(back).toHaveText("Volver");
+  await expect(back).toHaveAttribute("aria-label", "Cerrar");
   await back.click();
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
   await expect(back).toBeHidden();
@@ -890,6 +890,10 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   await reachConfirmStep(page);
   await expect(page.getByTestId("workshop-skip")).toBeHidden();
   await page.getByTestId("choice-workshop").click();
+  await expect(page.getByTestId("workshop-begin")).toBeVisible();
+  await expect(page.getByTestId("dialogue-text")).toContainText("tres rondas");
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.beat)).toBe("talk");
+  await page.getByTestId("workshop-begin").click();
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.beat)).toBe("work");
   releaseStart();
   await expect(page.getByTestId("choice-workshop-next")).toBeVisible();
@@ -912,6 +916,7 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   expect(home?.x).toBeCloseTo(-1.5, 1);
   expect(home?.z).toBeCloseTo(-3.4, 1);
   await page.getByTestId("choice-workshop").click();
+  await page.getByTestId("workshop-begin").click();
   await expect(page.getByTestId("choice-workshop-next")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("dialogue")).toBeHidden();
@@ -928,6 +933,7 @@ test("el resumen del escritorio envía solo el título y el texto finales", asyn
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await reachConfirmStep(page);
   await page.getByTestId("choice-workshop").click();
+  await page.getByTestId("workshop-begin").click();
   await page.getByTestId("workshop-option").first().click();
   await expect(page.getByTestId("workshop-option").first()).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("choice-workshop-stop").click();

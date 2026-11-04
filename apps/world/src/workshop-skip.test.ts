@@ -28,7 +28,9 @@ describe("salto de la cinemática del escritorio", () => {
     expect(query).toContain("min-height: 44px");
     expect(query).toContain("touch-action: manipulation");
     const workshop = query.slice(query.indexOf("#dialogue.is-workshop"), query.indexOf(".dialogue-head"));
-    expect(workshop).toContain("max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))");
+    expect(workshop).toContain(
+      "max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px))",
+    );
     expect(workshop).toContain("--workshop-kb");
     expect(workshop).not.toContain("48%");
     expect(query).toContain(".workshop-options { grid-template-columns: 1fr 1fr; }");

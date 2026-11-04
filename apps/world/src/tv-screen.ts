@@ -1,4 +1,6 @@
 import { CanvasTexture, MeshBasicMaterial, SRGBColorSpace, type Material } from "three";
+import { containDest } from "./preview-frame";
+import { loadPreviewStill } from "./preview-stills";
 import { TV_TEXTURE_HEIGHT, TV_TEXTURE_WIDTH, shouldBlitTv, shouldDecodeTv } from "./tv-preview";
 
 /**
@@ -40,12 +42,24 @@ export function createTvScreen(materials: Material[]) {
   let playing = false;
   let blitElapsed = 0;
 
-  function paintStill() {
+  function paintContain(source: CanvasImageSource, srcW: number, srcH: number) {
     ctx.fillStyle = "#14182b";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const ready = Boolean(stillImage && stillImage.complete && stillImage.naturalWidth > 0);
-    if (ready && stillImage) ctx.drawImage(stillImage, 0, 0, canvas.width, canvas.height);
+    if (srcW > 0 && srcH > 0) {
+      const dest = containDest(srcW, srcH, canvas.width, canvas.height);
+      ctx.drawImage(source, dest.x, dest.y, dest.w, dest.h);
+    }
     texture.needsUpdate = true;
+  }
+
+  function paintStill() {
+    const ready = Boolean(stillImage && stillImage.complete && stillImage.naturalWidth > 0);
+    if (ready && stillImage) paintContain(stillImage, stillImage.naturalWidth, stillImage.naturalHeight);
+    else {
+      ctx.fillStyle = "#14182b";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      texture.needsUpdate = true;
+    }
     stillPainted = ready || !stillHref;
   }
 
@@ -56,19 +70,12 @@ export function createTvScreen(materials: Material[]) {
       paintStill();
       return;
     }
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = () => {
+    void loadPreviewStill(href).then((image) => {
       if (stillHref !== href) return;
       stillImage = image;
       if (!playing) paintStill();
-    };
-    image.onerror = () => {
-      if (stillHref !== href) return;
-      stillImage = null;
-      paintStill();
-    };
-    image.src = href;
+      if (!image) stillPainted = true;
+    });
   }
 
   function pauseClip() {
@@ -134,8 +141,7 @@ export function createTvScreen(materials: Material[]) {
       if (!shouldBlitTv(blitElapsed)) return;
       blitElapsed = 0;
       if (video.readyState < 2) return;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      texture.needsUpdate = true;
+      paintContain(video, video.videoWidth, video.videoHeight);
       stillPainted = false;
     },
     dispose() {

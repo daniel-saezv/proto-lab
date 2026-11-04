@@ -42,8 +42,9 @@ export function inventorSpeech(
     case "confirm":
       return (
         (draft.kind === "iteracion"
-          ? `Anotaría una {em}mejora{/em} de «${proto?.title ?? draft.slug}», que va por la versión ${proto?.version ?? "?"}.\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`
-          : `A ver si lo he entendido. Dejaría esto en el {em}tablón{/em}, como petición tuya, para que el dueño lo lea:\n\n«${draft.title}»\n${draft.description}\n\n¿Lo envío así?`) +
+          ? `Anotaría una {em}mejora{/em} de «${proto?.title ?? draft.slug}», que va por la versión ${proto?.version ?? "?"}.\n\n«${draft.title}»`
+          : `A ver si lo he entendido. Dejaría esto en el {em}tablón{/em}, como petición tuya, para que el dueño lo lea:\n\n«${draft.title}»`) +
+        "\n\n¿Lo envío así?" +
         DESK_OFFER
       );
     case "workshop":

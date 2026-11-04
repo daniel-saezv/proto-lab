@@ -8,7 +8,7 @@ Copia esta carpeta a `protos/<slug>/`. No está en el catálogo ni en el sitio: 
 4. `vite.config.ts` toma el `base` del slug del manifiesto.
 5. Al pintar el primer fotograma, avisa con `postLabSignal("ready", parent)`. Al cargar el script, avisa `alive`. Si la descarga es larga, puedes avisar `{ source: "proto-lab", type: "progress", loaded, total }` con bytes. Sin `total` mayor que 0 el laboratorio deja el indicador indeterminado.
 6. Deja `stop()` en `window.__protoLabApp`. Tiene que cancelar bucles, quitar listeners, cerrar el audio, soltar WebGL (`loseContext`) y llamar a `window.__protoLabData.revoke()`.
-7. Al crear o cambiar la aplicación, ejecuta `pnpm previews` y commitea `preview.webp`, `preview.mp4` y `preview-src.sha256`. La CI comprueba el clip y no lo graba.
+7. Al crear o cambiar la aplicación, ejecuta `pnpm previews` y commitea `preview.webp`, `preview.mp4` y `preview-src.sha256`. La foto queda en 640×360 (16:9); lo importante va en el centro 16:10. La CI comprueba el clip y no lo graba.
 
 Los archivos propios (imagen, audio o JSON) se piden por ruta relativa, dentro de `/protos/<slug>/`, con `window.__protoLabData`. El guardado de una persona va a `localStorage` del laboratorio, en la bolsa `proto-lab:app:<slug>`, solo si `capabilities` incluye `save`. Sin esa capacidad el laboratorio ignora el mensaje. La aplicación no lee ni escribe `localStorage` ni `sessionStorage` por su cuenta. No hay hilos ni `SharedArrayBuffer` (el sitio no envía COOP ni COEP). Los formularios no se envían (`form-action 'none'`).
 

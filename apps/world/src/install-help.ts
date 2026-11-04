@@ -1,3 +1,4 @@
+import { createDialogCloseButton } from "./dialog-dismiss";
 import {
   ANDROID_MANUAL_STEPS,
   IOS_STEPS,
@@ -168,7 +169,7 @@ export function createInstallHelp(options: {
     back.addEventListener("click", () => close());
     actions.append(back);
 
-    panel.append(heading, intro, body, actions);
+    panel.append(createDialogCloseButton(() => close()), heading, intro, body, actions);
     options.root.append(panel);
     renderBody();
   }
