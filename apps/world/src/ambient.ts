@@ -16,10 +16,22 @@ import {
   type BufferGeometry,
   type Material,
 } from "three";
-import { addFridgeCorner, addStoryCorners, tickCornerReactions } from "./ambient-corners";
+import { addFridgeCorner, addStoryCorners, applyAnimalPose, tickCornerReactions } from "./ambient-corners";
 import { addLoungeGroup, type LoungeNpcSpot } from "./ambient-lounge";
 import type { DialogueCue } from "./dialogue-cues";
 import { LAYOUT } from "./navigation";
+import {
+  createAnimal,
+  createAnimalPose,
+  createErrand,
+  createErrandPose,
+  pantryInView,
+  snapErrandAtFridge,
+  tickAnimal,
+  tickErrand,
+  type ErrandActor,
+  type RoutineView,
+} from "./pantry-routine";
 import { PANTRY_POSTER, pantryPosterZ } from "./scene-lights";
 
 const PALETTE = {
@@ -71,12 +83,37 @@ export type AmbientFactories = {
   e2e?: boolean;
 };
 
+export type PantryGaze = {
+  cx: number;
+  cz: number;
+  fx: number;
+  fz: number;
+  hold: boolean;
+};
+
+export type PantryActor = {
+  id: ErrandActor;
+  x: number;
+  z: number;
+  away: boolean;
+};
+
 export type AmbientHandle = {
   colliders: AmbientCollider[];
   slacker: { x: number; z: number; radius: number; approach: { x: number; z: number } };
   npcs: LoungeNpcSpot[];
   nameplates: { id: string; element: HTMLElement; anchor: CSS2DObject }[];
-  tick: (time: number, dt: number, player: Vector3, beatBass?: number, beatMid?: number, playerStill?: boolean) => void;
+  tick: (
+    time: number,
+    dt: number,
+    player: Vector3,
+    beatBass?: number,
+    beatMid?: number,
+    playerStill?: boolean,
+    gaze?: PantryGaze,
+  ) => void;
+  posePantry: () => void;
+  pantryActor: () => PantryActor;
   setTvSources: (still: string | null, clip: string) => void;
   setTvSuspended: (suspended: boolean) => void;
   setDialogueCue: (cue: DialogueCue | null) => void;
@@ -94,13 +131,36 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
   addFloorCables(f.scene, f);
   const dust = f.e2e ? [] : addDust(f.scene, f);
   const corners = addStoryCorners(f);
-  const fridgeHum = addFridgeCorner(f);
+  const fridge = addFridgeCorner(f);
 
   group.bubble.textContent = pickSlackerLine(0);
   let lineShown = -1;
 
   let loungePulse = 0;
   let loungeCue: DialogueCue | null = null;
+  const errand = createErrand();
+  const errandPose = createErrandPose();
+  const animal = createAnimal();
+  const animalPose = createAnimalPose();
+  const routineView: RoutineView = { visible: false, hold: false, playerX: 0, playerZ: 0 };
+  const glanceCtx = {
+    playerX: 0,
+    playerZ: 0,
+    playerStill: false,
+    activeCue: null as DialogueCue | null,
+    dialoguePulse: 0,
+    nearSlacker: false,
+    awayId: null as string | null,
+    pet: null as { id: string; x: number; z: number } | null,
+  };
+  const actor: PantryActor = { id: errandPose.id, x: errandPose.x, z: errandPose.z, away: false };
+
+  function syncActor() {
+    actor.id = errandPose.id;
+    actor.x = errandPose.x;
+    actor.z = errandPose.z;
+    actor.away = errandPose.engaged;
+  }
 
   return {
     colliders: [...group.colliders, ...corners.colliders],
@@ -121,10 +181,20 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
       loungePulse = 0.45;
       group.pulseDialogue();
     },
+    posePantry() {
+      snapErrandAtFridge(errand, errandPose);
+      group.applyErrand(errandPose, 0);
+      fridge.door.rotation.y = 1.05;
+      group.bubble.hidden = true;
+      syncActor();
+    },
+    pantryActor() {
+      return actor;
+    },
     dispose() {
       group.disposeTv();
     },
-    tick(time, dt, player, beatBass = 0, beatMid = 0, playerStill = false) {
+    tick(time, dt, player, beatBass = 0, beatMid = 0, playerStill = false, gaze) {
       const near = Math.hypot(player.x - group.slacker.x, player.z - group.slacker.z) <= group.slacker.radius;
       if (near && lineShown < 0) {
         lineShown = Math.floor(time * 0.37);
@@ -138,14 +208,33 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
 
       if (loungePulse > 0) loungePulse = Math.max(0, loungePulse - dt);
 
-      group.tick(time, dt, beatMid, {
-        playerX: player.x,
-        playerZ: player.z,
-        playerStill,
-        activeCue: loungeCue,
-        dialoguePulse: loungePulse,
-        nearSlacker: near,
-      });
+      const socialHold = gaze?.hold ?? false;
+      routineView.playerX = player.x;
+      routineView.playerZ = player.z;
+      routineView.hold = socialHold || animal.phase !== "home";
+      routineView.visible = gaze
+        ? pantryInView(gaze.cx, gaze.cz, gaze.fx, gaze.fz, errand.x, errand.z)
+        : false;
+      tickErrand(errand, dt, routineView, errandPose);
+      routineView.hold = socialHold || errand.phase !== "wait";
+      routineView.visible = gaze
+        ? pantryInView(gaze.cx, gaze.cz, gaze.fx, gaze.fz, animal.x, animal.z)
+        : false;
+      tickAnimal(animal, dt, routineView, animalPose);
+      syncActor();
+      fridge.door.rotation.y = 1.05 * errandPose.door;
+      applyAnimalPose(corners.interact, animalPose);
+
+      glanceCtx.playerX = player.x;
+      glanceCtx.playerZ = player.z;
+      glanceCtx.playerStill = playerStill;
+      glanceCtx.activeCue = loungeCue;
+      glanceCtx.dialoguePulse = loungePulse;
+      glanceCtx.nearSlacker = near;
+      glanceCtx.awayId = errandPose.engaged ? errandPose.id : null;
+      glanceCtx.pet = animalPose.host ? { id: animalPose.host, x: animalPose.x, z: animalPose.z } : null;
+      group.tick(time, dt, beatMid, glanceCtx, errandPose);
+      if (errandPose.engaged && errandPose.id === "remolon") group.bubble.hidden = true;
 
       for (let i = 0; i < dust.length; i++) {
         const m = dust[i]!;
@@ -157,7 +246,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
         m.scale.setScalar(1 + beatMid * 0.12);
       }
 
-      fridgeHum.scale.set(1, 1 + Math.sin(time * 16) * 0.4, 1);
+      fridge.hum.scale.set(1, 1 + Math.sin(time * 16) * 0.4, 1);
       tickCornerReactions(corners.interact, player, time, dt, f.reduced, beatBass, beatMid);
     },
   };

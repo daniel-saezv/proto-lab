@@ -67,15 +67,16 @@ export const PANTRY_RUG_COLOR = 0x3a3048;
 export const PANTRY_POSTER = { x: 9.38, y: 2.2 } as const;
 
 export function pantryPosterZ(): number {
-  return LAYOUT.crates.z;
+  return LAYOUT.counter.z;
 }
 
+/** Alfombra delante del fregadero, no bajo las camas. */
 export function pantryRug(): { x: number; z: number; width: number; depth: number } {
   return {
-    x: 8.02,
-    z: (LAYOUT.crates.z + LAYOUT.fridge.z) / 2,
-    width: 1.35,
-    depth: 2.7,
+    x: LAYOUT.counter.x - 0.78,
+    z: LAYOUT.counter.z,
+    width: 0.85,
+    depth: 1.55,
   };
 }
 

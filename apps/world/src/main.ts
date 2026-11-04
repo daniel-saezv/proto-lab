@@ -166,9 +166,9 @@ const overlay = createOverlay(
   },
 );
 
-function openPrototype(entry: CatalogEntry) {
+async function openPrototype(entry: CatalogEntry) {
   world?.setSuspended(true);
-  world?.releaseRenderer();
+  await world?.releaseRenderer();
   stopFallbackWhiteboardLoop();
   music.releasePlayback();
   overlay.open(entry);

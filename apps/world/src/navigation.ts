@@ -1,4 +1,15 @@
 import { LOUNGE_FURNITURE, loungeCameraBlockers } from "./lounge-layout";
+import {
+  CAT_BED,
+  DOG_BED,
+  FRIDGE_DEPTH,
+  FRIDGE_HINGE,
+  FRIDGE_PLACE,
+  FRIDGE_WIDTH,
+  KITCHEN_BIN,
+  KITCHEN_TABLE,
+  PANTRY_COUNTER,
+} from "./pantry-layout";
 
 export const PLAYER_RADIUS = 0.38;
 
@@ -59,7 +70,7 @@ export type CameraBlocker = {
 export const LAYOUT = {
   inventor: { x: -1.5, z: -3.4, collider: 0.42 },
   bench: { x: 1.2, z: -3.4, collider: 0.52 },
-  crates: { x: 9.2, z: 5.44, collider: 0.4 },
+  crates: { x: 9.22, z: 8.62, collider: 0.34 },
   plant: { x: -8.55, z: -6.15, collider: 0.28 },
   couch: piece("couch"),
   couchNorth: piece("couchNorth"),
@@ -67,8 +78,12 @@ export const LAYOUT = {
   loungeTable: piece("loungeTable"),
   tv: piece("tv"),
   croquis: piece("croquis"),
-  fridge: { x: 9.12, z: 6.2, collider: 0.42 },
-  dog: { x: 8.02, z: 6.15, collider: 0.26 },
+  fridge: { x: FRIDGE_PLACE.x, z: FRIDGE_PLACE.z, collider: 0.42 },
+  counter: { x: PANTRY_COUNTER.x, z: PANTRY_COUNTER.z, collider: PANTRY_COUNTER.collider },
+  kitchenTable: { x: KITCHEN_TABLE.x, z: KITCHEN_TABLE.z, collider: KITCHEN_TABLE.collider },
+  bin: { x: KITCHEN_BIN.x, z: KITCHEN_BIN.z, collider: KITCHEN_BIN.collider },
+  dog: { x: DOG_BED.x, z: DOG_BED.z, collider: 0.28 },
+  cat: { x: CAT_BED.x, z: CAT_BED.z, collider: 0.24 },
   desk: { x: 6.4, z: -6.85, collider: 0.55 },
   shelves: { x: 9.32, z: -5.15, collider: 0.42 },
   pinball: { x: -4.85, z: 5.55, collider: 0.48 },
@@ -76,7 +91,7 @@ export const LAYOUT = {
   chalkboard: { x: -4.6, z: -6.8, collider: 0.55 },
   radio: { x: 8.45, z: 0.55, collider: 0.26 },
   plantPinball: { x: -7.7, z: 7.35, collider: 0.24 },
-  plantRest: { x: 8.58, z: 7.28, collider: 0.24 },
+  plantRest: { x: 8.05, z: 8.72, collider: 0.22 },
 } as const;
 
 export function resolvePosition(
@@ -166,7 +181,11 @@ export function lobbyStaticColliders(): ColliderSpot[] {
     "tv",
     "croquis",
     "fridge",
+    "counter",
+    "kitchenTable",
+    "bin",
     "dog",
+    "cat",
     "desk",
     "shelves",
     "pinball",
@@ -227,7 +246,30 @@ export function lobbyCameraBlockers(): CameraBlocker[] {
   return [
     { minX: arcade.x - 0.85, maxX: arcade.x + 0.95, minY: 0, maxY: 2.05, minZ: arcade.z - 0.8, maxZ: arcade.z + 0.85 },
     { minX: inventor.x - 0.5, maxX: inventor.x + 0.55, minY: 0, maxY: 2.1, minZ: inventor.z - 0.45, maxZ: inventor.z + 0.45 },
-    { minX: fridge.x - 0.42, maxX: fridge.x + 0.42, minY: 0, maxY: 1.5, minZ: fridge.z - 0.36, maxZ: fridge.z + 0.36 },
+    {
+      minX: FRIDGE_HINGE.x - 0.04,
+      maxX: fridge.x + FRIDGE_DEPTH / 2,
+      minY: 0,
+      maxY: 1.48,
+      minZ: fridge.z - FRIDGE_WIDTH / 2,
+      maxZ: FRIDGE_HINGE.z,
+    },
+    {
+      minX: LAYOUT.counter.x - 0.34,
+      maxX: ROOM_INNER.maxX,
+      minY: 0,
+      maxY: 1.82,
+      minZ: LAYOUT.counter.z - 0.96,
+      maxZ: LAYOUT.counter.z + 0.96,
+    },
+    {
+      minX: LAYOUT.kitchenTable.x - 0.46,
+      maxX: LAYOUT.kitchenTable.x + 0.42,
+      minY: 0,
+      maxY: 0.72,
+      minZ: LAYOUT.kitchenTable.z - 0.36,
+      maxZ: LAYOUT.kitchenTable.z + 0.36,
+    },
     { minX: shelves.x - 0.22, maxX: shelves.x + 0.22, minY: 0, maxY: 1.5, minZ: shelves.z - 0.68, maxZ: shelves.z + 0.68 },
     { minX: desk.x - 0.75, maxX: desk.x + 0.75, minY: 0, maxY: 1.05, minZ: desk.z - 0.45, maxZ: desk.z + 0.45 },
     ...loungeCameraBlockers(),
