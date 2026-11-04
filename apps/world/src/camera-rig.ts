@@ -2,12 +2,14 @@
  * Distancia y órbita de la cámara de seguimiento.
  *
  * El retrato pedía 6,4 desde el primer commit. Al crecer la sala esa cifra
- * se ve entera y en el teléfono el plano se iba demasiado lejos. 4,2 sigue
- * siendo un poco más largo que el de escritorio (3,8) porque el fov vertical
- * es más abierto y el encuadre horizontal, más estrecho.
+ * se ve entera y en el teléfono el plano se iba demasiado lejos. 4,2 se quedó
+ * corto. 5,2 está entre los dos. El escritorio sube en la misma proporción
+ * (3,8 × 5,2 / 4,2 ≈ 4,7): por encima del 3,8 de siempre y por debajo del 6,4.
  */
-export const FOLLOW_DISTANCE_DESKTOP = 3.8;
-export const FOLLOW_DISTANCE_PORTRAIT = 4.2;
+export const FOLLOW_DISTANCE_DESKTOP = 4.7;
+export const FOLLOW_DISTANCE_PORTRAIT = 5.2;
+/** Tope de escritorio antes de relajarlo con el retrato. */
+export const FOLLOW_DISTANCE_DESKTOP_BEFORE = 3.8;
 /** Tope anterior en retrato, el que la sala ya no recortaba. */
 export const FOLLOW_DISTANCE_PORTRAIT_BEFORE = 6.4;
 /** Más cerca de esto la cámara entra en el personaje. */
@@ -59,4 +61,10 @@ export function followDistanceAfterPinch(distance: number, scale: number, aspect
 export function pinchScale(previousSpan: number, nextSpan: number): number | null {
   if (!(previousSpan > 0) || !(nextSpan > 0)) return null;
   return nextSpan / previousSpan;
+}
+
+/** Un doble toque es un solo dedo. El alejamiento de la cámara pide dos a la vez. */
+export function shouldApplyPinch(pointerCount: number, scale: number | null): boolean {
+  if (pointerCount < 2 || scale == null || !Number.isFinite(scale)) return false;
+  return Math.abs(scale - 1) >= 0.001;
 }

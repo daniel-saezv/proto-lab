@@ -38,16 +38,22 @@ describe("controles táctiles dinámicos", () => {
     expect(Math.abs(gentle.lookX)).toBeGreaterThan(0);
   });
 
-  it("a fondo gira más despacio que la tasa 15", () => {
+  it("a fondo gira entre la tasa 6 y la tasa 15", () => {
     const yaw = lookRateFromDeflection(TOUCH_LOOK_RATE, ORBIT_SENSITIVITY_COARSE);
     const before = lookRateFromDeflection(15, ORBIT_SENSITIVITY_COARSE);
-    expect(TOUCH_LOOK_RATE).toBe(6);
-    expect(yaw).toBeCloseTo(1.512, 5);
+    const tight = lookRateFromDeflection(6, ORBIT_SENSITIVITY_COARSE);
+    expect(TOUCH_LOOK_RATE).toBe(9.127);
+    expect(yaw).toBeCloseTo(2.3, 3);
     expect(before).toBeCloseTo(3.78, 5);
+    expect(tight).toBeCloseTo(1.512, 5);
+    expect(yaw).toBeGreaterThan(tight);
     expect(yaw).toBeLessThan(before);
     const pitch = lookRateFromDeflection(TOUCH_LOOK_RATE_Y, ORBIT_SENSITIVITY_COARSE * 0.72);
-    expect(pitch).toBeCloseTo(0.508032, 5);
-    expect(pitch).toBeLessThan(lookRateFromDeflection(7, ORBIT_SENSITIVITY_COARSE * 0.72));
+    const pitchBefore = lookRateFromDeflection(7, ORBIT_SENSITIVITY_COARSE * 0.72);
+    const pitchTight = lookRateFromDeflection(2.8, ORBIT_SENSITIVITY_COARSE * 0.72);
+    expect(pitch).toBeCloseTo(0.8, 3);
+    expect(pitch).toBeGreaterThan(pitchTight);
+    expect(pitch).toBeLessThan(pitchBefore);
   });
 
   it("inclina más despacio que gira, y el gesto corto sigue suavizado", () => {

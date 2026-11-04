@@ -48,7 +48,7 @@ El único interruptor de calidad es la media query `(pointer: coarse)`. No hay p
 | `shadowMap` | sí | no | no |
 | Mapa de la direccional | 1024², caja de −12 a 12, near 1, far 28 | no se usa | no se usa |
 
-El color de salida es `SRGBColorSpace`. El tone mapping es `ACESFilmicToneMapping` con exposición `1.2`. La cámara de seguimiento usa fov 58 y brazo 3.8 cuando el aspecto es al menos 0.9, y fov 78 con brazo 4.2 en retrato. El plano cercano es `CAMERA_NEAR` (0.05) y el lejano 80 (`apps/world/src/navigation.ts`, `apps/world/src/world.ts`).
+El color de salida es `SRGBColorSpace`. El tone mapping es `ACESFilmicToneMapping` con exposición `1.2`. La cámara de seguimiento usa fov 58 y brazo 4.7 cuando el aspecto es al menos 0.9, y fov 78 con brazo 5.2 en retrato. El plano cercano es `CAMERA_NEAR` (0.05) y el lejano 80 (`apps/world/src/navigation.ts`, `apps/world/src/world.ts`).
 
 `prefers-reduced-motion: reduce` no baja la resolución: apaga el movimiento decorativo (flotación del Inventor, parpadeo de luces, polvo, ventilador, plantas, repintado de ventanas y el ciclo de la arcade).
 

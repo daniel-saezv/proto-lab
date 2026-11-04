@@ -56,3 +56,27 @@ test("en el iPhone el zoom se conserva al cerrar la conversación y la pizarra",
   const restored = await page.evaluate(() => window.__protoLab?.cameraRig?.()?.distance ?? 0);
   expect(restored).toBeLessThan(4);
 });
+
+test("en el iPhone un doble toque no agranda la página ni aleja la cámara", async ({ page }, testInfo) => {
+  skipUnlessWebKitIphone(testInfo, "el doble toque se comprueba en el iPhone");
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.setFollowDistance?.(2.4));
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.cameraRig?.()?.span ?? -1)).toBeCloseTo(2.4, 1);
+  const before = await page.evaluate(() => window.__protoLab?.cameraRig?.()?.distance ?? 0);
+
+  const canvas = page.locator("#viewport canvas");
+  await canvas.dblclick({ position: { x: 40, y: 120 }, force: true });
+  const blocked = await page.evaluate(() => {
+    const target = document.querySelector("#viewport canvas");
+    const event = new Event("gesturestart", { bubbles: true, cancelable: true });
+    target?.dispatchEvent(event);
+    const meta = document.querySelector('meta[name="viewport"]')?.getAttribute("content") ?? "";
+    return { blocked: event.defaultPrevented, meta, scale: window.visualViewport?.scale ?? 1 };
+  });
+  expect(blocked.blocked).toBe(true);
+  expect(blocked.meta).toContain("user-scalable=no");
+  expect(blocked.scale).toBe(1);
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.cameraRig?.()?.distance ?? -1)).toBeCloseTo(before, 2);
+  expect(await page.evaluate(() => window.__protoLab?.cameraRig?.()?.mode ?? "")).toBe("follow");
+});

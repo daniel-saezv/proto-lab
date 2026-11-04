@@ -15,6 +15,7 @@ import { readPrototypeSlugFromHash, writePrototypeHash } from "./proto-deep-link
 import { isPrototypeUnseen, markPrototypeSeen } from "./proto-version-seen";
 import type { CatalogEntry } from "./types";
 import type { WhiteboardStatusController } from "./whiteboard-status-types";
+import { bindPageZoom } from "./page-zoom";
 import "./style.css";
 
 const catalogPrototypes = catalogFile.prototypes as CatalogEntry[];
@@ -25,6 +26,8 @@ const perf = params.get("perf") === "1";
 const batch = params.get("batch") !== "0";
 const instant = e2e || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 performance.mark("proto:boot");
+
+bindPageZoom(document);
 
 const boot = must("#boot");
 const shell = must("#shell");

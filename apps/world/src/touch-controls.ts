@@ -1,5 +1,5 @@
 import { create } from "nipplejs";
-import { pinchScale } from "./camera-rig";
+import { pinchScale, shouldApplyPinch } from "./camera-rig";
 import {
   lookRatesFromStickVector,
   movementFromStickVector,
@@ -241,8 +241,8 @@ function bindPinch(
     const next = measure();
     const scale = pinchScale(span, next);
     span = next;
-    if (scale == null || Math.abs(scale - 1) < 0.001) return;
-    onZoom(scale);
+    if (!shouldApplyPinch(points.size, scale)) return;
+    onZoom(scale!);
   };
   const onUp = (event: PointerEvent) => {
     points.delete(event.pointerId);

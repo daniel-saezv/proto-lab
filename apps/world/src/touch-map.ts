@@ -8,11 +8,11 @@ export function touchScreenSide(clientX: number, viewportWidth: number): "left" 
 
 /**
  * Escala del stick derecho. 15 (y 7 en vertical) dejaban el giro a fondo
- * en 3,78 rad/s: demasiado vivo en el teléfono. 6 y 2,8 conservan la misma
- * proporción y bajan el horizontal a 1,51 rad/s.
+ * en 3,78 rad/s. 6 y 2,8 lo bajaban a 1,51 y 0,51, demasiado quieto.
+ * 9,127 y 4,409 quedan cerca de 2,3 y 0,8 rad/s, entre los dos.
  */
-export const TOUCH_LOOK_RATE = 6;
-export const TOUCH_LOOK_RATE_Y = 2.8;
+export const TOUCH_LOOK_RATE = 9.127;
+export const TOUCH_LOOK_RATE_Y = 4.409;
 /** Exponente >1 suaviza gestos pequeños; a fondo sigue llegando a ~1. */
 export const TOUCH_LOOK_CURVE = 1.45;
 
