@@ -46,7 +46,7 @@ describe("inventorSpeech", () => {
     const text = inventorSpeech({ name: "confirm" }, draft, []);
     expect(text).toContain("¿Lo envío así?");
     expect(text).toContain("Farol");
-    expect(text).toContain("Una app para anotar turnos.");
+    expect(text).not.toContain("Una app para anotar turnos.");
     expect(text).toContain("escritorio");
     expect(text).not.toMatch(/juego/i);
     const iteration = inventorSpeech(
@@ -56,6 +56,7 @@ describe("inventorSpeech", () => {
     );
     expect(iteration).toContain("mejora");
     expect(iteration).toContain("1.0.0");
+    expect(iteration).not.toContain("Que el botón quepa en el pulgar.");
     expect(iteration).not.toMatch(/juego/i);
   });
 
