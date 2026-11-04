@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { skipUnlessChromium, skipUnlessWebKitIphone } from "./helpers";
+import { skipUnlessChromium, skipUnlessProject } from "./helpers";
 
 const roundOne = [
   "¿Y si la cometa dejara un rastro de luz?",
@@ -147,7 +147,7 @@ test("en el móvil táctil cada idea es un objetivo de 44 px", async ({ browser 
 });
 
 test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "proyecto webkit-iphone");
+  skipUnlessProject("webkit-iphone", testInfo, "proyecto webkit-iphone");
   await mockWorkshop(page);
   await openRound(page);
   const viewport = page.viewportSize();
