@@ -10,6 +10,7 @@ import {
   type Material,
 } from "three";
 import { createTvScreen } from "./tv-screen";
+import { TV_SCREEN_HEIGHT, TV_SCREEN_WIDTH } from "./tv-preview";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { createNameplateElement } from "./nameplates";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
@@ -253,7 +254,7 @@ function addTelevision(parent: Group, f: AmbientFactories): {
   f.box(tv, 0.7, 0.46, 0.12, 0, 0.56, 0, PALETTE.tv);
   f.box(tv, 0.78, 0.08, 0.16, 0, 0.84, 0, PALETTE.tv);
   const screenCtrl = createTvScreen(f.materials);
-  const screen = new Mesh(f.geo(new PlaneGeometry(0.58, 0.36)), screenCtrl.material);
+  const screen = new Mesh(f.geo(new PlaneGeometry(TV_SCREEN_WIDTH, TV_SCREEN_HEIGHT)), screenCtrl.material);
   screen.position.set(0, 0.56, 0.08);
   tv.add(screen);
   const tvLight = new PointLight(PALETTE.tvGlow, 4.2, 3.4, 2);

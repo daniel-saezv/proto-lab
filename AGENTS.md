@@ -80,7 +80,7 @@ Comandos comprobados en este repositorio (Node 22.23, pnpm 12.17.0):
 
 - Instalación: `corepack enable && corepack prepare pnpm@12.17.0 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit`
 - Build: `pnpm build` → sitio estático en `dist/` (`/` el laboratorio, `/protos/chispa/` el ejemplo)
-- Vistas previas de prototipos: `pnpm previews` (construye el sitio, arranca `pnpm preview` si hace falta, captura con Playwright y escribe `protos/<slug>/preview.webp`; declara `"preview": "preview.webp"` en `proto.json` si no existía). Sirve para cualquier aplicación: si hay canvas, recorta el más grande; si no, fotografía la ventana. Opcional: `window.__protoLabPreview` (función o promesa) se llama antes de la foto fija, no antes del clip. Al crear o modificar una aplicación hay que ejecutarlo y commitear en el mismo PR `preview.webp`, `preview.mp4` y `preview-src.sha256`. La CI solo comprueba el clip (MP4 H.264 Baseline, sin audio, faststart, 3 s a 12 fps, dentro de 320×180, tope 160 KiB) y que el sello coincide con las fuentes; no lo graba.
+- Vistas previas de prototipos: `pnpm previews` (construye el sitio, arranca `pnpm preview` si hace falta, captura con Playwright y escribe `protos/<slug>/preview.webp`; declara `"preview": "preview.webp"` en `proto.json` si no existía). Sirve para cualquier aplicación: si hay canvas, recorta el más grande; si no, fotografía la ventana. Luego normaliza la foto a 640×360 (16:9): la captura entra entera y centrada, y las bandas usan el color de las esquinas. Opcional: `window.__protoLabPreview` (función o promesa) se llama antes de la foto fija, no antes del clip. Al crear o modificar una aplicación hay que ejecutarlo y commitear en el mismo PR `preview.webp`, `preview.mp4` y `preview-src.sha256`. La CI solo comprueba el clip (MP4 H.264 Baseline, sin audio, faststart, 3 s a 12 fps, dentro de 320×180, tope 160 KiB) y que el sello coincide con las fuentes; no lo graba. El encuadre de la foto está en **Encuadre de la vista previa**.
 - Pasada visual del lobby: con `pnpm dev` o `pnpm preview` en marcha, `pnpm shots -- --out shots --prefix antes` (y el mismo comando con `--prefix despues`). Usa los encuadres fijos de `apps/world/src/viewpoints.ts` (aparición, Inventor, arcade, cuatro rincones y cenital) en escritorio 1280×800, iPhone 390×844 y 844×390, abre el selector en la arcade y compone una sola hoja de contacto. `--debug` añade una cenital con anillos en Inventor, arcade y pizarra. `SHOTS_URL` fuerza la base; si no hay servidor, arranca `pnpm dev`. La carpeta `shots/` no se versiona.
 - Typecheck: `pnpm typecheck`
 - Tests unitarios: `pnpm test:unit`
@@ -112,7 +112,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - El diálogo es un guion fijo. No hay LLM ni llamadas de pago.
 - Los límites de título, descripción y propuestas por día están duplicados en `functions/_lib/validate.ts` y `apps/world/src/limits.ts`. Un test falla si divergen.
 - Cada prototipo declara sus dependencias en su `package.json`. Phaser no entra en el bundle del laboratorio.
-- Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (< ~150 KB). El mismo comando deja `preview.mp4` y `preview-src.sha256`, que también se commitean.
+- Opcional en `proto.json`: `"preview": "preview.webp"` (o `.png`) apuntando a un archivo en la carpeta del prototipo; el catálogo expone `previewHref` y el selector del lobby lo muestra. Genera la imagen con `pnpm previews` y commitea el archivo (640×360, menos de 150 KB). El mismo comando deja `preview.mp4` y `preview-src.sha256`, que también se commitean. El encuadre está en **Encuadre de la vista previa**.
 - Opcional en `proto.json`: `"assets": ["ruta/relativa.png", …]` (puente heredado; ver arriba). Una aplicación nueva pide imágenes, audio y JSON con `window.__protoLabData` y una ruta relativa bajo `/protos/<slug>/`.
 - Opcional en `proto.json`: `"capabilities"` (`save`, `wasm`, `shared`, `tables` y permisos de dispositivo) y `"readyMs"` (plazo de `ready`; ver el contrato). `"permissions"` sigue aceptándose como lista de dispositivos. `tables` exige `protos/<slug>/db/` (migraciones y `queries.json`); el contrato está en [`docs/contrato-tablas.md`](docs/contrato-tablas.md).
 - Opcional en `proto.json`: `"hidden": true` excluye el prototipo del selector, la pizarra y el fallback HTML (sigue en el catálogo, build y `/protos/<slug>/` para pruebas).
@@ -166,7 +166,23 @@ El iframe es del mismo origen: `src="/protos/<slug>/"`, sin `sandbox` y sin docu
 - llamar a `window.__protoLabData.revoke()` si se usaron URL de objeto
 - si usas Phaser, `game.destroy(true)`
 
-Vista previa: `window.__protoLabPreview` (función o promesa) deja un fotograma para `preview.webp`; el clip `preview.mp4` se graba sin ese gancho. Al crear o modificar la aplicación, ejecutar `pnpm previews` y commitear `preview.webp`, `preview.mp4` y `preview-src.sha256` es obligatorio. La CI comprueba formato, tope y frescura, y no graba. Si no hay canvas, la foto fija es la ventana.
+Vista previa: `window.__protoLabPreview` (función o promesa) deja un fotograma para `preview.webp`; el clip `preview.mp4` se graba sin ese gancho. Al crear o modificar la aplicación, ejecutar `pnpm previews` y commitear `preview.webp`, `preview.mp4` y `preview-src.sha256` es obligatorio. La CI comprueba formato, tope y frescura, y no graba. Si no hay canvas, la foto fija es la ventana. La foto queda en 640×360; lo que no se puede recortar va en la zona segura (ver abajo).
+
+### Encuadre de la vista previa
+
+La foto fija es **640×360 (16:9)**, como mucho 150 KB. `pnpm previews` la deja así. Si la captura no es 16:9, entra entera (`contain`), centrada, y las bandas toman el color de las esquinas. Así una app de teléfono no se estira en una pantalla apaisada. La zona segura es el **16:10 central** (en 640×360, 32 px a cada lado): ahí va el título, el HUD y lo que tenga que verse en todas las superficies.
+
+| Superficie | Relación | Ajuste |
+| --- | --- | --- |
+| Arcade | 16:10 (plano 0,96 × 0,60) | `cover`, centrado. Recorta el 5 % de cada lado de una foto 16:9 |
+| Selector | 16:10 (`aspect-ratio: 16 / 10`, `object-fit: cover`) | `cover`, centrado. `object-position` no se fija: el valor inicial es el centro en todos los navegadores |
+| Televisión | 16:9 (textura 256×144 y plano de la misma relación) | `contain`, centrado, fondo `#14182b` |
+
+El clip sigue en 320×180 con `contain` (bandas negras si el juego no es 16:9). En la tele, foto y vídeo ocupan el mismo rectángulo: el juego no se desplaza ni se estira al empezar el clip. Las bandas de la foto usan el color de la captura; las del clip siguen negras. El arcade y el selector rellenan el marco; el recorte no llega a una captura vertical ya metida en 16:9, porque el juego queda en el centro, dentro de la zona segura.
+
+`scripts/preview-frame.test.mjs` falla si una foto del catálogo no es 640×360 o pasa de 150 KB. El ajuste en pantalla está en `apps/world/src/preview-frame.ts` (`cover` con la repetición UV, `contain` al pintar la tele). No depende de un motor: canvas, CSS y WebGL estándar, igual en Chrome, Samsung Internet, WebKit y escritorio.
+
+La rotación del arcade no vuelve a pedir las fotos. Cada still se descarga una vez por página y la comparten la máquina y la tele; la textura de la máquina se conserva entre vueltas. Los mp4 no se precargan: la tele solo decodifica el clip cuando el jugador está cerca. `/protos/*` sigue en `Cache-Control: no-cache` (no hace falta tocar `_headers`): una URL estable con `immutable` se quedaría vieja tras un deploy, y detrás de Access un `max-age` largo no distingue el despliegue. La memoria de la página evita la revalidación del ciclo. Cada textura son 640×360 sin mipmaps, para que el muestreo coincida en WebGL 1 y 2 y quepa en la GPU del móvil.
 
 ## CI/CD
 
