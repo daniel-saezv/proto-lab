@@ -35,6 +35,10 @@ export function smoothLookInput(previous: number, delta: number, dt: number, res
   return previous + (delta - previous) * t;
 }
 
+/** Rad por píxel de arrastre. En táctil se combina con la tasa del stick. */
+export const ORBIT_SENSITIVITY_COARSE = 0.0042;
+export const ORBIT_SENSITIVITY_FINE = 0.00315;
+
 export function applyLook(delta: number, sensitivity: number, maxRadians: number): number {
   const radians = delta * sensitivity;
   return Math.min(maxRadians, Math.max(-maxRadians, radians));

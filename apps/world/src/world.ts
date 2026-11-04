@@ -53,6 +53,15 @@ import { dialogueCameraPose, dialogueSubject, dialogueTransitionSeconds, type Di
 import type { DialogueCue } from "./dialogue-cues";
 import { drawTitleCard } from "./title-card";
 import {
+  clampFollowDistance,
+  followDistanceAfterWheel,
+  rigForReturn,
+  captureFollowRig,
+  type FollowRig,
+} from "./camera-rig";
+import {
+  ORBIT_SENSITIVITY_COARSE,
+  ORBIT_SENSITIVITY_FINE,
   TOUCH_LOOK_FOLLOW,
   WALK_SPEED,
   applyLook,
@@ -552,6 +561,9 @@ export function startWorld(options: {
   let lookSmoothY = 0;
   let lookRateYaw = 0;
   let lookRatePitch = 0;
+  let followDistance = 3.8;
+  let followTuned = false;
+  let savedRig: FollowRig | null = null;
   const pitchMin = -0.35;
   const pitchMax = 0.7;
   let velX = 0;
@@ -617,7 +629,11 @@ export function startWorld(options: {
     isBlocked: () => !inputEnabled,
     onGesture: options.onGesture,
     onSurfaceTap: (clientX, clientY) => handlePrimaryTap(clientX, clientY),
-    touch: options.touchControls,
+    touch: options.touchControls
+      ? {
+          ...options.touchControls,
+        }
+      : undefined,
   });
 
   function resize() {
@@ -628,6 +644,7 @@ export function startWorld(options: {
     camera.aspect = width / height;
     camera.fov = camera.aspect < 0.9 ? 78 : 58;
     camera.updateProjectionMatrix();
+    syncFollowDistance();
     if (gpuLive) renderer.setSize(width, height, false);
     labelRenderer.setSize(width, height);
     if (boardPhase !== "idle") {
@@ -671,11 +688,13 @@ export function startWorld(options: {
   const onContextLost = (event: Event) => {
     event.preventDefault();
   };
+  const wheelOpts: AddEventListenerOptions = { passive: false };
   function bindSurface(canvas: HTMLCanvasElement) {
     canvas.addEventListener("pointerdown", onSurfaceDown);
     canvas.addEventListener("pointermove", onSurfaceMove);
     canvas.addEventListener("pointerleave", onSurfaceLeave);
     canvas.addEventListener("pointerup", onClick);
+    canvas.addEventListener("wheel", onWheel, wheelOpts);
     canvas.addEventListener("webglcontextlost", onContextLost);
   }
   function unbindSurface(canvas: HTMLCanvasElement) {
@@ -683,6 +702,7 @@ export function startWorld(options: {
     canvas.removeEventListener("pointermove", onSurfaceMove);
     canvas.removeEventListener("pointerleave", onSurfaceLeave);
     canvas.removeEventListener("pointerup", onClick);
+    canvas.removeEventListener("wheel", onWheel, wheelOpts);
     canvas.removeEventListener("webglcontextlost", onContextLost);
   }
   bindSurface(renderer.domElement);
@@ -754,7 +774,7 @@ export function startWorld(options: {
     const readingBoard = boardPhase === "enter" || boardPhase === "hold";
     if (readingBoard && Math.hypot(sample.forward, sample.right) > 0.08) beginLeaveBoard();
     if (inputEnabled && boardPhase === "idle" && dialoguePhase === "idle") {
-      const lookSens = coarse ? 0.0042 : 0.00315;
+      const lookSens = coarse ? ORBIT_SENSITIVITY_COARSE : ORBIT_SENSITIVITY_FINE;
       if (options.touchControls) {
         // El stick es una velocidad, no un delta de píxeles. Se sigue en rad/s
         // (ataque y freno suaves) y el paso vertical se afloja antes del tope.
@@ -886,11 +906,11 @@ export function startWorld(options: {
     } else if (cameraMode === "top") {
       fitOverview();
     } else {
-      const ideal = cameraDistance();
+      const desired = cameraDistance();
       if (snapped) {
         viewYaw = yaw;
         viewPitch = pitch;
-        arm = ideal;
+        arm = desired;
       }
       viewYaw = dampAngle(viewYaw, yaw, dt, 12);
       viewPitch += (pitch - viewPitch) * (1 - Math.exp(-12 * dt));
@@ -899,7 +919,7 @@ export function startWorld(options: {
         playerZ: player.position.z,
         yaw: viewYaw,
         pitch: viewPitch,
-        distance: ideal,
+        distance: desired,
       });
       if (arm > safe.distance) arm = safe.distance;
       else arm += (safe.distance - arm) * (1 - Math.exp(-5 * dt));
@@ -1018,6 +1038,7 @@ export function startWorld(options: {
 
   function cancelDialogueTravel() {
     if (dialoguePhase === "idle") return;
+    savedRig = null;
     dialoguePhase = "idle";
     dialogueSpeaker = "";
     if (boardPhase === "idle") player.visible = true;
@@ -1070,6 +1091,7 @@ export function startWorld(options: {
 
   function applyViewpoint(id: string): boolean {
     perfArm = null;
+    savedRig = null;
     const pose = viewpointById(id);
     if (!pose) return false;
     if (pose.kind === "top") {
@@ -1203,6 +1225,7 @@ export function startWorld(options: {
   function enterBoardView() {
     if (boardPhase !== "idle" || cameraMode === "top") return;
     if (dialoguePhase === "enter" || dialoguePhase === "hold") return;
+    rememberFollowRig();
     if (dialoguePhase === "leave") {
       dialoguePhase = "idle";
       dialogueSpeaker = "";
@@ -1227,13 +1250,7 @@ export function startWorld(options: {
     lobbyWhiteboard.setInteractive(false);
     boardFrom.copy(camera.position);
     boardLookFrom.copy(boardLook);
-    const pose = resolveCameraArm({
-      playerX: player.position.x,
-      playerZ: player.position.z,
-      yaw,
-      pitch,
-      distance: cameraDistance(),
-    });
+    const pose = aimReturnPose();
     boardTo.set(pose.x, pose.y, pose.z);
     boardLookTo.set(player.position.x, 1.15, player.position.z);
     boardElapsed = 0;
@@ -1256,6 +1273,7 @@ export function startWorld(options: {
     }
     if (boardPhase === "leave") {
       boardPhase = "idle";
+      releaseFollowRig();
       snapped = true;
       publishBoardView(false);
     }
@@ -1325,6 +1343,7 @@ export function startWorld(options: {
   }
 
   function playWorkshopTrip(dest: "desk" | "home", onDone: () => void, movesCamera = true) {
+    if (movesCamera) rememberFollowRig();
     const token = ++workshopToken;
     workshopTrip = {
       dest,
@@ -1437,6 +1456,7 @@ export function startWorld(options: {
 
   function beginEnterDialogue(id: string) {
     if (boardPhase !== "idle") return;
+    rememberFollowRig();
     dialoguePlace = "stand";
     const subject = dialogueSubject(id);
     if (!subject) return;
@@ -1463,13 +1483,7 @@ export function startWorld(options: {
     dialoguePlace = "stand";
     dialogueFrom.copy(camera.position);
     dialogueLookFrom.copy(dialogueLook);
-    const pose = resolveCameraArm({
-      playerX: player.position.x,
-      playerZ: player.position.z,
-      yaw,
-      pitch,
-      distance: cameraDistance(),
-    });
+    const pose = aimReturnPose();
     dialogueTo.set(pose.x, pose.y, pose.z);
     dialogueLookTo.set(player.position.x, 1.15, player.position.z);
     dialogueElapsed = 0;
@@ -1491,6 +1505,7 @@ export function startWorld(options: {
     if (dialoguePhase === "leave") {
       dialoguePhase = "idle";
       dialogueSpeaker = "";
+      releaseFollowRig();
       snapped = true;
       if (boardPhase === "idle") player.visible = true;
       options.onDialogueFrame?.(false);
@@ -1583,13 +1598,17 @@ export function startWorld(options: {
       setDebug: (on: boolean) => {
         debugGroup.visible = on;
       },
+      setFollowDistance,
+      cameraRig: readCameraRig,
       visitSlacker: () => {
+        savedRig = null;
         cameraMode = "follow";
         player.position.set(ambient.slacker.approach.x, 0, ambient.slacker.approach.z);
         resolve(player.position);
         snapped = true;
       },
       visitCorner: (which: "workshop" | "pinball") => {
+        savedRig = null;
         cameraMode = "follow";
         if (which === "workshop") player.position.set(5.2, 0, -3.2);
         else player.position.set(-3.2, 0, 4.0);
@@ -1725,7 +1744,83 @@ export function startWorld(options: {
 
   function cameraDistance(): number {
     if (perfArm != null) return perfArm;
-    return camera.aspect < 0.9 ? 6.4 : 3.8;
+    return clampFollowDistance(followDistance, camera.aspect);
+  }
+
+  function syncFollowDistance() {
+    const span = followTuned ? followDistance : Number.POSITIVE_INFINITY;
+    followDistance = clampFollowDistance(span, camera.aspect);
+  }
+
+  function canTuneFollow(): boolean {
+    return (
+      inputEnabled &&
+      boardPhase === "idle" &&
+      dialoguePhase === "idle" &&
+      !workshopTrip?.movesCamera &&
+      cameraMode !== "top"
+    );
+  }
+
+  function onWheel(event: WheelEvent) {
+    if (!canTuneFollow()) return;
+    event.preventDefault();
+    followDistance = followDistanceAfterWheel(followDistance, event.deltaY, camera.aspect);
+    followTuned = true;
+  }
+
+  function rememberFollowRig() {
+    if (savedRig) return;
+    savedRig = captureFollowRig(yaw, pitch, followDistance);
+  }
+
+  function aimReturnPose() {
+    const back = rigForReturn(savedRig, { yaw, pitch, distance: followDistance }, camera.aspect);
+    yaw = back.yaw;
+    pitch = back.pitch;
+    return resolveCameraArm({
+      playerX: player.position.x,
+      playerZ: player.position.z,
+      yaw: back.yaw,
+      pitch: back.pitch,
+      distance: back.distance,
+    });
+  }
+
+  function releaseFollowRig() {
+    if (boardPhase !== "idle" || dialoguePhase !== "idle" || workshopTrip?.movesCamera || !savedRig) return;
+    yaw = savedRig.yaw;
+    pitch = savedRig.pitch;
+    viewYaw = savedRig.yaw;
+    viewPitch = savedRig.pitch;
+    followDistance = clampFollowDistance(savedRig.distance, camera.aspect);
+    arm = followDistance;
+    savedRig = null;
+  }
+
+  function setFollowDistance(distance: number) {
+    followDistance = clampFollowDistance(distance, camera.aspect);
+    followTuned = true;
+    arm = followDistance;
+    snapped = true;
+  }
+
+  function readCameraRig() {
+    const mode = workshopTrip?.movesCamera
+      ? "workshop"
+      : boardPhase !== "idle"
+        ? "board"
+        : dialoguePhase !== "idle"
+          ? "dialogue"
+          : "follow";
+    return {
+      distance: Number(followDistance.toFixed(4)),
+      yaw: Number(yaw.toFixed(4)),
+      pitch: Number(pitch.toFixed(4)),
+      arm: Number(arm.toFixed(4)),
+      span: Number(Math.hypot(camera.position.x - player.position.x, camera.position.z - player.position.z).toFixed(4)),
+      mode,
+    };
   }
 
   function addMoon() {
@@ -2355,6 +2450,15 @@ declare global {
       renderSuspended?: () => boolean;
       visibleApps?: () => string[];
       playerPose?: () => { x: number; z: number; yaw: number };
+      setFollowDistance?: (distance: number) => void;
+      cameraRig?: () => {
+        distance: number;
+        yaw: number;
+        pitch: number;
+        arm: number;
+        span: number;
+        mode: string;
+      };
       rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
       frameWorkMs?: () => number;
       frameAt?: (x: number, z: number, lookYaw: number, lookPitch: number, distance?: number) => void;

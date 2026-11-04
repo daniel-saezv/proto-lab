@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { TOUCH_LOOK_RATE, TOUCH_LOOK_RATE_Y } from "./touch-map";
 import {
+  ORBIT_SENSITIVITY_COARSE,
   TOUCH_LOOK_FOLLOW,
   approachVelocity,
   dampAngle,
@@ -37,7 +39,7 @@ describe("controles del lobby", () => {
   });
 
   it("integra la mirada táctil igual a 60 Hz que a 120 Hz y frena al soltar", () => {
-    const target = lookRateFromDeflection(15, 0.0042);
+    const target = lookRateFromDeflection(TOUCH_LOOK_RATE, ORBIT_SENSITIVITY_COARSE);
     const step = (dt: number, frames: number, goal: number) => {
       let rate = 0;
       let angle = 0;
@@ -64,7 +66,7 @@ describe("controles del lobby", () => {
     expect(softenTowardLimit(-0.28, -1, -0.35, 0.7, 0.16)).toBeLessThan(0);
 
     let pitch = 0.5;
-    const rate = lookRateFromDeflection(7, 0.0042 * 0.72);
+    const rate = lookRateFromDeflection(TOUCH_LOOK_RATE_Y, ORBIT_SENSITIVITY_COARSE * 0.72);
     let slowed = false;
     let previous = rate;
     for (let i = 0; i < 180; i++) {

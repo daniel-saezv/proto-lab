@@ -18,6 +18,15 @@ interface Window {
     renderSuspended?: () => boolean;
     visibleApps?: () => string[];
     playerPose?: () => { x: number; z: number; yaw: number };
+    setFollowDistance?: (distance: number) => void;
+    cameraRig?: () => {
+      distance: number;
+      yaw: number;
+      pitch: number;
+      arm: number;
+      span: number;
+      mode: string;
+    };
     rendererStats?: () => { calls: number; triangles: number; geometries: number; textures: number };
     frameWorkMs?: () => number;
     frameAt?: (x: number, z: number, lookYaw: number, lookPitch: number, distance?: number) => void;
