@@ -1,5 +1,9 @@
-import { expect, test, type Page } from "@playwright/test";
-import { skipUnlessWebKitIphone } from "./helpers";
+import { devices, expect, test, type Page } from "@playwright/test";
+import { skipUnlessChromium } from "./helpers";
+
+/** Móvil alto (puntos CSS de un teléfono Android) y horizontal corto. */
+const PHONE_TALL = { width: 412, height: 915 };
+const PHONE_WIDE = { width: 844, height: 390 };
 
 const LONG = `${"Persigues una cometa con el dedo y dejas un rastro de luz. ".repeat(30)}Fin.`;
 
@@ -49,17 +53,22 @@ function boxInside(box: { x: number; y: number; width: number; height: number } 
   expect(box!.y + box!.height).toBeLessThanOrEqual(height + 1);
 }
 
-async function expectOneScroll(page: Page, testId: string, viewportHeight: number) {
+async function viewportOf(page: Page) {
+  const size = page.viewportSize();
+  expect(size).toBeTruthy();
+  return size!;
+}
+
+/** Un solo desplazamiento: la hoja, si no cabe; el texto y el campo, nunca. */
+async function expectOneScroll(page: Page, testId: string) {
+  const { width, height } = await viewportOf(page);
   const field = page.getByTestId(testId);
   const sheet = page.locator(".dialogue-sheet");
   await expect(field).toBeVisible();
-  const inner = await field.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
-  expect(inner.scrollHeight).toBeLessThanOrEqual(inner.clientHeight + 4);
-  const speech = await page.getByTestId("dialogue-text").evaluate((el) => ({
-    scrollHeight: el.scrollHeight,
-    clientHeight: el.clientHeight,
-  }));
-  expect(speech.scrollHeight).toBeLessThanOrEqual(speech.clientHeight + 4);
+  await expect.poll(() => field.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(4);
+  await expect
+    .poll(() => page.getByTestId("dialogue-text").evaluate((el) => el.scrollHeight - el.clientHeight))
+    .toBeLessThanOrEqual(4);
   await sheet.evaluate((el) => {
     el.scrollTop = 0;
   });
@@ -67,20 +76,30 @@ async function expectOneScroll(page: Page, testId: string, viewportHeight: numbe
     const rect = el.getBoundingClientRect();
     return { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, top: rect.top, bottom: rect.bottom };
   });
-  expect(before.scrollHeight).toBeGreaterThan(before.clientHeight + 8);
   expect(before.top).toBeGreaterThanOrEqual(-1);
-  expect(before.bottom).toBeLessThanOrEqual(viewportHeight + 1);
-  await expect(page.getByTestId("scroll-cue")).toBeVisible();
-  await sheet.evaluate((el) => {
-    el.scrollTop = el.scrollHeight;
-  });
-  await expect.poll(() => sheet.evaluate((el) => el.scrollTop)).toBeGreaterThan(8);
-  await expect(page.getByTestId("scroll-cue")).toBeHidden();
+  expect(before.bottom).toBeLessThanOrEqual(height + 1);
+  const overflows = before.scrollHeight > before.clientHeight + 8;
+  if (height <= 960) expect(overflows).toBe(true);
+  const cue = page.getByTestId("scroll-cue");
+  if (overflows) {
+    await expect(cue).toBeVisible();
+    await sheet.evaluate((el) => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && el.contains(active)) active.blur();
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect.poll(() => sheet.evaluate((el) => el.scrollTop)).toBeGreaterThan(8);
+    await expect(cue).toBeHidden();
+  } else {
+    await expect(cue).toBeHidden();
+  }
   const action = page.locator("#dialogue .dialogue-actions .dialogue-choice, #dialogue .workshop-actions .dialogue-choice").last();
-  const box = await action.boundingBox();
-  expect(box).toBeTruthy();
-  expect(box!.y).toBeGreaterThanOrEqual(-1);
-  expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight + 1);
+  boxInside(await action.boundingBox(), width, height);
+}
+
+async function expectLongFieldOn(page: Page, testId: string, size: { width: number; height: number }) {
+  await page.setViewportSize(size);
+  await expectOneScroll(page, testId);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -100,36 +119,33 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("la cruz cierra cada diálogo y la descripción larga se desplaza", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "cierre y nota en el iPhone");
+test("la cruz cierra cada diálogo y la descripción larga se desplaza", async ({ page }) => {
   const proposals: string[] = [];
   page.on("request", (request) => {
     if (request.method() === "POST" && /\/api\/proposals$/.test(request.url())) proposals.push(request.url());
   });
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  const portrait = page.viewportSize();
-  expect(portrait?.width).toBe(390);
-  expect(portrait && portrait.height).toBeGreaterThan(600);
+  const home = await viewportOf(page);
 
   await page.evaluate(() => window.__protoLab?.focus("remolon"));
   await expect(page.getByTestId("interact")).toHaveText("Hablar con Remolón");
   await page.getByTestId("interact").click();
   await expect(page.locator("#dialogue-name")).toHaveText("Remolón");
-  boxInside(await page.getByTestId("dialog-close").boundingBox(), 390, 844);
+  boxInside(await page.getByTestId("dialog-close").boundingBox(), home.width, home.height);
   await page.getByTestId("dialog-close").click();
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await expect(page.getByTestId("interact")).toHaveText("Hablar con Remolón");
 
   await reachBody(page, "Cometa lunar");
   await page.getByTestId("dialogue-input").fill(LONG);
-  await expectOneScroll(page, "dialogue-input", portrait!.height);
-  await page.setViewportSize({ width: 844, height: 390 });
-  await expectOneScroll(page, "dialogue-input", 390);
-  await page.setViewportSize({ width: portrait!.width, height: portrait!.height });
+  await expectOneScroll(page, "dialogue-input");
+  await expectLongFieldOn(page, "dialogue-input", PHONE_TALL);
+  await expectLongFieldOn(page, "dialogue-input", PHONE_WIDE);
+  await page.setViewportSize(home);
   await page.getByTestId("dialogue-send").click();
   await expect(page.getByTestId("dialogue-note")).toContainText("Fin.");
-  await expectOneScroll(page, "dialogue-note", portrait!.height);
+  await expectOneScroll(page, "dialogue-note");
   await page.getByTestId("dialog-close").click();
   await expect(page.getByTestId("dialogue")).toBeHidden();
 
@@ -161,14 +177,13 @@ test("la cruz cierra cada diálogo y la descripción larga se desplaza", async (
   await page.getByTestId("interact").click();
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "1");
   const boardClose = page.getByTestId("board-back");
-  boxInside(await boardClose.boundingBox(), portrait!.width, portrait!.height);
+  boxInside(await boardClose.boundingBox(), home.width, home.height);
   await boardClose.click();
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
   expect(proposals).toEqual([]);
 });
 
-test("el escritorio espera, muestra lo elegido y al cerrar no llama otra vez al modelo", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "taller en el iPhone");
+test("el escritorio espera, muestra lo elegido y al cerrar no llama otra vez al modelo", async ({ page }) => {
   const ops: string[] = [];
   let round = 0;
   await page.route("**/api/workshop", async (route) => {
@@ -266,8 +281,46 @@ test("el escritorio espera, muestra lo elegido y al cerrar no llama otra vez al 
   await page.getByTestId("workshop-begin").click();
   await page.getByTestId("choice-workshop-stop").click();
   await expect(page.getByTestId("workshop-title")).toHaveValue("Cometa con estela");
-  const portrait = page.viewportSize();
-  await expectOneScroll(page, "workshop-description", portrait?.height ?? 664);
-  await page.setViewportSize({ width: 844, height: 390 });
-  await expectOneScroll(page, "workshop-description", 390);
+  await expectOneScroll(page, "workshop-description");
+  await expectLongFieldOn(page, "workshop-description", PHONE_TALL);
+  await expectLongFieldOn(page, "workshop-description", PHONE_WIDE);
+});
+
+test("en un móvil alto la cruz y el texto largo caben en un solo desplazamiento", async ({ browser }, testInfo) => {
+  skipUnlessChromium(testInfo, "perfil Pixel 7");
+  const context = await browser.newContext({
+    ...devices["Pixel 7"],
+    baseURL: "http://127.0.0.1:4173",
+    locale: "es-ES",
+  });
+  const page = await context.newPage();
+  await page.route("**/api/proposals/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, items: [] }),
+    });
+  });
+  await page.route(/\/api\/proposals$/, async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, issueNumber: 1, issueUrl: "https://example.invalid/1" }),
+    });
+  });
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  const phone = await viewportOf(page);
+  expect(phone.width).toBeGreaterThan(390);
+  expect(phone.height).toBeGreaterThan(800);
+  await page.evaluate(() => window.__protoLab?.focus("remolon"));
+  await page.getByTestId("interact").click();
+  await expect(page.locator("#dialogue-name")).toHaveText("Remolón");
+  boxInside(await page.getByTestId("dialog-close").boundingBox(), phone.width, phone.height);
+  await page.getByTestId("dialog-close").click();
+  await reachBody(page, "Cometa lunar");
+  await page.getByTestId("dialogue-input").fill(LONG);
+  await expectOneScroll(page, "dialogue-input");
+  await expectLongFieldOn(page, "dialogue-input", { width: phone.height, height: phone.width });
+  await context.close();
 });
