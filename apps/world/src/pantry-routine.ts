@@ -1,16 +1,27 @@
 import { loungeNpc, yawToward, type LoungeNpc } from "./lounge-layout";
-import { CAT_NAP, DOG_NAP, PANTRY_STAND } from "./pantry-layout";
 import { LAYOUT } from "./navigation";
+import {
+  CAT_BED,
+  CAT_HOME_YAW,
+  CAT_VISIT,
+  DOG_BED,
+  DOG_HOME_YAW,
+  DOG_VISIT,
+  PANTRY_STAND,
+} from "./pantry-layout";
 
 /** Entre viajes a la nevera. Un solo personaje a la vez. */
-export const ERRAND_WAIT_MIN = 90;
-export const ERRAND_WAIT_SPAN = 90;
+export const ERRAND_WAIT_MIN = 45;
+export const ERRAND_WAIT_SPAN = 45;
 
-/** El animal casi siempre está tumbado. La salida es rara. */
-export const ANIMAL_WAIT_MIN = 150;
-export const ANIMAL_WAIT_SPAN = 90;
-export const ANIMAL_NAP_MIN = 34;
-export const ANIMAL_NAP_SPAN = 22;
+/**
+ * En la cama casi siempre. El paseo hasta el sofá y la espera a los pies
+ * ocupan cerca de una quinta parte del ciclo.
+ */
+export const ANIMAL_WAIT_MIN = 340;
+export const ANIMAL_WAIT_SPAN = 40;
+export const ANIMAL_NAP_MIN = 18;
+export const ANIMAL_NAP_SPAN = 10;
 
 const YIELD_SQ = 0.72 * 0.72;
 const ERRAND_SPEED = 1.05;
@@ -29,10 +40,9 @@ const naipe = mustNpc("naipe");
 const ERRAND_TAIL: readonly XZ[] = [
   [-1.1, 2.2],
   [2.5, 3.4],
-  [5.7, 4.6],
-  [7.3, 5.15],
-  [7.2, 6.35],
-  [7.55, 6.9],
+  [5.0, 4.55],
+  [6.4, 5.5],
+  [7.4, 5.75],
   [PANTRY_STAND.x, PANTRY_STAND.z],
 ];
 
@@ -47,9 +57,37 @@ export type ErrandActor = (typeof ERRAND_ACTORS)[number];
 const ANIMAL_ACTORS = ["dog", "cat"] as const;
 export type AnimalActor = (typeof ANIMAL_ACTORS)[number];
 
-const ANIMAL_PATHS: readonly (readonly XZ[])[] = [
-  [[LAYOUT.dog.x, LAYOUT.dog.z], [7.95, 5.55], [DOG_NAP.x, DOG_NAP.z]],
-  [[LAYOUT.crates.x, LAYOUT.crates.z], [8.45, 4.95], [CAT_NAP.x, CAT_NAP.z]],
+const ANIMAL_HOSTS = [DOG_VISIT.host, CAT_VISIT.host] as const;
+const ANIMAL_HOME_YAW = [DOG_HOME_YAW, CAT_HOME_YAW] as const;
+
+export const ANIMAL_PATHS: readonly (readonly XZ[])[] = [
+  [
+    [DOG_BED.x, DOG_BED.z],
+    [6.2, 4.5],
+    [4.2, 3.75],
+    [2.2, 3.4],
+    [0.0, 3.3],
+    [-2.4, 2.95],
+    [-4.6, 1.9],
+    [-6.3, 0.5],
+    [-7.15, -1.15],
+    [-8.15, -1.7],
+    [-8.15, -2.7],
+    [DOG_VISIT.x, DOG_VISIT.z],
+  ],
+  [
+    [CAT_BED.x, CAT_BED.z],
+    [8.35, 5.5],
+    [6.4, 5.45],
+    [4.4, 4.0],
+    [2.4, 3.45],
+    [-0.1, 3.15],
+    [-2.5, 2.6],
+    [-4.5, 1.4],
+    [-5.5, 0.15],
+    [-5.95, -1.05],
+    [CAT_VISIT.x, CAT_VISIT.z],
+  ],
 ];
 
 export type ErrandPhase = "wait" | "rise" | "walk" | "reach" | "hold" | "shut" | "return" | "sit";
@@ -106,9 +144,11 @@ export type AnimalPose = {
   yaw: number;
   /** 1 mientras pasea, 0 tumbado. */
   up: number;
-  /** 0 en el sitio alto del gato, 1 en el suelo. El perro no lo usa. */
+  /** Reservado. El gato ya vive en el suelo. */
   drop: number;
   moving: boolean;
+  /** Quien tiene al animal en los pies. Solo durante la visita. */
+  host: string | null;
 };
 
 export type RoutineView = {
@@ -146,12 +186,13 @@ export function createAnimalPose(): AnimalPose {
   return {
     id: "dog",
     engaged: false,
-    x: LAYOUT.dog.x,
-    z: LAYOUT.dog.z,
-    yaw: 0,
+    x: DOG_BED.x,
+    z: DOG_BED.z,
+    yaw: DOG_HOME_YAW,
     up: 0,
     drop: 0,
     moving: false,
+    host: null,
   };
 }
 
@@ -181,9 +222,9 @@ export function createAnimal(rng: () => number = Math.random): AnimalState {
     waypoint: 0,
     phaseTime: 0,
     waitLeft: ANIMAL_WAIT_MIN + rng() * ANIMAL_WAIT_SPAN,
-    x: LAYOUT.dog.x,
-    z: LAYOUT.dog.z,
-    yaw: 0,
+    x: DOG_BED.x,
+    z: DOG_BED.z,
+    yaw: DOG_HOME_YAW,
     justHome: false,
     pendingSwap: false,
   };
@@ -323,7 +364,7 @@ export function tickAnimal(state: AnimalState, dt: number, view: RoutineView, po
     state.waitLeft = ANIMAL_WAIT_MIN + rng() * ANIMAL_WAIT_SPAN;
     state.x = home[0];
     state.z = home[1];
-    state.yaw = 0;
+    state.yaw = ANIMAL_HOME_YAW[state.actor]!;
   }
 
   const motion = dt > 0.05 ? 0.05 : dt;
@@ -343,7 +384,8 @@ export function tickAnimal(state: AnimalState, dt: number, view: RoutineView, po
       state.phase = "nap";
       state.phaseTime = 0;
       state.waitLeft = ANIMAL_NAP_MIN + rng() * ANIMAL_NAP_SPAN;
-      state.yaw = state.actor === 0 ? 0.55 : 1.05;
+      const host = mustNpc(ANIMAL_HOSTS[state.actor]!);
+      state.yaw = yawToward({ x: state.x, z: state.z }, host);
     }
   } else if (state.phase === "nap") {
     state.waitLeft -= motion;
@@ -358,22 +400,22 @@ export function tickAnimal(state: AnimalState, dt: number, view: RoutineView, po
       state.phase = "home";
       state.x = home[0];
       state.z = home[1];
-      state.yaw = 0;
+      state.yaw = ANIMAL_HOME_YAW[state.actor]!;
       state.justHome = true;
       state.pendingSwap = true;
     }
   }
 
   const moving = state.phase === "go" || state.phase === "back";
-  const along = path.length > 1 ? state.waypoint / (path.length - 1) : 0;
   pose.id = ANIMAL_ACTORS[state.actor]!;
   pose.engaged = state.phase !== "home" || state.justHome;
   pose.x = state.x;
   pose.z = state.z;
   pose.yaw = state.yaw;
   pose.up = moving ? 1 : 0;
-  pose.drop = state.actor === 1 ? (state.phase === "nap" ? 1 : along) : 0;
+  pose.drop = 0;
   pose.moving = moving && !settle;
+  pose.host = state.phase === "nap" ? ANIMAL_HOSTS[state.actor]! : null;
 }
 
 /** Deja a Remolón con la nevera abierta y una lata en la mano. Para capturas. */

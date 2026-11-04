@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LAYOUT, ROOM_INNER } from "./navigation";
+import { FRIDGE_HINGE, FRIDGE_WIDTH } from "./pantry-layout";
 import {
   FLOOR_GLOW,
   FLOOR_LAMPS,
@@ -56,38 +57,34 @@ describe("lámparas del lobby", () => {
 });
 
 describe("rincón de la nevera", () => {
-  const pieces = [
-    { id: "nevera", ...LAYOUT.fridge },
-    { id: "cajas", ...LAYOUT.crates },
-    { id: "perro", ...LAYOUT.dog },
-    { id: "planta", ...LAYOUT.plantRest },
-    { id: "cartel", x: 9.38, z: pantryPosterZ(), collider: 0 },
-  ];
-
-  it("forma un solo grupo contra el muro este", () => {
-    const zs = pieces.map((piece) => piece.z);
-    expect(Math.max(...zs) - Math.min(...zs)).toBeLessThan(2.4);
-    for (const piece of pieces) {
-      expect(piece.x, piece.id).toBeGreaterThan(7.6);
-      expect(ROOM_INNER.maxX - piece.x, piece.id).toBeLessThan(2.2);
-    }
-    expect(ROOM_INNER.maxX - LAYOUT.fridge.x).toBeLessThan(0.6);
+  it("forma una cocina contra el muro este y la nevera mira a la sala", () => {
+    expect(ROOM_INNER.maxX - LAYOUT.fridge.x).toBeLessThan(0.45);
+    expect(FRIDGE_HINGE.x).toBeLessThan(LAYOUT.fridge.x - 0.2);
+    expect(Math.abs(FRIDGE_HINGE.z - (LAYOUT.fridge.z + FRIDGE_WIDTH / 2))).toBeLessThan(0.02);
+    expect(LAYOUT.counter.z).toBeGreaterThan(LAYOUT.fridge.z + 1);
+    expect(ROOM_INNER.maxX - LAYOUT.counter.x).toBeLessThan(0.45);
+    expect(LAYOUT.counter.z - LAYOUT.fridge.z).toBeLessThan(2);
+    expect(LAYOUT.crates.z).toBeGreaterThan(LAYOUT.counter.z);
     expect(ROOM_INNER.maxX - LAYOUT.crates.x).toBeLessThan(0.55);
-    expect(Math.hypot(LAYOUT.crates.x - LAYOUT.fridge.x, LAYOUT.crates.z - LAYOUT.fridge.z)).toBeLessThan(1.2);
-    expect(Math.hypot(LAYOUT.plantRest.x - LAYOUT.fridge.x, LAYOUT.plantRest.z - LAYOUT.fridge.z)).toBeLessThan(1.6);
-    expect(Math.hypot(LAYOUT.dog.x - LAYOUT.fridge.x, LAYOUT.dog.z - LAYOUT.fridge.z)).toBeLessThan(1.5);
-    expect(pantryPosterZ()).toBe(LAYOUT.crates.z);
-    expect(LAYOUT.dog.x).toBeLessThan(LAYOUT.fridge.x - 0.7);
+    expect(LAYOUT.dog.z).toBeLessThan(LAYOUT.fridge.z - 0.8);
+    expect(LAYOUT.dog.x).toBeLessThan(LAYOUT.fridge.x - 1);
+    expect(Math.hypot(LAYOUT.cat.x - LAYOUT.dog.x, LAYOUT.cat.z - LAYOUT.dog.z)).toBeLessThan(1.1);
+    expect(Math.hypot(LAYOUT.cat.x - LAYOUT.dog.x, LAYOUT.cat.z - LAYOUT.dog.z)).toBeGreaterThan(0.45);
+    expect(Math.hypot(LAYOUT.plantRest.x - LAYOUT.counter.x, LAYOUT.plantRest.z - LAYOUT.counter.z)).toBeLessThan(2.2);
+    expect(pantryPosterZ()).toBe(LAYOUT.counter.z);
+    expect(LAYOUT.kitchenTable.x).toBeLessThan(LAYOUT.counter.x - 1);
   });
 
-  it("deja el perro sobre la alfombra y el paso libre", () => {
+  it("deja la alfombra delante de la encimera y las camas al sur", () => {
     const rug = pantryRug();
-    expect(Math.abs(LAYOUT.dog.x - rug.x)).toBeLessThan(rug.width / 2 - 0.15);
-    expect(Math.abs(LAYOUT.dog.z - rug.z)).toBeLessThan(rug.depth / 2 - 0.15);
+    expect(rug.x).toBeLessThan(LAYOUT.counter.x - 0.5);
+    expect(Math.abs(rug.z - LAYOUT.counter.z)).toBeLessThan(0.2);
+    expect(LAYOUT.dog.z).toBeLessThan(rug.z - rug.depth / 2);
+    expect(LAYOUT.cat.z).toBeLessThan(rug.z - rug.depth / 2);
     const approach = { x: 7.3, z: 5.1 };
-    for (const piece of [LAYOUT.fridge, LAYOUT.crates, LAYOUT.dog, LAYOUT.plantRest]) {
+    for (const piece of [LAYOUT.fridge, LAYOUT.counter, LAYOUT.kitchenTable]) {
       const gap = Math.hypot(approach.x - piece.x, approach.z - piece.z) - piece.collider;
-      expect(gap).toBeGreaterThan(0.45);
+      expect(gap, piece === LAYOUT.fridge ? "nevera" : "mueble").toBeGreaterThan(0.45);
     }
   });
 });

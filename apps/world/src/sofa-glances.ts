@@ -22,6 +22,8 @@ export type SofaGlanceContext = {
   nearSlacker: boolean;
   /** Quien está en la nevera no gira la cabeza desde el sofá. */
   awayId?: string | null;
+  /** Animal a los pies: esa persona mira hacia abajo y asiente un poco. */
+  pet?: { id: string; x: number; z: number } | null;
 };
 
 type GlanceState = "rest" | "turn" | "hold" | "return";
@@ -167,6 +169,14 @@ export function tickSofaGlances(runtime: SofaGlanceRuntime, time: number, dt: nu
       npc.yaw = 0;
       npc.head.rotation.x = npc.restPitch;
       npc.head.rotation.y = 0;
+      continue;
+    }
+    if (ctx.pet && npc.id === ctx.pet.id) {
+      const target = headYawTowardPlayer(npc, ctx.pet.x, ctx.pet.z);
+      npc.state = "rest";
+      npc.yaw += (target - npc.yaw) * Math.min(1, dt * 6.5);
+      npc.head.rotation.y = npc.yaw;
+      npc.head.rotation.x = npc.restPitch + 0.32 + Math.sin(time * 2.1 + npc.phase) * 0.05;
       continue;
     }
     npc.head.rotation.x = npc.restPitch;

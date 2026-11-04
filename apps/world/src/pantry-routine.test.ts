@@ -7,9 +7,10 @@ import {
   playerLobbyBounds,
   walkToward,
 } from "./navigation";
-import { PANTRY_COUNTER, PANTRY_STAND } from "./pantry-layout";
+import { CAT_VISIT, DOG_VISIT, PANTRY_COUNTER, PANTRY_STAND } from "./pantry-layout";
 import {
   ANIMAL_NAP_MIN,
+  ANIMAL_PATHS,
   ANIMAL_WAIT_MIN,
   ERRAND_ACTORS,
   ERRAND_PATHS,
@@ -30,12 +31,13 @@ const open: RoutineView = { visible: true, hold: false, playerX: 0, playerZ: 1.7
 const zero = () => 0;
 
 describe("viaje a la nevera", () => {
-  it("espera entre un minuto y medio y tres, y solo mueve a uno", () => {
+  it("espera entre 45 y 90 segundos, y solo mueve a uno", () => {
     const state = createErrand(zero);
     const pose = createErrandPose();
     expect(state.waitLeft).toBe(ERRAND_WAIT_MIN);
+    expect(ERRAND_WAIT_MIN + 45).toBe(90);
     expect(state.phase).toBe("wait");
-    tickErrand(state, 89, open, pose, zero);
+    tickErrand(state, 44, open, pose, zero);
     expect(state.phase).toBe("wait");
     expect(pose.engaged).toBe(false);
     tickErrand(state, 1.1, open, pose, zero);
@@ -126,35 +128,72 @@ describe("viaje a la nevera", () => {
 });
 
 describe("paseo de los animales", () => {
-  it("pasa casi todo el rato tumbado y vuelve a su sitio", () => {
+  it("sale de la cama cerca de una quinta parte del tiempo y vuelve", () => {
     const state = createAnimal(zero);
     const pose = createAnimalPose();
     expect(state.waitLeft).toBe(ANIMAL_WAIT_MIN);
     tickAnimal(state, ANIMAL_WAIT_MIN - 1, open, pose, zero);
     expect(state.phase).toBe("home");
-    expect(pose.engaged).toBe(false);
-    let moving = 0;
-    let steps = 0;
-    for (let t = 0; t < 400; t += 0.05) {
+    expect(pose.host).toBeNull();
+    runAnimal(state, pose, (item) => item.phase === "go");
+    let away = 0;
+    for (let i = 0; i < 20000; i++) {
       tickAnimal(state, 0.05, open, pose, zero);
-      steps += 1;
-      if (pose.moving) moving += 1;
+      if (state.justHome) break;
+      if (state.phase !== "home") away += 1;
     }
-    expect(moving / steps).toBeLessThan(0.12);
-    expect(state.phase === "home" || state.phase === "nap" || state.phase === "wait" || state.phase === "back" || state.phase === "go").toBe(true);
+    expect(state.justHome).toBe(true);
+    const awaySeconds = away * 0.05;
+    const fraction = awaySeconds / (awaySeconds + ANIMAL_WAIT_MIN);
+    expect(fraction).toBeGreaterThan(0.16);
+    expect(fraction).toBeLessThan(0.26);
+    expect(pose.id).toBe("dog");
+    expect(Math.hypot(state.x - ANIMAL_PATHS[0]![0]![0], state.z - ANIMAL_PATHS[0]![0]![1])).toBeLessThan(0.05);
   });
 
-  it("la siesta dura un buen rato y el otro animal espera", () => {
+  it("se queda un rato a los pies del sofá y el otro animal espera", () => {
     const state = createAnimal(zero);
     const pose = createAnimalPose();
     runAnimal(state, pose, (item) => item.phase === "nap");
     expect(pose.id).toBe("dog");
     expect(pose.up).toBe(0);
+    expect(pose.host).toBe(DOG_VISIT.host);
+    expect(Math.hypot(state.x - DOG_VISIT.x, state.z - DOG_VISIT.z)).toBeLessThan(0.15);
     expect(state.waitLeft).toBeGreaterThanOrEqual(ANIMAL_NAP_MIN - 0.05);
     const during = state.actor;
     tickAnimal(state, 1, open, pose, zero);
     expect(state.actor).toBe(during);
     expect(state.phase).toBe("nap");
+    runAnimal(state, pose, (item) => item.phase === "nap" && item.actor === 1);
+    expect(pose.host).toBe(CAT_VISIT.host);
+    expect(Math.hypot(state.x - CAT_VISIT.x, state.z - CAT_VISIT.z)).toBeLessThan(0.15);
+  });
+
+  it("el camino al sofá no cruza la cocina ni la radio ni el escritorio", () => {
+    const spots = lobbyStaticColliders();
+    const own = ["dog", "cat"] as const;
+    for (const [index, path] of ANIMAL_PATHS.entries()) {
+      const start = path[0]!;
+      for (let i = 1; i < path.length; i++) {
+        const a = path[i - 1]!;
+        const b = path[i]!;
+        const steps = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.25);
+        for (let s = 0; s <= steps; s++) {
+          const t = steps === 0 ? 1 : s / steps;
+          const x = a[0] + (b[0] - a[0]) * t;
+          const z = a[1] + (b[1] - a[1]) * t;
+          if (Math.hypot(x - start[0], z - start[1]) < 1.05) continue;
+          for (const spot of spots) {
+            if (spot.id === own[index]) continue;
+            const gap = Math.hypot(x - spot.x, z - spot.z) - spot.collider;
+            expect(gap, `${spot.id} en el tramo ${i} de ${own[index]}`).toBeGreaterThan(0.28);
+          }
+          expect(Math.hypot(x - LAYOUT.desk.x, z - LAYOUT.desk.z)).toBeGreaterThan(3);
+          expect(Math.hypot(x - WORKSHOP_SEAT.x, z - WORKSHOP_SEAT.z)).toBeGreaterThan(3);
+          expect(Math.hypot(x - LAYOUT.radio.x, z - LAYOUT.radio.z)).toBeGreaterThan(1.4);
+        }
+      }
+    }
   });
 
   it("no pasea fuera de cámara", () => {
@@ -217,7 +256,7 @@ function runUntil(state: ErrandState, pose: ReturnType<typeof createErrandPose>,
 }
 
 function runAnimal(state: AnimalState, pose: ReturnType<typeof createAnimalPose>, done: (state: AnimalState) => boolean) {
-  for (let i = 0; i < 8000; i++) {
+  for (let i = 0; i < 30000; i++) {
     tickAnimal(state, 0.05, open, pose, zero);
     if (done(state)) return;
   }

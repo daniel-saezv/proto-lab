@@ -1906,8 +1906,9 @@ export function startWorld(options: {
       { x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, r: 0.95 },
       { x: LAYOUT.arcade.x, z: LAYOUT.arcade.z, r: 1.2 },
       { x: LAYOUT.bench.x, z: LAYOUT.bench.z, r: 0.75 },
-      { x: LAYOUT.fridge.x, z: LAYOUT.fridge.z, r: 0.85 },
-      { x: LAYOUT.counter.x, z: LAYOUT.counter.z, r: 0.55 },
+      { x: LAYOUT.fridge.x, z: LAYOUT.fridge.z, r: 0.7 },
+      { x: LAYOUT.counter.x, z: LAYOUT.counter.z, r: 1.15 },
+      { x: LAYOUT.kitchenTable.x, z: LAYOUT.kitchenTable.z, r: 0.55 },
       { x: SLACKER_COUCH.x, z: SLACKER_COUCH.z, r: 1.05 },
       { x: NORTH_COUCH.x, z: NORTH_COUCH.z, r: 1.05 },
       { x: SOUTH_COUCH.x, z: SOUTH_COUCH.z, r: 1.05 },
@@ -1939,8 +1940,9 @@ export function startWorld(options: {
       { x: NORTH_COUCH.x, z: NORTH_COUCH.z, r: 0.72 },
       { x: SOUTH_COUCH.x, z: SOUTH_COUCH.z, r: 0.72 },
       { x: LOUNGE_TABLE.x, z: LOUNGE_TABLE.z, r: 0.48 },
-      { x: LAYOUT.fridge.x, z: LAYOUT.fridge.z, r: 0.4 },
-      { x: LAYOUT.counter.x, z: LAYOUT.counter.z, r: 0.32 },
+      { x: LAYOUT.fridge.x, z: LAYOUT.fridge.z, r: 0.42 },
+      { x: LAYOUT.counter.x, z: LAYOUT.counter.z, r: 0.7 },
+      { x: LAYOUT.kitchenTable.x, z: LAYOUT.kitchenTable.z, r: 0.36 },
     ];
     const parts = spots.map((spot) => {
       const geometry = new CircleGeometry(spot.r, 12);

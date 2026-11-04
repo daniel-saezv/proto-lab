@@ -21,6 +21,7 @@ import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { blinkOpen, breathScale, windowPaintSlot } from "./graphics-idle";
 import { fuseMeshes } from "./mesh-fuse";
 import { CEILING_UNDERSIDE, LAYOUT, RADIO_USE_RADIUS } from "./navigation";
+import { CAT_BED, FRIDGE_DEPTH, FRIDGE_WIDTH } from "./pantry-layout";
 import type { AnimalPose } from "./pantry-routine";
 import { addFridgeDoor, addPantryKitchen } from "./pantry-kitchen";
 import { WORKSHOP_SEAT } from "./workshop-cinematic";
@@ -82,7 +83,7 @@ export function addStoryCorners(f: AmbientFactories): {
   colliders: AmbientCollider[];
   interact: CornerInteractables;
 } {
-  const decor = ["desk", "shelves", "pinball", "fridge", "counter", "dog", "crates", "plant", "radio", "plantPinball", "plantRest"] as const;
+  const decor = ["desk", "shelves", "pinball", "fridge", "counter", "kitchenTable", "bin", "dog", "cat", "crates", "plant", "radio", "plantPinball", "plantRest"] as const;
   const colliders: AmbientCollider[] = decor.map((id) => ({
     id,
     x: LAYOUT[id].x,
@@ -493,9 +494,10 @@ function addCatOnCrates(f: AmbientFactories): { root: Group; head: Mesh; eyes: O
   const root = new Group();
   root.name = "cat";
   root.userData.noBatch = true;
-  root.position.set(x, 0, z);
+  root.position.set(CAT_BED.x, 0, CAT_BED.z);
+  root.rotation.y = Math.PI;
   f.scene.add(root);
-  const y = 0.84;
+  const y = 0.16;
   f.box(root, 0.28, 0.16, 0.32, 0, y, 0, PAL.cat, false);
 
   const pivot = new Group();
@@ -562,6 +564,7 @@ function addSleepingDog(f: AmbientFactories): { root: Group; snore: HTMLDivEleme
   root.name = "dog";
   root.userData.noBatch = true;
   root.position.set(LAYOUT.dog.x, 0, LAYOUT.dog.z);
+  root.rotation.y = Math.PI;
   f.scene.add(root);
   const body = f.box(root, 0.55, 0.14, 0.24, 0, 0.08, 0, PAL.dog, false);
   const head = new Mesh(f.geo(new SphereGeometry(0.12, 10, 8)), f.mat(PAL.dog));
@@ -597,24 +600,24 @@ function addSleepingDog(f: AmbientFactories): { root: Group; snore: HTMLDivEleme
   return { root, snore, chest };
 }
 
-/** El perro mira por su −X local. El gato baja de las cajas al tumbarse. */
+/** El perro y el gato miran por su −X local. `yaw` es la dirección de viaje. */
 export function applyAnimalPose(interact: CornerInteractables, pose: AnimalPose): void {
-  interact.dogWalking = pose.engaged && pose.id === "dog" && pose.moving;
+  interact.dogWalking = pose.engaged && pose.id === "dog";
   interact.catAway = pose.engaged && pose.id === "cat";
   if (!pose.engaged) return;
   if (pose.id === "dog") {
     const root = interact.dogRoot;
-    root.position.set(pose.x, 0.1 * pose.up, pose.z);
-    root.rotation.x = -0.22 * pose.up;
-    root.rotation.y = pose.moving ? pose.yaw + Math.PI / 2 : pose.yaw;
+    root.position.set(pose.x, 0.08 * pose.up, pose.z);
+    root.rotation.x = -0.18 * pose.up;
+    root.rotation.y = pose.yaw + Math.PI / 2;
     root.rotation.z = 0;
     return;
   }
   const root = interact.catRoot;
-  root.position.set(pose.x, -0.66 * pose.drop, pose.z);
+  root.position.set(pose.x, 0.04 * pose.up, pose.z);
   root.rotation.x = 0;
-  root.rotation.y = pose.yaw;
-  root.rotation.z = 0.55 * pose.drop * (1 - pose.up);
+  root.rotation.y = pose.yaw + Math.PI / 2;
+  root.rotation.z = 0;
 }
 
 export function tickCornerReactions(
@@ -678,14 +681,11 @@ export function tickCornerReactions(
 function addFridgeHum(f: AmbientFactories): Mesh {
   const x = LAYOUT.fridge.x;
   const z = LAYOUT.fridge.z;
-  f.box(f.scene, 0.72, 1.35, 0.58, x, 0.68, z, 0xd8e4ef);
-  f.box(f.scene, 0.68, 0.04, 0.54, x, 1.36, z, 0xb8c5d0, false);
-  f.box(f.scene, 0.14, 0.18, 0.008, x, 1.16, z + 0.31, PAL.cartridge, false);
-  f.box(f.scene, 0.12, 0.14, 0.006, x, 1.16, z + 0.318, PAL.neon, false);
+  f.box(f.scene, FRIDGE_DEPTH, 1.32, FRIDGE_WIDTH, x, 0.66, z, 0xd8e4ef);
   const hum = new Mesh(f.geo(new SphereGeometry(0.02, 6, 4)), new MeshBasicMaterial({ color: 0xffffff }));
   hum.userData.noBatch = true;
   f.materials.push(hum.material);
-  hum.position.set(x + 0.28, 0.15, z + 0.32);
+  hum.position.set(x - 0.34, 1.24, z);
   f.scene.add(hum);
   return hum;
 }

@@ -151,6 +151,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
     dialoguePulse: 0,
     nearSlacker: false,
     awayId: null as string | null,
+    pet: null as { id: string; x: number; z: number } | null,
   };
   const actor: PantryActor = { id: errandPose.id, x: errandPose.x, z: errandPose.z, away: false };
 
@@ -231,6 +232,7 @@ export function addAmbient(f: AmbientFactories): AmbientHandle {
       glanceCtx.dialoguePulse = loungePulse;
       glanceCtx.nearSlacker = near;
       glanceCtx.awayId = errandPose.engaged ? errandPose.id : null;
+      glanceCtx.pet = animalPose.host ? { id: animalPose.host, x: animalPose.x, z: animalPose.z } : null;
       group.tick(time, dt, beatMid, glanceCtx, errandPose);
       if (errandPose.engaged && errandPose.id === "remolon") group.bubble.hidden = true;
 
