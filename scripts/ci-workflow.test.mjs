@@ -35,7 +35,7 @@ describe("workflow de CI", () => {
 
   it("mantiene tres shards de Chromium y la imagen fijada", () => {
     expect(workflow).toContain("shard: [1, 2, 3]");
-    expect(workflow.match(/mcr\.microsoft\.com\/playwright:v1\.64\.1-noble/g)).toHaveLength(2);
+    expect(workflow.match(/mcr\.microsoft\.com\/playwright:v1\.64\.1-noble/g)).toHaveLength(3);
     expect(workflow).not.toContain("Versión Playwright");
     expect(workflow).not.toContain("playwright-version:");
     expect(jobBlock("verificar")).toContain("lab: ${{ steps.clasificar.outputs.lab }}");
@@ -44,6 +44,30 @@ describe("workflow de CI", () => {
     expect(jobBlock("e2e-chromium-gate")).toContain("No se pudo clasificar el diff.");
     expect(jobBlock("e2e-webkit-gate")).toContain("No se pudo clasificar el diff.");
     expect(jobBlock("e2e-webkit")).toContain("name: E2E (webkit-iphone trabajo)");
+  });
+
+  it("el móvil táctil reducido es un solo job, reutiliza el sitio y no es compuerta", () => {
+    const job = jobBlock("e2e-chromium-android");
+    expect(job).toContain("name: E2E (chromium-android)\n");
+    expect(job).toContain("needs.verificar.result == 'success'");
+    expect(job).toContain("needs.verificar.outputs.lab == 'true'");
+    expect(job).toContain("project: chromium-android");
+    expect(job).toContain('build: "false"');
+    expect(job).toContain("actions/download-artifact@v8.0.2");
+    expect(job).not.toContain("shard:");
+    expect(job).not.toContain("strategy:");
+    expect(workflow).not.toContain("e2e-chromium-android-gate");
+    const verificar = jobBlock("verificar");
+    expect(verificar).toContain("actions/upload-artifact@v7.0.2");
+    expect(verificar).toContain("name: site-dist");
+    expect(verificar).toContain("actions: write");
+    const config = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "playwright.config.ts"), "utf8");
+    expect(config).toContain('name: "chromium-android"');
+    expect(config).toContain("grep: /@movil/");
+    expect(config).toContain('devices["Pixel 7"]');
+    const helpers = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "e2e", "helpers.ts"), "utf8");
+    expect(helpers).toContain('export const TOUCH_MOBILE_TAG = "@movil"');
+    expect(helpers).not.toContain("skipUnlessWebKitIphone");
   });
 
   it("el atajo de una aplicación no lanza el build del laboratorio", () => {

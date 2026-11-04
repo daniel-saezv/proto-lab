@@ -65,6 +65,9 @@ export function createOverlay(
     syncLabel();
   }
 
+  // Safari en iOS solo acepta requestFullscreen en un vídeo. Si la API no
+  // existe o la promesa falla, el mismo botón usa el modo CSS. El prefijo
+  // webkit es el parche de ese motor.
   async function enterFullscreen() {
     const host = root as FullscreenHost;
     const request = root.requestFullscreen?.bind(root) ?? host.webkitRequestFullscreen?.bind(root);

@@ -1,5 +1,5 @@
 import { devices, expect, test } from "@playwright/test";
-import { skipUnlessChromium, skipUnlessWebKitIphone } from "./helpers";
+import { skipUnlessChromium, skipUnlessTouchMobile, TOUCH_MOBILE_TAG } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/proposals/status", async (route) => {
@@ -279,8 +279,8 @@ test("la pizarra fijada elige una propuesta y enseña la acción de su estado", 
   await expect(page.locator("#viewport")).toHaveAttribute("data-board-view", "0");
 });
 
-test("en el iPhone la acción de la pizarra cabe en el dedo", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "zona táctil en vertical");
+test("la acción de la pizarra cabe en el dedo", { tag: TOUCH_MOBILE_TAG }, async ({ page }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "zona táctil en vertical");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
@@ -309,8 +309,11 @@ test("en el iPhone la acción de la pizarra cabe en el dedo", async ({ page }, t
   }
 });
 
-test("en vertical la pizarra se lee con un botón de volver dentro de la pantalla", async ({ browser }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "layout móvil vertical");
+test(
+  "en vertical la pizarra se lee con un botón de volver dentro de la pantalla",
+  { tag: TOUCH_MOBILE_TAG },
+  async ({ browser }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "layout móvil vertical");
   const viewport = { width: 390, height: 844 };
   const context = await browser.newContext({
     viewport,
@@ -603,7 +606,7 @@ async function abrirPozo(page: import("@playwright/test").Page, isMobile: boolea
   await playFromSelector(page, isMobile);
 }
 
-test("si la pantalla completa nativa falla, el overlay ocupa la pantalla", async ({ page, isMobile }) => {
+test("si la pantalla completa nativa falla, el overlay ocupa la pantalla", { tag: TOUCH_MOBILE_TAG }, async ({ page, isMobile }) => {
   await abrirPozo(page, isMobile);
   await page.evaluate(() => {
     const stage = document.querySelector("#stage") as HTMLElement & { webkitRequestFullscreen?: () => void };
@@ -683,7 +686,7 @@ test("en escritorio la pantalla completa nativa no usa el modo CSS", async ({ pa
   await expect(page.locator("#stage")).not.toHaveAttribute("data-fs", "native");
 });
 
-test("en el iPhone se apunta tocando la parte baja y al soltar cae una bola", async ({ page, isMobile }) => {
+test("se apunta tocando la parte baja y al soltar cae una bola", { tag: TOUCH_MOBILE_TAG }, async ({ page, isMobile }) => {
   test.skip(!isMobile, "hace falta el perfil táctil");
   await abrirPozo(page, true);
   const canvas = page.frameLocator("iframe").locator("canvas");
@@ -730,8 +733,8 @@ test("el lobby monta decoración ambiental sin errores", async ({ page }) => {
 });
 
 
-test("el selector cabe en el iPhone y tapa el joystick y las etiquetas", async ({ browser }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "viewports iPhone");
+test("el selector cabe en el teléfono y tapa el joystick y las etiquetas", { tag: TOUCH_MOBILE_TAG }, async ({ browser }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "viewports de teléfono");
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 844, height: 390 },
@@ -798,8 +801,11 @@ async function reachConfirmStep(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("choice-confirm")).toBeVisible();
 }
 
-test("en horizontal las acciones de confirmación del diálogo caben en pantalla", async ({ browser }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "layout horizontal móvil");
+test(
+  "en horizontal las acciones de confirmación del diálogo caben en pantalla",
+  { tag: TOUCH_MOBILE_TAG },
+  async ({ browser }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "layout horizontal móvil");
   const viewport = { width: 844, height: 390 };
   const context = await browser.newContext({
     viewport,
@@ -985,8 +991,11 @@ test("un toque en el laboratorio arranca la música sin pasar por silenciar", as
   await expect(mute).toHaveAttribute("data-playback", "playing");
 });
 
-test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un botón", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "gesto táctil iOS");
+test(
+  "el joystick y el lienzo arrancan la música sin pulsar un botón",
+  { tag: TOUCH_MOBILE_TAG },
+  async ({ page }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "gesto táctil");
   const requests: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes(".m4a")) requests.push(request.url());
@@ -1017,8 +1026,8 @@ test("en el iPhone el joystick y el lienzo arrancan la música sin pulsar un bot
   await expect(page.locator("#game-selector")).toBeHidden();
 });
 
-test("en el iPhone el joystick no selecciona el texto de los botones", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "selección y callout táctiles en iOS");
+test("el joystick no selecciona el texto de los botones", { tag: TOUCH_MOBILE_TAG }, async ({ page }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "selección táctil del cromo");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   const mute = page.getByTestId("mute-music");
@@ -1104,8 +1113,11 @@ test("en el iPhone el joystick no selecciona el texto de los botones", async ({ 
   expect(idle.textSelect).not.toBe("none");
 });
 
-test("en el iPhone la música del joystick no vuelve a idle tras unos segundos", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "gesto táctil iOS");
+test(
+  "la música del joystick no vuelve a idle tras unos segundos",
+  { tag: TOUCH_MOBILE_TAG },
+  async ({ page }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "gesto táctil");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   const mute = page.getByTestId("mute-music");
@@ -1129,8 +1141,8 @@ async function dispatchTouchDrag(
     ({ x, y, dx, dy }) => {
       const target = document.elementFromPoint(x, y);
       if (!(target instanceof Element)) throw new Error("no hay elemento bajo el toque");
-      // WebKit no deja construir Touch. El listener solo necesita el tipo de evento;
-      // TouchEventInit no tiene clientX.
+      // El listener solo mira el tipo de evento. TouchEventInit no trae clientX,
+      // así que no hace falta construir un Touch.
       const fire = (type: string) => {
         target.dispatchEvent(
           new TouchEvent(type, {
@@ -1148,7 +1160,7 @@ async function dispatchTouchDrag(
   );
 }
 
-test("el botón de silenciar alterna y persiste", async ({ page }, testInfo) => {
+test("el botón de silenciar alterna y persiste", async ({ page, isMobile }) => {
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   const mute = page.getByTestId("mute-music");
@@ -1158,7 +1170,7 @@ test("el botón de silenciar alterna y persiste", async ({ page }, testInfo) => 
   await expect(page.getByRole("button", { name: "Silenciar música" })).toBeVisible();
   await expect(mute.locator(".mute-icon--on")).toBeVisible();
   await expect(mute.locator(".mute-icon--off")).toBeHidden();
-  if (testInfo.project.name === "webkit-iphone") await expect(page.getByTestId("hint")).toBeHidden();
+  if (isMobile) await expect(page.getByTestId("hint")).toBeHidden();
   else await expect(page.getByTestId("hint")).toContainText("WASD para caminar");
   await mute.click();
   await expect(mute).toHaveAttribute("aria-pressed", "true");
@@ -1172,8 +1184,11 @@ test("el botón de silenciar alterna y persiste", async ({ page }, testInfo) => 
   await expect(page.getByTestId("mute-music").locator(".mute-icon--off")).toBeVisible();
 });
 
-test("en horizontal el botón de interacción queda en la mitad inferior", async ({ browser }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "layout horizontal móvil");
+test(
+  "en horizontal el botón de interacción queda en la mitad inferior",
+  { tag: TOUCH_MOBILE_TAG },
+  async ({ browser }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "layout horizontal móvil");
   const viewport = { width: 844, height: 390 };
   const context = await browser.newContext({
     viewport,
