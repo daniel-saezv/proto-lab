@@ -49,13 +49,21 @@ function boxInside(box: { x: number; y: number; width: number; height: number } 
   expect(box!.y + box!.height).toBeLessThanOrEqual(height + 1);
 }
 
-async function expectScrollsInside(page: Page, testId: string, viewportHeight: number) {
+async function expectOneScroll(page: Page, testId: string, viewportHeight: number) {
   const field = page.getByTestId(testId);
+  const sheet = page.locator(".dialogue-sheet");
   await expect(field).toBeVisible();
-  await field.evaluate((el) => {
+  const inner = await field.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
+  expect(inner.scrollHeight).toBeLessThanOrEqual(inner.clientHeight + 4);
+  const speech = await page.getByTestId("dialogue-text").evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  }));
+  expect(speech.scrollHeight).toBeLessThanOrEqual(speech.clientHeight + 4);
+  await sheet.evaluate((el) => {
     el.scrollTop = 0;
   });
-  const before = await field.evaluate((el) => {
+  const before = await sheet.evaluate((el) => {
     const rect = el.getBoundingClientRect();
     return { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, top: rect.top, bottom: rect.bottom };
   });
@@ -63,13 +71,16 @@ async function expectScrollsInside(page: Page, testId: string, viewportHeight: n
   expect(before.top).toBeGreaterThanOrEqual(-1);
   expect(before.bottom).toBeLessThanOrEqual(viewportHeight + 1);
   await expect(page.getByTestId("scroll-cue")).toBeVisible();
-  await field.evaluate((el) => {
+  await sheet.evaluate((el) => {
     el.scrollTop = el.scrollHeight;
   });
-  await expect.poll(() => field.evaluate((el) => el.scrollTop)).toBeGreaterThan(8);
+  await expect.poll(() => sheet.evaluate((el) => el.scrollTop)).toBeGreaterThan(8);
   await expect(page.getByTestId("scroll-cue")).toBeHidden();
-  const bottom = await field.evaluate((el) => el.getBoundingClientRect().bottom);
-  expect(bottom).toBeLessThanOrEqual(viewportHeight + 1);
+  const action = page.locator("#dialogue .dialogue-actions .dialogue-choice, #dialogue .workshop-actions .dialogue-choice").last();
+  const box = await action.boundingBox();
+  expect(box).toBeTruthy();
+  expect(box!.y).toBeGreaterThanOrEqual(-1);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight + 1);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -112,13 +123,13 @@ test("la cruz cierra cada diálogo y la descripción larga se desplaza", async (
 
   await reachBody(page, "Cometa lunar");
   await page.getByTestId("dialogue-input").fill(LONG);
-  await expectScrollsInside(page, "dialogue-input", portrait!.height);
+  await expectOneScroll(page, "dialogue-input", portrait!.height);
   await page.setViewportSize({ width: 844, height: 390 });
-  await expectScrollsInside(page, "dialogue-input", 390);
+  await expectOneScroll(page, "dialogue-input", 390);
   await page.setViewportSize({ width: portrait!.width, height: portrait!.height });
   await page.getByTestId("dialogue-send").click();
   await expect(page.getByTestId("dialogue-note")).toContainText("Fin.");
-  await expectScrollsInside(page, "dialogue-note", portrait!.height);
+  await expectOneScroll(page, "dialogue-note", portrait!.height);
   await page.getByTestId("dialog-close").click();
   await expect(page.getByTestId("dialogue")).toBeHidden();
 
@@ -256,7 +267,7 @@ test("el escritorio espera, muestra lo elegido y al cerrar no llama otra vez al 
   await page.getByTestId("choice-workshop-stop").click();
   await expect(page.getByTestId("workshop-title")).toHaveValue("Cometa con estela");
   const portrait = page.viewportSize();
-  await expectScrollsInside(page, "workshop-description", portrait?.height ?? 664);
+  await expectOneScroll(page, "workshop-description", portrait?.height ?? 664);
   await page.setViewportSize({ width: 844, height: 390 });
-  await expectScrollsInside(page, "workshop-description", 390);
+  await expectOneScroll(page, "workshop-description", 390);
 });

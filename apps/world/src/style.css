@@ -106,8 +106,8 @@ button, input, textarea { font: inherit; color: inherit; }
 
 .dialog-dismiss {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 2px;
+  right: 2px;
   z-index: 4;
   display: grid;
   place-items: center;
@@ -116,25 +116,38 @@ button, input, textarea { font: inherit; color: inherit; }
   min-width: 44px;
   min-height: 44px;
   padding: 0;
-  border-radius: 999px;
-  border: 2px solid rgba(246, 241, 231, 0.4);
-  background: rgba(10, 12, 24, 0.72);
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
   color: var(--ink);
-  font-size: 1.6rem;
-  font-weight: 500;
-  line-height: 1;
+  opacity: 0.45;
   cursor: pointer;
   touch-action: manipulation;
+}
+.dialog-dismiss-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  pointer-events: none;
+}
+.dialog-dismiss:hover,
+.dialog-dismiss:focus-visible,
+.dialog-dismiss:active {
+  opacity: 1;
+  color: var(--amber);
+  background: transparent;
 }
 .dialog-dismiss:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
 .dialog-dismiss--screen {
-  top: calc(12px + env(safe-area-inset-top));
-  left: calc(12px + env(safe-area-inset-left));
+  top: calc(8px + env(safe-area-inset-top));
+  left: calc(8px + env(safe-area-inset-left));
   right: auto;
   z-index: 8;
+  opacity: 0.72;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.65));
 }
 #board-back[hidden] { display: none; }
 
@@ -403,21 +416,8 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
 }
 #dialogue.is-workshop {
   max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
-  overflow-y: auto;
-  bottom: calc(12px + env(safe-area-inset-bottom) + var(--workshop-kb, 0px));
-}
-#dialogue.is-workshop[data-workshop="intro"],
-#dialogue.is-workshop[data-workshop="summary"] {
   overflow: hidden;
-}
-#dialogue.is-workshop .dialogue-text {
-  flex: 0 1 auto;
-  max-height: 4.8rem;
-  min-height: 1.4rem;
-}
-#dialogue.is-workshop[data-workshop="loading"] .dialogue-text,
-#dialogue.is-workshop[data-workshop="intro"] .dialogue-text {
-  max-height: none;
+  bottom: calc(12px + env(safe-area-inset-bottom) + var(--workshop-kb, 0px));
 }
 #dialogue.is-workshop .dialogue-choice,
 #dialogue.is-workshop .dialogue-input:not(.long-text-body) {
@@ -580,12 +580,59 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
 .portrait--brasa { box-shadow: inset 0 -8px 0 #ff6b2c; }
 .portrait--naipe { box-shadow: inset 0 -8px 0 #1f8a80; }
 .portrait--croquis { box-shadow: inset 0 -8px 0 #ffb703; }
-.dialogue-text {
-  margin: 0 0 12px;
+.dialogue-sheet {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--amber) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.dialogue-sheet::-webkit-scrollbar { width: 8px; }
+.dialogue-sheet::-webkit-scrollbar-thumb {
+  background: var(--amber);
+  border-radius: 999px;
+}
+.dialogue-sheet.is-overflowing {
+  box-shadow: inset 0 -10px 8px -10px rgba(255, 183, 3, 0.8);
+}
+.dialogue-note-pin {
+  flex: 0 0 auto;
+  min-height: 0;
+  margin: 0 0 4px;
+}
+.dialogue-more {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+  text-align: right;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+  pointer-events: none;
+}
+.dialogue-more[hidden] { display: none !important; }
+.dialogue-actions { flex: 0 0 auto; }
+#dialogue[data-phase="confirm"] .dialogue-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+#dialogue[data-phase="confirm"] .dialogue-actions .dialogue-choice { margin-top: 0; }
+#dialogue[data-phase="confirm"] .long-read {
+  padding: 2px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.dialogue-text {
+  margin: 0 0 12px;
+  flex: 0 0 auto;
+  overflow: visible;
+  max-height: none;
   white-space: pre-wrap;
   line-height: 1.45;
   font-size: 1.05rem;
@@ -641,35 +688,25 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   height: min(78dvh, calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px)));
 }
 #dialogue.is-workshop:has(.long-text) {
-  top: calc(56px + env(safe-area-inset-top));
-  height: auto;
-}
-#dialogue.is-workshop[data-workshop="summary"] .dialogue-text {
-  max-height: 3.2rem;
-  margin-bottom: 4px;
-}
-#dialogue.is-workshop[data-workshop="summary"] .workshop-counter,
-#dialogue.is-workshop[data-workshop="summary"] .workshop-kind,
-#dialogue.is-workshop[data-workshop="summary"] .workshop-diff {
-  margin-bottom: 4px;
+  height: min(78dvh, calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px)));
 }
 .long-text {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   margin: 0 0 6px;
-  overflow: hidden;
+  overflow: visible;
 }
 .long-text .field-label {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   margin-bottom: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 #dialogue .long-text .dialogue-input,
 #dialogue .long-read {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   width: 100%;
   min-height: 0;
   max-height: none;
@@ -681,43 +718,17 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   color: var(--ink);
   font-size: 16px;
   line-height: 1.45;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
   white-space: pre-wrap;
-  scrollbar-width: thin;
-  scrollbar-color: var(--amber) transparent;
   touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
 }
-textarea.long-text-body { resize: none; }
-#dialogue .long-text .dialogue-input::-webkit-scrollbar,
-#dialogue .long-read::-webkit-scrollbar { width: 8px; }
-#dialogue .long-text .dialogue-input::-webkit-scrollbar-thumb,
-#dialogue .long-read::-webkit-scrollbar-thumb {
-  background: var(--amber);
-  border-radius: 999px;
+textarea.long-text-body {
+  resize: none;
+  overflow: hidden;
+  min-height: 4.5rem;
 }
 #dialogue .long-read:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
-#dialogue .long-text.is-overflowing .dialogue-input,
-#dialogue .long-text.is-overflowing .long-read {
-  box-shadow: inset 0 -8px 6px -6px rgba(255, 183, 3, 0.95);
-}
 #dialogue .field-label .dialogue-input { color: var(--ink); }
-.scroll-cue {
-  flex-shrink: 0;
-  margin: 4px 0 0;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-align: right;
-  color: var(--amber);
-}
-#dialogue[data-phase="confirm"] .dialogue-text,
-#dialogue[data-phase="body"] .dialogue-text {
-  flex: 0 1 auto;
-  max-height: 6.5rem;
-}
 #dialogue.is-keyboard:has(.long-text) {
   height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
 }
@@ -756,40 +767,20 @@ textarea.long-text-body { resize: none; }
     height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
   }
   #dialogue.is-workshop:has(.long-text) {
-    top: calc(8px + env(safe-area-inset-top));
     height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--dialogue-kb, 0px));
-    max-height: none;
   }
-  #dialogue.is-workshop[data-workshop="summary"] {
+  #dialogue[data-phase="confirm"] .dialogue-actions,
+  #dialogue[data-phase="greet"] .dialogue-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto auto auto minmax(6.5rem, 1fr) auto auto;
-    row-gap: 2px;
-    column-gap: 12px;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
   }
-  #dialogue.is-workshop[data-workshop="summary"] > :is(.dialogue-head, .dialogue-text, .field-label, .long-text, .workshop-diff, .workshop-actions) {
-    grid-column: 1 / -1;
-  }
-  #dialogue.is-workshop[data-workshop="summary"] > :is(.dialogue-head, .dialogue-text, .workshop-counter, .workshop-kind, .field-label, .long-text, .workshop-diff) {
-    margin-bottom: 0;
-  }
-  #dialogue.is-workshop[data-workshop="summary"] > .field-label {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-  }
-  #dialogue.is-workshop[data-workshop="summary"] > .field-label .dialogue-input {
-    flex: 1 1 auto;
-    width: auto;
+  #dialogue[data-phase="confirm"] .dialogue-actions .dialogue-choice,
+  #dialogue[data-phase="greet"] .dialogue-actions .dialogue-choice {
     margin-top: 0;
   }
-  #dialogue.is-workshop[data-workshop="summary"] > .workshop-kind { justify-self: end; }
-  #dialogue.is-workshop[data-workshop="summary"] .long-text { min-height: 0; }
-  #dialogue.is-workshop[data-workshop="summary"] .dialogue-text { max-height: 2.6rem; }
   #dialogue .long-text .dialogue-input,
   #dialogue .long-read { font-size: 16px; }
-  #dialogue[data-phase="confirm"] .dialogue-text,
-  #dialogue[data-phase="body"] .dialogue-text { max-height: 3.2rem; }
 }
 
 body.prototype-open #viewport,

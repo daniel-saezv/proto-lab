@@ -26,15 +26,10 @@ export function createLongText(options: {
   testId: string;
   maxLength?: number;
   placeholder?: string;
+  onLayout?: () => void;
 }): LongTextHandle {
   const root = document.createElement("div");
   root.className = "long-text";
-
-  const cue = document.createElement("p");
-  cue.className = "scroll-cue";
-  cue.dataset.testid = "scroll-cue";
-  cue.textContent = SCROLL_CUE;
-  cue.hidden = true;
 
   let body: HTMLTextAreaElement | HTMLDivElement;
   if (options.mode === "edit") {
@@ -50,10 +45,10 @@ export function createLongText(options: {
     field.spellcheck = true;
     field.placeholder = options.placeholder ?? "";
     field.setAttribute("aria-label", options.label);
-    field.rows = 6;
+    field.rows = 4;
     field.value = options.value;
     label.append(caption, field);
-    root.append(label, cue);
+    root.append(label);
     body = field;
   } else {
     const label = document.createElement("p");
@@ -67,26 +62,20 @@ export function createLongText(options: {
     field.setAttribute("role", "region");
     field.setAttribute("aria-labelledby", label.id);
     field.textContent = options.value;
-    root.append(label, field, cue);
+    root.append(label, field);
     body = field;
   }
 
   const refresh = () => {
-    const more = longTextHasMore(body.scrollHeight, body.clientHeight, body.scrollTop);
-    cue.hidden = !more;
-    root.classList.toggle("is-overflowing", body.scrollHeight > body.clientHeight + 2);
+    if (body instanceof HTMLTextAreaElement) {
+      body.style.height = "0px";
+      body.style.height = `${body.scrollHeight}px`;
+    }
+    options.onLayout?.();
   };
-  body.addEventListener("scroll", refresh, { passive: true });
   if (body instanceof HTMLTextAreaElement) body.addEventListener("input", refresh);
-  const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => refresh());
-  observer?.observe(body);
   queueMicrotask(refresh);
-  requestAnimationFrame(() => refresh());
+  requestAnimationFrame(refresh);
 
-  return {
-    root,
-    body,
-    refresh,
-    destroy: () => observer?.disconnect(),
-  };
+  return { root, body, refresh, destroy: () => {} };
 }

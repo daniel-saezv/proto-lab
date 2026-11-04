@@ -6,7 +6,7 @@ import { INVENTOR_RESULT_OK, inventorSpeech, type DialoguePhase } from "./dialog
 import { chooseScript, scriptNode, startScript, type DialogueScript, type ScriptCursor } from "./dialogue-script";
 import { typeDelayMs } from "./dialogue-type";
 import { LIMITS } from "./limits";
-import { createLongText, keyboardOverlap, type LongTextHandle } from "./long-field";
+import { createLongText, keyboardOverlap, longTextHasMore, SCROLL_CUE, type LongTextHandle } from "./long-field";
 import type { CatalogEntry, ProposalDraft, SubmitOutcome } from "./types";
 import { postWorkshop } from "./workshop-api";
 import {
@@ -92,6 +92,10 @@ export function createDialogue(options: {
   let pendingPick: WorkshopTrailMark | null = null;
   let longText: LongTextHandle | null = null;
   let nextNotice: string | undefined;
+  let sheet: HTMLDivElement | null = null;
+  let sheetCue: HTMLElement | null = null;
+  let sheetObserver: ResizeObserver | null = null;
+  let refreshSheetCue = () => {};
   const askWorkshopRemote = options.workshop ?? postWorkshop;
 
   const viewport = window.visualViewport;
@@ -111,6 +115,7 @@ export function createDialogue(options: {
       options.root.classList.add("is-keyboard");
     }
     longText?.refresh();
+    refreshSheetCue();
   };
   viewport?.addEventListener("resize", liftKeyboard);
   viewport?.addEventListener("scroll", liftKeyboard);
@@ -129,6 +134,43 @@ export function createDialogue(options: {
   function releaseLongText() {
     longText?.destroy();
     longText = null;
+  }
+
+  function releaseSheet() {
+    sheetObserver?.disconnect();
+    sheetObserver = null;
+    sheet = null;
+    sheetCue = null;
+    refreshSheetCue = () => {};
+  }
+
+  function mountSheet(): HTMLDivElement {
+    releaseSheet();
+    const node = document.createElement("div");
+    node.className = "dialogue-sheet";
+    const cue = document.createElement("p");
+    cue.className = "dialogue-more";
+    cue.dataset.testid = "scroll-cue";
+    cue.textContent = SCROLL_CUE;
+    cue.hidden = true;
+    const refresh = () => {
+      const more = longTextHasMore(node.scrollHeight, node.clientHeight, node.scrollTop);
+      cue.hidden = !more;
+      node.classList.toggle("is-overflowing", more);
+    };
+    refreshSheetCue = refresh;
+    node.addEventListener("scroll", refresh, { passive: true });
+    sheetObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(refresh);
+    sheetObserver?.observe(node);
+    queueMicrotask(refresh);
+    requestAnimationFrame(refresh);
+    sheet = node;
+    sheetCue = cue;
+    return node;
+  }
+
+  function content(): HTMLElement {
+    return sheet ?? options.root;
   }
 
   function flashEmphasis() {
@@ -381,6 +423,7 @@ export function createDialogue(options: {
     options.root.dataset.phase = phase.name;
     options.root.dataset.outcome = phase.name === "done" ? phase.outcome : "";
     options.root.classList.toggle("is-workshop", phase.name === "workshop");
+    releaseSheet();
     options.root.append(createDialogCloseButton(() => close()));
     if (phase.name === "workshop" && workshopScreen) options.root.dataset.workshop = workshopScreen.kind;
     else delete options.root.dataset.workshop;
@@ -412,7 +455,10 @@ export function createDialogue(options: {
     const head = document.createElement("div");
     head.className = "dialogue-head";
     head.append(portrait, name);
-    options.root.append(head, text);
+    const body = mountSheet();
+    body.append(text);
+    options.root.append(head, body);
+    if (sheetCue) options.root.append(sheetCue);
 
     const cue = activeCue();
     if (cue) options.root.dataset.cue = cue;
@@ -531,6 +577,13 @@ export function createDialogue(options: {
     return row;
   }
 
+  function pinActions(): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "dialogue-actions";
+    options.root.append(row);
+    return row;
+  }
+
   function showTrail(trail: WorkshopTrailMark[]) {
     if (trail.length === 0) return;
     const list = document.createElement("ol");
@@ -549,7 +602,7 @@ export function createDialogue(options: {
       item.append(label, picks);
       list.append(item);
     }
-    options.root.append(list);
+    content().append(list);
   }
 
   function showWorkshop(my: number) {
@@ -624,6 +677,7 @@ export function createDialogue(options: {
         testId: "workshop-description",
         maxLength: LIMITS.descriptionMax,
         placeholder: "El texto de la nota",
+        onLayout: () => refreshSheetCue(),
       });
       longText = descriptionField;
       const description = descriptionField.body;
@@ -637,7 +691,7 @@ export function createDialogue(options: {
       paintDiff();
       title.addEventListener("input", paintDiff);
       description.addEventListener("input", paintDiff);
-      options.root.append(counter, kind, titleLabel, descriptionField.root, diff);
+      content().append(counter, kind, titleLabel, descriptionField.root, diff);
       const submit = () => {
         const error = workshopSummaryError(title.value, description.value);
         if (error) {
@@ -666,7 +720,7 @@ export function createDialogue(options: {
     counter.className = "workshop-counter";
     counter.dataset.testid = "workshop-counter";
     counter.textContent = workshopCounter(screen.round, screen.maxRounds);
-    options.root.append(counter);
+    content().append(counter);
     showTrail(screen.trail);
     const picked = new Set<string>();
     const list = document.createElement("div");
@@ -687,7 +741,7 @@ export function createDialogue(options: {
       });
       list.append(chip);
     }
-    options.root.append(list);
+    content().append(list);
     const actions = actionRow();
     for (const choice of workshopPickChoices()) {
       addChoice(actions, choice.id, choice.label, () => {
@@ -709,11 +763,13 @@ export function createDialogue(options: {
 
   function focusWorkshop(target: Element | null) {
     if (target instanceof HTMLElement) target.focus({ preventScroll: true });
-    options.root.scrollTop = 0;
+    if (sheet) sheet.scrollTop = 0;
+    refreshSheetCue();
   }
 
   function showChoices(my: number) {
     if (my !== token) return;
+    const actions = pinActions();
     for (const choice of choices()) {
       const button = document.createElement("button");
       button.type = "button";
@@ -721,9 +777,10 @@ export function createDialogue(options: {
       button.dataset.testid = choice.id;
       button.textContent = choice.label;
       button.addEventListener("click", choice.run);
-      options.root.append(button);
+      actions.append(button);
     }
-    const first = options.root.querySelector(".dialogue-choice");
+    refreshSheetCue();
+    const first = actions.querySelector(".dialogue-choice");
     if (first instanceof HTMLButtonElement) first.focus();
   }
 
@@ -734,9 +791,24 @@ export function createDialogue(options: {
       value: draft.description,
       label: "Descripción",
       testId: "dialogue-note",
+      onLayout: () => refreshSheetCue(),
     });
     longText = note;
-    options.root.append(note.root);
+    content().append(note.root);
+    requestAnimationFrame(() => {
+      if (my !== token || !sheet) return;
+      const read = note.root.querySelector(".long-read");
+      if (!(read instanceof HTMLElement) || read.getBoundingClientRect().height > 96) return;
+      if (sheet.scrollHeight <= sheet.clientHeight + 4) return;
+      const slot = document.createElement("div");
+      slot.className = "dialogue-note-pin";
+      slot.append(note.root);
+      const actions = options.root.querySelector(".dialogue-actions");
+      if (actions) options.root.insertBefore(slot, actions);
+      else options.root.append(slot);
+      refreshSheetCue();
+    });
+    refreshSheetCue();
   }
 
   function showInput(my: number) {
@@ -755,14 +827,17 @@ export function createDialogue(options: {
         testId: "dialogue-input",
         maxLength: LIMITS.descriptionMax,
         placeholder: "Cuéntaselo al Inventor",
+        onLayout: () => refreshSheetCue(),
       });
       longText = note;
       const field = note.body;
       if (!(field instanceof HTMLTextAreaElement)) return;
       const accept = () => acceptField(field);
       say.addEventListener("click", accept);
-      options.root.append(note.root, say);
+      content().append(note.root);
+      pinActions().append(say);
       field.focus({ preventScroll: true });
+      refreshSheetCue();
       return;
     }
 
@@ -787,8 +862,10 @@ export function createDialogue(options: {
         accept();
       }
     });
-    options.root.append(field, say);
+    content().append(field);
+    pinActions().append(say);
     field.focus({ preventScroll: true });
+    refreshSheetCue();
   }
 
   function acceptField(field: HTMLInputElement | HTMLTextAreaElement) {
@@ -835,6 +912,7 @@ export function createDialogue(options: {
     stopTyping();
     window.clearTimeout(emphTimer);
     releaseLongText();
+    releaseSheet();
     if (away) options.onInventorReset?.();
     document.body.classList.remove("dialogue-open");
     options.root.hidden = true;
