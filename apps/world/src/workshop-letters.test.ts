@@ -12,13 +12,21 @@ import {
 } from "./workshop-letters";
 
 describe("letras del taller", () => {
-  it("una idea es un plano y doce siguen bajo el cupo de la sala", () => {
-    const geometry = buildIdeaGeometry();
-    const triangles = ideaTriangleCount(geometry);
-    expect(triangles).toBeGreaterThan(0);
+  it("una nube actual tiene volumen low-poly y doce siguen bajo el cupo de la sala", () => {
+    const cloud = buildIdeaGeometry("now");
+    const past = buildIdeaGeometry("past");
+    const triangles = ideaTriangleCount(cloud);
+    cloud.computeBoundingBox();
+    const box = cloud.boundingBox;
+    expect(box).toBeTruthy();
+    expect(box!.max.z - box!.min.z).toBeGreaterThan(0.2);
+    expect(cloud.getAttribute("normal")).toBeTruthy();
+    expect(triangles, `triángulos de la nube: ${triangles}`).toBeGreaterThan(40);
     expect(triangles).toBeLessThanOrEqual(IDEA_TRIANGLE_CAP);
+    expect(ideaTriangleCount(past)).toBe(2);
     expect(triangles * 12 + 4_000).toBeLessThanOrEqual(40_000);
-    geometry.dispose();
+    cloud.dispose();
+    past.dispose();
   });
 
   it("escribe en negro sobre nube blanca y marca la elegida con un brillo", () => {

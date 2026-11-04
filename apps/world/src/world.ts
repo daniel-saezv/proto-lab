@@ -11,6 +11,7 @@ import {
   Fog,
   Group,
   HemisphereLight,
+  InstancedMesh,
   Mesh,
   MeshBasicMaterial,
   Matrix4,
@@ -103,6 +104,7 @@ import {
   poseAlong,
   remainingBlend,
   seatPose,
+  WORKSHOP_TABLE_TOP_Y,
   workshopSeatCamera,
   workshopSeatSubject,
   workshopThinkCamera,
@@ -671,6 +673,9 @@ export function startWorld(options: {
     texture: CanvasTexture;
   };
   let cloudEntries: CloudEntry[] = [];
+  let cloudShadow: InstancedMesh | null = null;
+  let cloudShadowMaterial: MeshBasicMaterial | null = null;
+  const shadowDummy = new Object3D();
   const cloudScratch = new Vector3();
   const cloudFacing = new Vector3();
   const cloudForward = new Vector3(0, 0, 1);
@@ -1426,22 +1431,47 @@ export function startWorld(options: {
     if (dialoguePhase === "hold") dialoguePhase = "enter";
   }
 
+  function disposeCloudShadow() {
+    if (cloudShadow) {
+      cloudShadow.removeFromParent();
+      cloudShadow.geometry.dispose();
+      cloudShadow = null;
+    }
+    if (cloudShadowMaterial) {
+      cloudShadowMaterial.map?.dispose();
+      cloudShadowMaterial.dispose();
+      cloudShadowMaterial = null;
+    }
+  }
+
   function disposeWorkshopClouds() {
     for (const entry of cloudEntries) {
       entry.texture.dispose();
       const material = entry.mesh.material;
-      if (material instanceof MeshBasicMaterial) material.dispose();
+      if (material instanceof MeshBasicMaterial || material instanceof MeshLambertMaterial) material.dispose();
       entry.mesh.geometry.dispose();
       entry.mesh.removeFromParent();
     }
     cloudEntries = [];
+    disposeCloudShadow();
     options.onWorkshopHits?.([]);
+  }
+
+  function litCloudMaterial(texture: CanvasTexture): MeshLambertMaterial {
+    const material = new MeshLambertMaterial({ map: texture });
+    material.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;",
+        "vec3 outgoingLight = (reflectedLight.directDiffuse + reflectedLight.indirectDiffuse) * 1.7 + totalEmissiveRadiance;",
+      );
+    };
+    return material;
   }
 
   function paintCloud(entry: CloudEntry) {
     paintIdeaCanvas(entry.canvas, entry.idea.text, entry.idea.role, entry.idea.picked);
     entry.texture.needsUpdate = true;
-    entry.mesh.renderOrder = entry.idea.role === "past" ? 1 : entry.idea.picked ? 3 : 2;
+    entry.mesh.renderOrder = entry.idea.role === "past" ? 3 : 1;
   }
 
   function setWorkshopIdeas(ideas: WorkshopIdeaMesh[] | null) {
@@ -1479,14 +1509,19 @@ export function startWorld(options: {
       texture.generateMipmaps = false;
       texture.minFilter = LinearFilter;
       texture.magFilter = LinearFilter;
-      const material = new MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-      });
-      const mesh = new Mesh(buildIdeaGeometry(), material);
+      const material =
+        idea.role === "now"
+          ? litCloudMaterial(texture)
+          : new MeshBasicMaterial({
+              map: texture,
+              transparent: true,
+              depthWrite: false,
+              toneMapped: false,
+            });
+      const mesh = new Mesh(buildIdeaGeometry(idea.role), material);
       mesh.name = `idea-${idea.id}`;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
       mesh.userData.noBatch = true;
       const entry = { mesh, slot, idea, canvas, texture };
       paintCloud(entry);
@@ -1510,14 +1545,89 @@ export function startWorld(options: {
       const anchor = cloudAnchor(camera, slot, cloudScratch);
       entry.mesh.position.copy(anchor);
       if (!still) entry.mesh.position.y += Math.sin(time * 1.3 + (pastIndex + nowIndex)) * 0.012;
-      entry.mesh.scale.set(slot.scale, slot.scale / slot.aspect, 1);
+      if (entry.idea.role === "now") entry.mesh.scale.setScalar(slot.scale);
+      else entry.mesh.scale.set(slot.scale, slot.scale / slot.aspect, 1);
       cloudFacing.copy(camera.position).sub(entry.mesh.position);
       if (cloudFacing.lengthSq() > 1e-6) {
         cloudFacing.normalize();
         entry.mesh.quaternion.setFromUnitVectors(cloudForward, cloudFacing);
       }
     }
+    placeCloudShadows();
     publishCloudHits();
+  }
+
+  function cloudShadowTexture(): CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const context = canvas.getContext("2d");
+    if (context) {
+      const ink = context.createRadialGradient(32, 32, 2, 32, 32, 31);
+      ink.addColorStop(0, "rgba(12, 8, 6, 0.92)");
+      ink.addColorStop(0.5, "rgba(12, 8, 6, 0.55)");
+      ink.addColorStop(1, "rgba(12, 8, 6, 0)");
+      context.fillStyle = ink;
+      context.fillRect(0, 0, 64, 64);
+    }
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    texture.generateMipmaps = false;
+    texture.minFilter = LinearFilter;
+    texture.magFilter = LinearFilter;
+    return texture;
+  }
+
+  /** Sombra de contacto sobre el tablero. Un solo dibujo para todas las nubes, sin shadow map. */
+  function placeCloudShadows() {
+    const now = cloudEntries.filter((entry) => entry.idea.role === "now");
+    if (now.length === 0) {
+      disposeCloudShadow();
+      return;
+    }
+    if (!cloudShadow || cloudShadow.count !== now.length) {
+      if (cloudShadow) {
+        cloudShadow.removeFromParent();
+        cloudShadow.geometry.dispose();
+        cloudShadow = null;
+      }
+      if (!cloudShadowMaterial) {
+        cloudShadowMaterial = new MeshBasicMaterial({
+          map: cloudShadowTexture(),
+          transparent: true,
+          depthWrite: false,
+          toneMapped: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -4,
+          polygonOffsetUnits: -4,
+        });
+      }
+      const geometry = new CircleGeometry(1, 12);
+      geometry.rotateX(-Math.PI / 2);
+      const mesh = new InstancedMesh(geometry, cloudShadowMaterial, now.length);
+      mesh.count = now.length;
+      mesh.frustumCulled = false;
+      mesh.userData.noBatch = true;
+      mesh.renderOrder = 2;
+      mesh.name = "idea-shadows";
+      scene.add(mesh);
+      cloudShadow = mesh;
+    }
+    const minX = LAYOUT.desk.x - 0.5;
+    const maxX = LAYOUT.desk.x + 0.5;
+    const minZ = LAYOUT.desk.z - 0.18;
+    const maxZ = LAYOUT.desk.z + 0.08;
+    now.forEach((entry, index) => {
+      const x = Math.min(maxX, Math.max(minX, entry.mesh.position.x));
+      const z = Math.min(maxZ, Math.max(minZ, entry.mesh.position.z));
+      shadowDummy.position.set(x, WORKSHOP_TABLE_TOP_Y + 0.02, z);
+      const span = Math.min(0.46, Math.max(0.16, entry.slot.scale * 1.15));
+      shadowDummy.scale.set(span, 1, span * 0.72);
+      shadowDummy.rotation.set(0, 0, 0);
+      shadowDummy.updateMatrix();
+      cloudShadow!.setMatrixAt(index, shadowDummy.matrix);
+    });
+    cloudShadow.instanceMatrix.needsUpdate = true;
   }
 
   function publishCloudHits() {
@@ -1621,6 +1731,12 @@ export function startWorld(options: {
       const index = entry.mesh.geometry.getIndex();
       const positions = entry.mesh.geometry.getAttribute("position");
       triangles += index ? index.count / 3 : positions.count / 3;
+    }
+    if (cloudShadow) {
+      const index = cloudShadow.geometry.getIndex();
+      const positions = cloudShadow.geometry.getAttribute("position");
+      const one = index ? index.count / 3 : positions.count / 3;
+      triangles += one * cloudShadow.count;
     }
     return {
       count: cloudEntries.length,

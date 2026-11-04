@@ -1,4 +1,13 @@
-import { BufferGeometry, PlaneGeometry, Vector3, type PerspectiveCamera } from "three";
+import {
+  BufferAttribute,
+  BufferGeometry,
+  CircleGeometry,
+  IcosahedronGeometry,
+  PlaneGeometry,
+  Vector3,
+  type PerspectiveCamera,
+} from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { WorkshopTrailMark } from "./workshop-view";
 
 export type WorkshopIdeaRole = "now" | "past";
@@ -14,7 +23,7 @@ export type CloudSlot = {
   ndcX: number;
   ndcY: number;
   depth: number;
-  /** Ancho en metros. El plano es 1×1 y el alto es este ancho partido del aspecto. */
+  /** Ancho en metros. La nube actual es redonda; el alto de una idea pasada es este ancho partido del aspecto. */
   scale: number;
   aspect: number;
 };
@@ -24,11 +33,17 @@ export const IDEA_CANVAS = { width: 768, height: 512 } as const;
 /** Lienzo de una idea ya elegida: una línea, sin nube. */
 export const PAST_CANVAS = { width: 640, height: 160 } as const;
 
-const NOW_ASPECT = IDEA_CANVAS.width / IDEA_CANVAS.height;
 const PAST_ASPECT = PAST_CANVAS.width / PAST_CANVAS.height;
 
-/** Un plano por idea. Doce ideas más la sala quedan muy por debajo de 40k triángulos. */
-export const IDEA_TRIANGLE_CAP = 8;
+/**
+ * Lóbulos de icosaedro (detalle 0) más el disco del texto.
+ * Doce nubes más la sala siguen muy por debajo de 40k triángulos.
+ */
+export const IDEA_TRIANGLE_CAP = 180;
+
+/** Franja inferior del lienzo: los lóbulos muestrean aquí, el disco del texto no. */
+const LOBE_V = 0.08;
+const PLATE_V0 = 0.22;
 
 const IDEA_FONT = '"Segoe UI", "Trebuchet MS", "Liberation Sans", "DejaVu Sans", sans-serif';
 
@@ -82,9 +97,25 @@ export function paintIdeaCanvas(
   context.clearRect(0, 0, width, height);
   const palette = ideaPalette(role, picked);
   if (role === "now") {
-    if (picked) drawGlow(context, width, height, palette.glow);
-    drawPuff(context, width, height, palette.cloud);
-    drawLabel(context, text, width, height, palette.ink, 0.72, 0.58, 42);
+    const faceBottom = Math.round(height * (1 - PLATE_V0));
+    const bandTop = Math.round(height * (1 - 0.16));
+    context.fillStyle = palette.cloud;
+    context.fillRect(0, 0, width, height);
+    if (picked && palette.glow !== "transparent") {
+      context.fillStyle = "#ffe7a0";
+      context.fillRect(0, bandTop, width, height - bandTop);
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, width, faceBottom);
+      context.clip();
+      drawGlow(context, width, faceBottom, palette.glow);
+      context.restore();
+    }
+    context.fillStyle = palette.cloud;
+    context.beginPath();
+    context.ellipse(width / 2, faceBottom / 2, width * 0.4, faceBottom * 0.4, 0, 0, Math.PI * 2);
+    context.fill();
+    drawLabel(context, text, width, faceBottom, palette.ink, 0.56, 0.5, 36);
     return;
   }
   context.save();
@@ -103,22 +134,6 @@ function drawGlow(context: CanvasRenderingContext2D, width: number, height: numb
   context.ellipse(width / 2, height / 2, width * 0.49, height * 0.47, 0, 0, Math.PI * 2);
   context.fill();
   context.restore();
-}
-
-function drawPuff(context: CanvasRenderingContext2D, width: number, height: number, fill: string) {
-  const lobes: Array<[number, number, number, number]> = [
-    [0.5, 0.5, 0.38, 0.34],
-    [0.24, 0.48, 0.26, 0.24],
-    [0.76, 0.46, 0.26, 0.24],
-    [0.36, 0.7, 0.24, 0.2],
-    [0.66, 0.68, 0.24, 0.2],
-  ];
-  context.fillStyle = fill;
-  for (const [x, y, rx, ry] of lobes) {
-    context.beginPath();
-    context.ellipse(x * width, y * height, rx * width, ry * height, 0, 0, Math.PI * 2);
-    context.fill();
-  }
 }
 
 function drawLabel(
@@ -178,12 +193,55 @@ function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: nu
   return lines;
 }
 
-/** Plano cuadrado. El aspecto de la nube lo pone la escala. */
-export function buildIdeaGeometry(): BufferGeometry {
-  return new PlaneGeometry(1, 1);
+/** Lóbulos low-poly fundidos con el disco del texto. Una idea pasada sigue siendo un plano. */
+const CLOUD_LOBES: ReadonlyArray<readonly [number, number, number, number]> = [
+  [0, 0.0, -0.08, 0.4],
+  [-0.34, 0.08, -0.02, 0.26],
+  [0.34, 0.06, -0.02, 0.26],
+  [0, 0.34, -0.02, 0.24],
+  [-0.16, -0.3, 0.0, 0.24],
+  [0.18, -0.28, 0.0, 0.24],
+];
+
+function stampUv(geometry: BufferGeometry, u: number, v: number) {
+  const count = geometry.getAttribute("position").count;
+  const uv = new Float32Array(count * 2);
+  for (let i = 0; i < count; i += 1) {
+    uv[i * 2] = u;
+    uv[i * 2 + 1] = v;
+  }
+  geometry.setAttribute("uv", new BufferAttribute(uv, 2));
+}
+
+function liftPlateUv(geometry: BufferGeometry) {
+  const uv = geometry.getAttribute("uv");
+  for (let i = 0; i < uv.count; i += 1) uv.setY(i, PLATE_V0 + uv.getY(i) * (1 - PLATE_V0));
+}
+
+export function buildIdeaGeometry(role: WorkshopIdeaRole = "now"): BufferGeometry {
+  if (role === "past") return new PlaneGeometry(1, 1);
+  const parts: BufferGeometry[] = CLOUD_LOBES.map(([x, y, z, radius]) => {
+    const lobe = new IcosahedronGeometry(radius, 0);
+    lobe.translate(x, y, z);
+    stampUv(lobe, 0.5, LOBE_V);
+    return lobe;
+  });
+  const indexedPlate = new CircleGeometry(0.4, 14);
+  const plate = indexedPlate.toNonIndexed();
+  indexedPlate.dispose();
+  plate.translate(0, 0, 0.36);
+  liftPlateUv(plate);
+  parts.push(plate);
+  const merged = mergeGeometries(parts, false);
+  for (const part of parts) part.dispose();
+  if (!merged) return new PlaneGeometry(1, 1);
+  merged.computeBoundingSphere();
+  return merged;
 }
 
 export function ideaTriangleCount(geometry: BufferGeometry): number {
+  const index = geometry.getIndex();
+  if (index) return index.count / 3;
   const position = geometry.getAttribute("position");
   return position ? position.count / 3 : 0;
 }
@@ -213,7 +271,7 @@ export function layoutCloudSlots(
     ndcY: spot.y,
     depth: nowDepth - index * 0.015,
     scale: worldWidth(fovDeg, nowDepth, aspect, widthFrac * (index === 0 ? 1.06 : 0.92)),
-    aspect: NOW_ASPECT,
+    aspect: 1,
   }));
   const pastWidth = wide ? 0.16 : desktop ? 0.18 : 0.28;
   const past = Array.from({ length: pastCount }, (_, index) => {

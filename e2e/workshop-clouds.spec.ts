@@ -82,6 +82,16 @@ async function openRound(page: Page) {
   await expect.poll(async () => (await page.getByTestId("workshop-option").first().boundingBox())?.x ?? -2).toBeGreaterThanOrEqual(-1);
 }
 
+async function expectSeguirCentered(page: Page, width: number, height: number) {
+  await expect.poll(async () => {
+    const box = await page.getByTestId("choice-workshop-next").boundingBox();
+    if (!box) return 999;
+    if (box.x < -1 || box.y < -1) return 999;
+    if (box.x + box.width > width + 1 || box.y + box.height > height + 1) return 999;
+    return Math.abs(box.x + box.width / 2 - width / 2);
+  }).toBeLessThanOrEqual(12);
+}
+
 async function expectTargets(page: Page, width: number, height: number) {
   const buttons = page.getByTestId("workshop-option");
   await expect(buttons).toHaveCount(4);
@@ -106,6 +116,7 @@ test("en escritorio las nubes se eligen con ratón y teclado", async ({ page }, 
   await mockWorkshop(page);
   await openRound(page);
   await expectTargets(page, 1280, 800);
+  await expectSeguirCentered(page, 1280, 800);
   await expect(page.getByRole("button", { name: roundOne[0] })).toHaveAttribute("aria-pressed", "false");
   await page.getByTestId("workshop-option").nth(0).click();
   await expect(page.getByRole("button", { name: roundOne[0] })).toHaveAttribute("aria-pressed", "true");
@@ -116,6 +127,7 @@ test("en escritorio las nubes se eligen con ratón y teclado", async ({ page }, 
   await page.screenshot({ path: "/opt/cursor/artifacts/taller-1280x800.png" });
   await page.getByTestId("choice-workshop-next").click();
   await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 2 de 3");
+  await expectSeguirCentered(page, 1280, 800);
   await expect(page.getByTestId("workshop-trail")).toContainText("rastro de luz");
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.past ?? 0)).toBe(2);
   await page.screenshot({ path: "/opt/cursor/artifacts/taller-1280x800-ronda2.png" });
@@ -136,15 +148,20 @@ test("en el móvil táctil cada idea es un objetivo de 44 px", async ({ browser 
   await mockWorkshop(page);
   await openRound(page);
   await expectTargets(page, 390, 844);
+  await expectSeguirCentered(page, 390, 844);
   await page.getByTestId("workshop-option").nth(0).tap();
   await expect(page.getByRole("button", { name: roundOne[0] })).toHaveAttribute("aria-pressed", "true");
   await page.screenshot({ path: "/opt/cursor/artifacts/taller-390x844.png" });
+  await page.setViewportSize({ width: 412, height: 915 });
+  await expectSeguirCentered(page, 412, 915);
+  await expectTargets(page, 412, 915);
   await page.setViewportSize({ width: 844, height: 390 });
   await expect.poll(async () => {
     const box = await page.getByTestId("workshop-option").first().boundingBox();
     return !!box && box.y >= -1 && box.x >= -1 && box.y + box.height <= 391 && box.x + box.width <= 845;
   }).toBe(true);
   await expectTargets(page, 844, 390);
+  await expectSeguirCentered(page, 844, 390);
   await page.screenshot({ path: "/opt/cursor/artifacts/taller-844x390.png" });
   await context.close();
 });
@@ -156,6 +173,7 @@ test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) =>
   const viewport = page.viewportSize();
   expect(viewport).toBeTruthy();
   await expectTargets(page, viewport!.width, viewport!.height);
+  await expectSeguirCentered(page, viewport!.width, viewport!.height);
   await page.getByTestId("workshop-option").nth(2).click();
   await expect(page.getByRole("button", { name: roundOne[2] })).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("choice-workshop-next").click();
