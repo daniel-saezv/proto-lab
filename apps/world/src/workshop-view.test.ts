@@ -4,9 +4,9 @@ import {
   workshopDiffLine,
   workshopFailedChoices,
   workshopKindLabel,
+  workshopPickChoices,
   workshopSummaryChoices,
   workshopSummaryError,
-  workshopTurnChoices,
 } from "./workshop-view";
 
 const draft = {
@@ -15,17 +15,17 @@ const draft = {
   description: "Un juego corto en el que persigues una cometa.",
 };
 
+const options = [
+  "¿Y si dejara un rastro de luz?",
+  "¿Y si se pudiera guardar el camino?",
+  "¿Y si avisara al llegar al borde?",
+  "¿Y si el color cambiara con la altura?",
+];
+
 describe("vista del taller", () => {
-  it("ofrece aceptar, rechazar o corregir, y cerrar en cualquier turno", () => {
-    expect(workshopTurnChoices({ hasChange: true }).map((choice) => choice.label)).toEqual([
-      "Que entre en la nota",
-      "Que no entre",
-      "Lo corrijo yo",
-      "Así está bien",
-      "Volver a mi nota",
-    ]);
-    expect(workshopTurnChoices({ hasChange: false }).map((choice) => choice.label)).toEqual([
-      "Contesto",
+  it("deja marcar ideas y cerrar la ronda, o enviar el resumen", () => {
+    expect(workshopPickChoices().map((choice) => choice.label)).toEqual([
+      "Siguiente",
       "Así está bien",
       "Volver a mi nota",
     ]);
@@ -43,23 +43,24 @@ describe("vista del taller", () => {
     expect(workshopSummaryError(draft.title, draft.description)).toBeNull();
   });
 
-  it("no se fía de un cuerpo con campos de más", () => {
+  it("exige cuatro ideas en la ronda y no se queda campos de más", () => {
     const parsed = readWorkshopResult({
       ok: true,
-      phase: "turn",
+      phase: "pick",
       sessionId: "abc",
-      speech: "¿Y si deja estela?",
-      change: null,
+      speech: "Ronda 1 de 3. Marca las ideas que quieres.",
+      options,
       draft,
       original: draft,
-      turn: 1,
-      maxTurns: 5,
-      ready: false,
+      round: 1,
+      maxRounds: 3,
       email: "secreto@example.com",
       tools: ["github"],
     });
     expect(parsed?.ok).toBe(true);
+    if (parsed?.ok) expect(parsed.options).toEqual(options);
     expect(parsed && "email" in parsed).toBe(false);
+    expect(readWorkshopResult({ ok: true, phase: "pick", speech: "hola", options: options.slice(0, 3) })).toBeNull();
     expect(readWorkshopResult({ ok: true, phase: "turn" })).toBeNull();
     expect(readWorkshopResult({ ok: false, error: "quota", message: "Hoy no", restore: true })?.restore).toBe(true);
   });

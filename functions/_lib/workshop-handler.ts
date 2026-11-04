@@ -6,18 +6,21 @@ import {
   WORKSHOP_COPY,
   WORKSHOP_LIMITS,
   WORKSHOP_MODEL,
-  buildWorkshopMessages,
-  cleanUtterance,
+  WORKSHOP_STRICT_FINAL,
+  WORKSHOP_STRICT_OPTIONS,
+  buildWorkshopFinal,
+  buildWorkshopRound,
   draftFromProposal,
   estimateNeurons,
   messageChars,
-  parseWorkshopJson,
+  parseWorkshopFinal,
+  parseWorkshopOptions,
   strictWorkshopMessages,
   workshopModelText,
   workshopNeuronsKey,
   workshopPayloadShape,
+  workshopRoundSpeech,
   workshopSessionKey,
-  type WorkshopChange,
   type WorkshopDraft,
   type WorkshopMessage,
   type WorkshopSession,
@@ -37,7 +40,7 @@ export type WorkshopHandlerOptions = {
   fetchImpl?: typeof fetch;
 };
 
-type TurnDecision = "accept" | "reject" | "correct" | "reply" | "stop" | "retry";
+type TurnDecision = "next" | "stop" | "retry";
 
 function json(status: number, body: unknown): Response {
   return jsonResponse(status, body);
@@ -85,6 +88,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function readList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string").slice(0, WORKSHOP_LIMITS.maxRounds * WORKSHOP_LIMITS.optionCount);
+}
+
 async function readSession(kv: KvLike, id: string, email: string): Promise<WorkshopSession | null> {
   if (!/^[0-9a-f]{32}$/.test(id)) return null;
   const raw = await kv.get(workshopSessionKey(id));
@@ -99,47 +107,13 @@ async function readSession(kv: KvLike, id: string, email: string): Promise<Works
   const body = parsed as WorkshopSession;
   if (body.email !== email) return null;
   if (!body.original || !body.current) return null;
-  body.history = readMemory(body.history);
+  const pending = readList(body.pending);
+  body.pending = pending.length === WORKSHOP_LIMITS.optionCount ? pending : null;
+  body.chosen = readList(body.chosen);
+  body.rejected = readList(body.rejected);
+  body.stage = body.stage === "final" ? "final" : "options";
+  body.round = typeof body.round === "number" && body.round > 0 ? body.round : 0;
   return body;
-}
-
-function readMemory(value: unknown): WorkshopSession["history"] {
-  if (!Array.isArray(value)) return [];
-  const turns: WorkshopSession["history"] = [];
-  for (const item of value) {
-    if (!item || typeof item !== "object") continue;
-    const entry = item as WorkshopSession["history"][number];
-    if (typeof entry.speech !== "string" || typeof entry.turn !== "number") continue;
-    const friend = entry.friend;
-    const allowed =
-      friend === "accept" || friend === "reject" || friend === "reply" || friend === "correct" || friend === "retry";
-    turns.push({
-      turn: entry.turn,
-      speech: entry.speech,
-      proposal: typeof entry.proposal === "string" ? entry.proposal : null,
-      friend: allowed ? friend : null,
-      said: typeof entry.said === "string" ? entry.said : null,
-    });
-  }
-  return turns;
-}
-
-function rememberInventor(session: WorkshopSession, turn: number, speech: string, proposal: string | null): void {
-  session.history.push({ turn, speech, proposal, friend: null, said: null });
-}
-
-function rememberFriend(
-  session: WorkshopSession,
-  friend: NonNullable<WorkshopSession["history"][number]["friend"]>,
-  said: string | null,
-): void {
-  const last = session.history.at(-1);
-  if (!last || last.friend) {
-    session.history.push({ turn: session.turn, speech: "", proposal: null, friend, said });
-    return;
-  }
-  last.friend = friend;
-  last.said = said;
 }
 
 async function writeSession(kv: KvLike, id: string, session: WorkshopSession): Promise<void> {
@@ -159,46 +133,31 @@ function publicDraft(draft: WorkshopDraft): WorkshopDraft {
   };
 }
 
-function turnBody(input: {
-  phase: "turn" | "summary";
-  sessionId?: string;
-  speech: string;
-  change: WorkshopChange | null;
-  draft: WorkshopDraft;
-  original: WorkshopDraft;
-  turn: number;
-  ready: boolean;
-}): Record<string, unknown> {
+function pickBody(session: WorkshopSession, sessionId: string, options: string[]): Record<string, unknown> {
   return {
     ok: true,
-    phase: input.phase,
-    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-    speech: input.speech,
-    change: input.change,
-    draft: publicDraft(input.draft),
-    original: publicDraft(input.original),
-    turn: input.turn,
-    maxTurns: WORKSHOP_LIMITS.maxTurns,
-    ready: input.ready,
+    phase: "pick",
+    sessionId,
+    speech: workshopRoundSpeech(session.round),
+    options,
+    draft: publicDraft(session.current),
+    original: publicDraft(session.original),
+    round: session.round,
+    maxRounds: WORKSHOP_LIMITS.maxRounds,
   };
 }
 
-function summaryBody(session: WorkshopSession, speech: string): Record<string, unknown> {
-  return turnBody({
+function summaryBody(session: WorkshopSession): Record<string, unknown> {
+  return {
+    ok: true,
     phase: "summary",
-    speech,
-    change: null,
-    draft: session.current,
-    original: session.original,
-    turn: session.turn,
-    ready: true,
-  });
+    speech: WORKSHOP_COPY.summary,
+    draft: publicDraft(session.current),
+    original: publicDraft(session.original),
+    round: session.round,
+    maxRounds: WORKSHOP_LIMITS.maxRounds,
+  };
 }
-
-type ModelRead = {
-  parsed: { speech: string; change: WorkshopChange | null; ready: boolean } | null;
-  shape: { kind: string; keys: string; response: string };
-};
 
 function logWorkshop(event: string, detail: Record<string, string | number>): void {
   console.error(JSON.stringify({ source: "workshop", event, ...detail }));
@@ -211,7 +170,10 @@ function workshopErrorKind(error: unknown): string {
   return error.name || "throw";
 }
 
-async function callModel(ai: WorkshopAi, messages: WorkshopMessage[], retry: boolean): Promise<ModelRead> {
+async function callModel(ai: WorkshopAi, messages: WorkshopMessage[], retry: boolean): Promise<{
+  text: string;
+  shape: { kind: string; keys: string; response: string };
+}> {
   const input: Record<string, unknown> = {
     messages,
     max_tokens: WORKSHOP_LIMITS.maxTokens,
@@ -219,28 +181,47 @@ async function callModel(ai: WorkshopAi, messages: WorkshopMessage[], retry: boo
   };
   if (!retry) input.response_format = { type: "json_object" };
   const payload = await withTimeout(ai.run(WORKSHOP_MODEL, input), WORKSHOP_LIMITS.modelTimeoutMs);
-  return { parsed: parseWorkshopJson(workshopModelText(payload)), shape: workshopPayloadShape(payload) };
+  return { text: workshopModelText(payload), shape: workshopPayloadShape(payload) };
 }
 
-function offerChange(
-  change: WorkshopChange | null,
-  current: WorkshopDraft,
-  knownSlugs: readonly string[],
-): WorkshopChange | null {
-  if (!change) return null;
-  const candidate = {
-    kind: current.kind,
-    title: change.title,
-    description: change.description,
-    ...(current.slug ? { slug: current.slug } : {}),
-  };
-  const validated = validateProposal(candidate, knownSlugs);
-  if (!validated.ok) return null;
-  return {
-    title: validated.value.title,
-    description: validated.value.description,
-    why: change.why,
-  };
+async function neuronQuota(kv: KvLike, day: string, messages: WorkshopMessage[]): Promise<Response | null> {
+  const neurons = await readCount(kv, workshopNeuronsKey(day));
+  if (neurons + estimateNeurons(messageChars(messages)) > WORKSHOP_LIMITS.maxNeuronsPerDay) {
+    return restore(429, "quota", WORKSHOP_COPY.quotaNeurons);
+  }
+  return null;
+}
+
+async function spendNeurons(kv: KvLike, day: string, messages: WorkshopMessage[]): Promise<void> {
+  await addCount(kv, workshopNeuronsKey(day), estimateNeurons(messageChars(messages)));
+}
+
+async function runModel<T>(
+  ai: WorkshopAi,
+  kv: KvLike,
+  day: string,
+  messages: WorkshopMessage[],
+  strict: string,
+  parse: (text: string) => T | null,
+): Promise<{ ok: true; value: T } | { ok: false; thrown: boolean }> {
+  try {
+    const first = await callModel(ai, messages, false);
+    const parsed = parse(first.text);
+    if (parsed) return { ok: true, value: parsed };
+    logWorkshop("bad-json", { attempt: 1, kind: first.shape.kind, keys: first.shape.keys, response: first.shape.response });
+    const retryMessages = strictWorkshopMessages(messages, strict);
+    const blocked = await neuronQuota(kv, day, retryMessages);
+    if (blocked) return { ok: false, thrown: false };
+    await spendNeurons(kv, day, retryMessages);
+    const second = await callModel(ai, retryMessages, true);
+    const again = parse(second.text);
+    if (again) return { ok: true, value: again };
+    logWorkshop("bad-json", { attempt: 2, kind: second.shape.kind, keys: second.shape.keys, response: second.shape.response });
+    return { ok: false, thrown: false };
+  } catch (error) {
+    logWorkshop("model-error", { kind: workshopErrorKind(error) });
+    return { ok: false, thrown: true };
+  }
 }
 
 export async function handleWorkshop(
@@ -293,40 +274,21 @@ export async function handleWorkshop(
   if (op === "start") {
     const validated = validateProposal(body.draft, knownSlugs);
     if (!validated.ok) return restore(400, "validation", validated.message);
-    return startSession(kv, env.AI, email, day, validated.value, knownSlugs);
+    return startSession(kv, env.AI, email, day, validated.value);
   }
 
   if (op === "turn") {
     const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
     const decision = body.decision;
-    if (
-      decision !== "accept" &&
-      decision !== "reject" &&
-      decision !== "correct" &&
-      decision !== "reply" &&
-      decision !== "stop" &&
-      decision !== "retry"
-    ) {
+    if (decision !== "next" && decision !== "stop" && decision !== "retry") {
       return fail(400, "validation", "No he entendido qué quieres hacer.");
     }
     const session = await readSession(kv, sessionId, email);
     if (!session) return restore(404, "session", WORKSHOP_COPY.session);
-    return continueSession(kv, env.AI, email, day, sessionId, session, decision, body.utterance, knownSlugs);
+    return continueSession(kv, env.AI, email, day, sessionId, session, decision, body.picked, knownSlugs);
   }
 
   return fail(400, "validation", "No he entendido qué quieres hacer.");
-}
-
-async function neuronQuota(kv: KvLike, day: string, messages: WorkshopMessage[]): Promise<Response | null> {
-  const neurons = await readCount(kv, workshopNeuronsKey(day));
-  if (neurons + estimateNeurons(messageChars(messages)) > WORKSHOP_LIMITS.maxNeuronsPerDay) {
-    return restore(429, "quota", WORKSHOP_COPY.quotaNeurons);
-  }
-  return null;
-}
-
-async function spendNeurons(kv: KvLike, day: string, messages: WorkshopMessage[]): Promise<void> {
-  await addCount(kv, workshopNeuronsKey(day), estimateNeurons(messageChars(messages)));
 }
 
 async function startSession(
@@ -335,34 +297,49 @@ async function startSession(
   email: string,
   day: string,
   proposal: ValidProposal,
-  knownSlugs: readonly string[],
 ): Promise<Response> {
   const draft = draftFromProposal(proposal);
-  const messages = buildWorkshopMessages({ original: draft, current: draft, turn: 1 });
-  const blocked = await neuronQuota(kv, day, messages);
-  if (blocked) return blocked;
-
-  await spendNeurons(kv, day, messages);
-
   const session: WorkshopSession = {
     email,
     original: draft,
     current: draft,
-    turn: 0,
+    round: 0,
+    stage: "options",
     pending: null,
-    ready: false,
-    rejection: null,
-    history: [],
+    chosen: [],
+    rejected: [],
   };
   const sessionId = newSessionId();
-  const spoken = await speak(ai, messages, session, knownSlugs, 1, kv, day);
-  if (!spoken.ok) {
+  const offered = await offerRound(ai, kv, day, session, 1);
+  if (!offered.ok) {
+    if (offered.blocked) return offered.blocked;
     await writeSession(kv, sessionId, session);
-    return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: 0 });
+    return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, round: session.round });
   }
-  session.turn = spoken.view.turn;
   await writeSession(kv, sessionId, session);
-  return json(200, turnBody({ phase: "turn", sessionId, ...spoken.view, draft: session.current, original: session.original }));
+  return json(200, pickBody(session, sessionId, offered.options));
+}
+
+function readPicked(raw: unknown, pending: readonly string[]): string[] | null {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) return null;
+  const wanted = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") return null;
+    const match = pending.find((option) => option === item);
+    if (!match) return null;
+    wanted.add(match);
+  }
+  return pending.filter((option) => wanted.has(option));
+}
+
+function applyPicks(session: WorkshopSession, picked: readonly string[]): void {
+  const chosen = new Set(picked);
+  for (const option of picked) session.chosen.push(option);
+  for (const option of session.pending ?? []) {
+    if (!chosen.has(option)) session.rejected.push(option);
+  }
+  session.pending = null;
 }
 
 async function continueSession(
@@ -373,118 +350,104 @@ async function continueSession(
   sessionId: string,
   session: WorkshopSession,
   decision: TurnDecision,
-  utteranceRaw: unknown,
+  pickedRaw: unknown,
   knownSlugs: readonly string[],
 ): Promise<Response> {
-  if (decision === "stop") {
+  if (decision === "retry") {
+    if (session.stage === "final") return finishSession(kv, ai, email, day, sessionId, session, knownSlugs);
+    const round = session.round > 0 ? session.round : 1;
+    const offered = await offerRound(ai, kv, day, session, round);
+    if (!offered.ok) return roundFailed(kv, sessionId, session, round, offered.blocked);
+    await writeSession(kv, sessionId, session);
+    return json(200, pickBody(session, sessionId, offered.options));
+  }
+
+  if (session.stage === "final" || !session.pending) {
+    return fail(400, "validation", "No hay ideas que elegir.");
+  }
+  const picked = readPicked(pickedRaw, session.pending);
+  if (!picked) return fail(400, "validation", "Elige solo entre las ideas de esta ronda.");
+  applyPicks(session, picked);
+
+  if (decision === "stop" || session.round >= WORKSHOP_LIMITS.maxRounds) {
+    session.stage = "final";
+    return finishSession(kv, ai, email, day, sessionId, session, knownSlugs);
+  }
+
+  const offered = await offerRound(ai, kv, day, session, session.round + 1);
+  if (!offered.ok) return roundFailed(kv, sessionId, session, session.round + 1, offered.blocked);
+  await writeSession(kv, sessionId, session);
+  return json(200, pickBody(session, sessionId, offered.options));
+}
+
+async function roundFailed(
+  kv: KvLike,
+  sessionId: string,
+  session: WorkshopSession,
+  round: number,
+  blocked: Response | null,
+): Promise<Response> {
+  if (blocked) {
     await deleteSession(kv, sessionId);
-    return json(200, summaryBody(session, WORKSHOP_COPY.summary));
+    return blocked;
   }
+  session.round = round;
+  session.stage = "options";
+  session.pending = null;
+  await writeSession(kv, sessionId, session);
+  return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, round });
+}
 
-  const utterance = decision === "reply" || decision === "correct" ? cleanUtterance(utteranceRaw) : "";
-  if ((decision === "reply" || decision === "correct") && utterance.length < 1) {
-    return fail(400, "validation", "Dime algo, aunque sea corto.");
-  }
-  rememberFriend(session, decision, utterance || null);
-
-  if (decision === "accept") {
-    if (!session.pending) return fail(400, "validation", "No hay un cambio pendiente.");
-    session.current = {
-      ...session.current,
-      title: session.pending.title,
-      description: session.pending.description,
-    };
-    session.pending = null;
-    session.rejection = null;
-  } else if (decision === "reject") {
-    session.rejection = session.pending?.title ?? session.rejection;
-    session.pending = null;
-  } else if (decision !== "retry") {
-    session.rejection = null;
-    session.pending = null;
-  }
-
-  if (session.turn >= WORKSHOP_LIMITS.maxTurns) {
-    await deleteSession(kv, sessionId);
-    const speech = utterance ? `${WORKSHOP_COPY.summary} Has dejado esto: «${utterance}».` : WORKSHOP_COPY.summary;
-    return json(200, summaryBody(session, speech));
-  }
-
-  const nextTurn = session.turn + 1;
-  const messages = buildWorkshopMessages({
+async function offerRound(
+  ai: WorkshopAi,
+  kv: KvLike,
+  day: string,
+  session: WorkshopSession,
+  round: number,
+): Promise<{ ok: true; options: string[] } | { ok: false; blocked: Response | null }> {
+  const messages = buildWorkshopRound({
     original: session.original,
-    current: session.current,
-    turn: nextTurn,
-    history: session.history,
-    decision: {
-      kind: decision,
-      utterance: utterance || undefined,
-      rejected: session.rejection ?? undefined,
-    },
+    round,
+    chosen: session.chosen,
+    rejected: session.rejected,
   });
+  const blocked = await neuronQuota(kv, day, messages);
+  if (blocked) return { ok: false, blocked };
+  await spendNeurons(kv, day, messages);
+  const avoid = [...session.chosen, ...session.rejected];
+  const spoken = await runModel(ai, kv, day, messages, WORKSHOP_STRICT_OPTIONS, (text) => parseWorkshopOptions(text, avoid));
+  if (!spoken.ok) return { ok: false, blocked: null };
+  session.round = round;
+  session.stage = "options";
+  session.pending = spoken.value;
+  return { ok: true, options: spoken.value };
+}
+
+async function finishSession(
+  kv: KvLike,
+  ai: WorkshopAi,
+  _email: string,
+  day: string,
+  sessionId: string,
+  session: WorkshopSession,
+  knownSlugs: readonly string[],
+): Promise<Response> {
+  const messages = buildWorkshopFinal({ original: session.original, chosen: session.chosen });
   const blocked = await neuronQuota(kv, day, messages);
   if (blocked) {
     await deleteSession(kv, sessionId);
     return blocked;
   }
   await spendNeurons(kv, day, messages);
-  const spoken = await speak(ai, messages, session, knownSlugs, nextTurn, kv, day);
+  const spoken = await runModel(ai, kv, day, messages, WORKSHOP_STRICT_FINAL, (text) =>
+    parseWorkshopFinal(text, session.original, knownSlugs),
+  );
   if (!spoken.ok) {
+    session.stage = "final";
     await writeSession(kv, sessionId, session);
-    return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, turn: session.turn });
+    return fail(502, "model", WORKSHOP_COPY.model, { restore: false, sessionId, round: session.round });
   }
-  session.turn = nextTurn;
-  await writeSession(kv, sessionId, session);
-  return json(200, turnBody({ phase: "turn", sessionId, ...spoken.view, draft: session.current, original: session.original }));
-}
-
-async function speak(
-  ai: WorkshopAi,
-  messages: WorkshopMessage[],
-  session: WorkshopSession,
-  knownSlugs: readonly string[],
-  turn: number,
-  kv: KvLike,
-  day: string,
-): Promise<{ ok: true; view: { speech: string; change: WorkshopChange | null; turn: number; ready: boolean } } | { ok: false }> {
-  let parsed: { speech: string; change: WorkshopChange | null; ready: boolean } | null = null;
-  try {
-    const first = await callModel(ai, messages, false);
-    parsed = first.parsed;
-    if (!parsed) {
-      logWorkshop("bad-json", { attempt: 1, kind: first.shape.kind, keys: first.shape.keys, response: first.shape.response });
-      const retryMessages = strictWorkshopMessages(messages);
-      const blocked = await neuronQuota(kv, day, retryMessages);
-      if (!blocked) {
-        await spendNeurons(kv, day, retryMessages);
-        const second = await callModel(ai, retryMessages, true);
-        parsed = second.parsed;
-        if (!parsed) {
-          logWorkshop("bad-json", {
-            attempt: 2,
-            kind: second.shape.kind,
-            keys: second.shape.keys,
-            response: second.shape.response,
-          });
-        }
-      }
-    }
-  } catch (error) {
-    logWorkshop("model-error", { kind: workshopErrorKind(error) });
-    return { ok: false };
-  }
-  if (!parsed) {
-    session.pending = null;
-    session.ready = false;
-    rememberInventor(session, turn, WORKSHOP_COPY.badJson, null);
-    return {
-      ok: true,
-      view: { speech: WORKSHOP_COPY.badJson, change: null, turn, ready: false },
-    };
-  }
-  const change = offerChange(parsed.change, session.current, knownSlugs);
-  session.pending = change;
-  session.ready = false;
-  rememberInventor(session, turn, parsed.speech, change?.title ?? null);
-  return { ok: true, view: { speech: parsed.speech, change, turn, ready: false } };
+  session.current = { ...session.current, title: spoken.value.title, description: spoken.value.description };
+  await deleteSession(kv, sessionId);
+  return json(200, summaryBody(session));
 }

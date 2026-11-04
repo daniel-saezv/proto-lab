@@ -16,7 +16,7 @@ export const INVENTOR_RESULT_OK =
 const ITERATION_FALLBACK = "ese mundo";
 
 const DESK_OFFER =
-  "\n\nSi te apetece, la afinamos juntos en el {em}escritorio{/em}. Yo propongo un retoque cada vez y tú decides. Como mucho cinco turnos. No la envío hasta que lo digas.";
+  "\n\nSi te apetece, la enriquecemos en el {em}escritorio{/em}. Son tres rondas de ideas: marcas las que quieres y al final la dejo escrita para que la revises. No la envío hasta que lo digas.";
 
 export function inventorSpeech(
   phase: DialoguePhase,

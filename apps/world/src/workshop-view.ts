@@ -1,24 +1,14 @@
 import { LIMITS } from "./limits";
 
-/** Tope de lo que dice el amigo en un turno. Igual que el de la Function. */
-export const WORKSHOP_UTTERANCE_MAX = 500;
-
 export const WORKSHOP_UI = {
   intro:
-    "Esto es para dejar la nota más clara antes del {em}tablón{/em}. Yo te propongo un retoque cada vez, o te pregunto lo que falta, y tú aceptas, rechazas o lo corriges. Como mucho cinco turnos. Cuando te valga, di que así está bien. No la envío hasta que lo digas.",
+    "En tres rondas te propongo ideas para enriquecer la nota. Marca las que te gusten: una, varias o ninguna. Al final la dejo escrita para que la revises antes del {em}tablón{/em}.",
   thinking: "Estoy mirando la nota…",
-  summarizing: "Estoy pasando a limpio el resumen.",
-  needWords: "Dime algo, aunque sea corto.",
+  summarizing: "Estoy pasando a limpio lo que has elegido.",
   closed: "Esta charla ya se ha cerrado. Tu nota sigue como la dejaste.",
   config: "El escritorio está, pero la máquina no responde. Tu nota sigue igual.",
   failed: "La máquina no ha respondido. Puedes probar otra vez o seguir con tu nota.",
 } as const;
-
-export type WorkshopChangeView = {
-  title: string;
-  description: string;
-  why: string;
-};
 
 export type WorkshopDraftView = {
   kind: "propuesta" | "iteracion";
@@ -27,24 +17,23 @@ export type WorkshopDraftView = {
   slug?: string;
 };
 
-export type WorkshopDecision = "accept" | "reject" | "correct" | "reply" | "stop" | "retry";
+export type WorkshopDecision = "next" | "stop" | "retry";
 
 export type WorkshopRequest =
   | { op: "start"; draft: WorkshopDraftView }
-  | { op: "turn"; sessionId: string; decision: WorkshopDecision; utterance?: string }
+  | { op: "turn"; sessionId: string; decision: WorkshopDecision; picked?: string[] }
   | { op: "abandon"; sessionId: string };
 
 export type WorkshopOk = {
   ok: true;
-  phase: "turn" | "summary";
+  phase: "pick" | "summary";
   sessionId?: string;
   speech: string;
-  change: WorkshopChangeView | null;
+  options: string[];
   draft: WorkshopDraftView;
   original: WorkshopDraftView;
-  turn: number;
-  maxTurns: number;
-  ready: boolean;
+  round: number;
+  maxRounds: number;
 };
 
 export type WorkshopFail = {
@@ -59,9 +48,9 @@ export type WorkshopResult = WorkshopOk | WorkshopFail;
 
 export type WorkshopScreen =
   | { kind: "loading"; purpose: "model" | "summary" | "intro" }
-  | { kind: "turn"; speech: string; change: WorkshopChangeView | null; turn: number; maxTurns: number }
+  | { kind: "pick"; speech: string; options: string[]; round: number; maxRounds: number }
   | { kind: "failed"; message: string }
-  | { kind: "summary"; speech: string; turn: number; maxTurns: number };
+  | { kind: "summary"; speech: string; round: number; maxRounds: number };
 
 export type WorkshopChoice = {
   id: string;
@@ -78,8 +67,8 @@ export function workshopSpeech(screen: WorkshopScreen): string {
   return screen.speech;
 }
 
-export function workshopCounter(turn: number, maxTurns: number): string {
-  return `${turn} de ${maxTurns}`;
+export function workshopCounter(round: number, maxRounds: number): string {
+  return `Ronda ${round} de ${maxRounds}`;
 }
 
 export function workshopKindLabel(draft: { kind: "propuesta" | "iteracion"; slug?: string }): string {
@@ -109,18 +98,9 @@ export function workshopSummaryError(title: string, description: string): string
   return null;
 }
 
-export function workshopTurnChoices(input: { hasChange: boolean }): WorkshopChoice[] {
-  if (input.hasChange) {
-    return [
-      { id: "choice-workshop-accept", label: "Que entre en la nota" },
-      { id: "choice-workshop-reject", label: "Que no entre" },
-      { id: "choice-workshop-correct", label: "Lo corrijo yo" },
-      { id: "choice-workshop-stop", label: "Así está bien" },
-      { id: "choice-workshop-back", label: "Volver a mi nota" },
-    ];
-  }
+export function workshopPickChoices(): WorkshopChoice[] {
   return [
-    { id: "choice-workshop-say", label: "Contesto" },
+    { id: "choice-workshop-next", label: "Siguiente" },
     { id: "choice-workshop-stop", label: "Así está bien" },
     { id: "choice-workshop-back", label: "Volver a mi nota" },
   ];
@@ -149,13 +129,14 @@ function isDraft(value: unknown): value is WorkshopDraftView {
   return true;
 }
 
-function readChange(value: unknown): WorkshopChangeView | null | undefined {
-  if (value == null) return null;
-  if (!value || typeof value !== "object") return undefined;
-  const body = value as Record<string, unknown>;
-  if (typeof body.title !== "string" || typeof body.description !== "string") return undefined;
-  if (body.why !== undefined && typeof body.why !== "string") return undefined;
-  return { title: body.title, description: body.description, why: typeof body.why === "string" ? body.why : "" };
+function readOptions(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length !== 4) return null;
+  const options: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || !item.trim()) return null;
+    options.push(item);
+  }
+  return options;
 }
 
 export function readWorkshopResult(data: unknown): WorkshopResult | null {
@@ -172,18 +153,18 @@ export function readWorkshopResult(data: unknown): WorkshopResult | null {
     };
   }
   if (body.ok !== true) return null;
-  if (body.phase !== "turn" && body.phase !== "summary") return null;
+  if (body.phase !== "pick" && body.phase !== "summary") return null;
   if (typeof body.speech !== "string" || !body.speech.trim()) return null;
   if (!isDraft(body.draft) || !isDraft(body.original)) return null;
-  if (typeof body.turn !== "number" || typeof body.maxTurns !== "number" || typeof body.ready !== "boolean") return null;
-  const change = readChange(body.change);
-  if (change === undefined) return null;
+  if (typeof body.round !== "number" || typeof body.maxRounds !== "number") return null;
+  const options = body.phase === "pick" ? readOptions(body.options) : [];
+  if (!options) return null;
   return {
     ok: true,
     phase: body.phase,
     ...(typeof body.sessionId === "string" ? { sessionId: body.sessionId } : {}),
     speech: body.speech,
-    change,
+    options,
     draft: {
       kind: body.draft.kind,
       title: body.draft.title,
@@ -196,8 +177,7 @@ export function readWorkshopResult(data: unknown): WorkshopResult | null {
       description: body.original.description,
       ...(body.original.slug ? { slug: body.original.slug } : {}),
     },
-    turn: body.turn,
-    maxTurns: body.maxTurns,
-    ready: body.ready,
+    round: body.round,
+    maxRounds: body.maxRounds,
   };
 }

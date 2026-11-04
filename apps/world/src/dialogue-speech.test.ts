@@ -65,7 +65,7 @@ describe("inventorSpeech", () => {
       { kind: "propuesta", title: "Farol", description: "Una app para anotar turnos." },
       [],
     );
-    expect(text).toContain("cinco turnos");
+    expect(text).toContain("tres rondas");
     expect(text).toContain("tablón");
     expect(text).not.toContain("Farol");
     expect(text).not.toMatch(/juego/i);

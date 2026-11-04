@@ -9,15 +9,14 @@ import type { CatalogEntry, ProposalDraft, SubmitOutcome } from "./types";
 import { postWorkshop } from "./workshop-api";
 import {
   WORKSHOP_UI,
-  WORKSHOP_UTTERANCE_MAX,
   workshopCounter,
   workshopDiffLine,
   workshopFailedChoices,
   workshopKindLabel,
+  workshopPickChoices,
   workshopSpeech,
   workshopSummaryChoices,
   workshopSummaryError,
-  workshopTurnChoices,
   type WorkshopDraftView,
   type WorkshopRequest,
   type WorkshopResult,
@@ -80,7 +79,7 @@ export function createDialogue(options: {
   let originalNote: ProposalDraft | null = null;
   let workshopSession: string | null = null;
   let workshopScreen: WorkshopScreen | null = null;
-  let workshopCorrecting = false;
+  let workshopClosing = false;
   let nextNotice: string | undefined;
   const askWorkshopRemote = options.workshop ?? postWorkshop;
 
@@ -172,7 +171,7 @@ export function createDialogue(options: {
     restoreOriginalNote();
     abandonSession();
     workshopScreen = null;
-    workshopCorrecting = false;
+    workshopClosing = false;
     options.onWorkshopBeat?.("off");
     if (message) nextNotice = message;
     beginWorkshopTrip("home");
@@ -189,10 +188,21 @@ export function createDialogue(options: {
     });
   }
 
+  function turnIsClosing(body: WorkshopRequest): boolean {
+    if (body.op !== "turn") return false;
+    if (body.decision === "stop") return true;
+    if (body.decision === "retry") return workshopClosing;
+    return (
+      body.decision === "next" &&
+      workshopScreen?.kind === "pick" &&
+      workshopScreen.round >= workshopScreen.maxRounds
+    );
+  }
+
   function beginModelTurn(body: WorkshopRequest) {
-    workshopCorrecting = false;
-    workshopScreen = { kind: "loading", purpose: body.op === "turn" && body.decision === "stop" ? "summary" : "model" };
-    options.onWorkshopBeat?.(workshopScreen.purpose === "model" ? "work" : "talk");
+    workshopClosing = turnIsClosing(body);
+    workshopScreen = { kind: "loading", purpose: workshopClosing ? "summary" : "model" };
+    options.onWorkshopBeat?.(workshopClosing ? "talk" : "work");
     render();
     askWorkshop(body);
   }
@@ -212,20 +222,20 @@ export function createDialogue(options: {
     draft = { ...draft, title: result.draft.title, description: result.draft.description };
     if (result.phase === "summary") {
       workshopSession = null;
-      workshopCorrecting = false;
-      workshopScreen = { kind: "summary", speech: result.speech, turn: result.turn, maxTurns: result.maxTurns };
+      workshopClosing = false;
+      workshopScreen = { kind: "summary", speech: result.speech, round: result.round, maxRounds: result.maxRounds };
       options.onWorkshopBeat?.("talk");
       render();
       return;
     }
     workshopSession = result.sessionId ?? workshopSession;
-    workshopCorrecting = false;
+    workshopClosing = false;
     workshopScreen = {
-      kind: "turn",
+      kind: "pick",
       speech: result.speech,
-      change: result.change,
-      turn: result.turn,
-      maxTurns: result.maxTurns,
+      options: result.options,
+      round: result.round,
+      maxRounds: result.maxRounds,
     };
     options.onWorkshopBeat?.("talk");
     render();
@@ -301,12 +311,12 @@ export function createDialogue(options: {
       if (dest === "desk") {
         originalNote = { kind: draft.kind, title: draft.title, description: draft.description, slug: draft.slug };
         workshopSession = null;
-        workshopCorrecting = false;
+        workshopClosing = false;
         workshopScreen = { kind: "loading", purpose: "intro" };
         options.onWorkshopBeat?.("work");
       } else {
         workshopScreen = null;
-        workshopCorrecting = false;
+        workshopClosing = false;
       }
       options.root.hidden = false;
       bumpBubble();
@@ -459,27 +469,35 @@ export function createDialogue(options: {
     return { views, caret };
   }
 
-  function addChoice(id: string, label: string, run: () => void) {
+  function addChoice(parent: HTMLElement, id: string, label: string, run: () => void) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "dialogue-choice";
     button.dataset.testid = id;
     button.textContent = label;
     button.addEventListener("click", run);
-    options.root.append(button);
+    parent.append(button);
+  }
+
+  function actionRow(): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "workshop-actions";
+    options.root.append(row);
+    return row;
   }
 
   function showWorkshop(my: number) {
     if (my !== token || phase.name !== "workshop" || !workshopScreen) return;
     const screen = workshopScreen;
     if (screen.kind === "loading") {
-      addChoice("choice-workshop-back", "Volver a mi nota", () => leaveDesk());
+      addChoice(actionRow(), "choice-workshop-back", "Volver a mi nota", () => leaveDesk());
       focusWorkshop(options.root.querySelector("button"));
       return;
     }
     if (screen.kind === "failed") {
+      const actions = actionRow();
       for (const choice of workshopFailedChoices()) {
-        addChoice(choice.id, choice.label, () => {
+        addChoice(actions, choice.id, choice.label, () => {
           if (choice.id === "choice-workshop-back") {
             leaveDesk();
             return;
@@ -496,7 +514,7 @@ export function createDialogue(options: {
       const counter = document.createElement("p");
       counter.className = "workshop-counter";
       counter.dataset.testid = "workshop-counter";
-      counter.textContent = workshopCounter(screen.turn, screen.maxTurns);
+      counter.textContent = workshopCounter(screen.round, screen.maxRounds);
       const kind = document.createElement("p");
       kind.className = "workshop-kind";
       kind.dataset.testid = "workshop-kind";
@@ -542,8 +560,9 @@ export function createDialogue(options: {
         draft.description = description.value.trim();
         void send();
       };
+      const actions = actionRow();
       for (const choice of workshopSummaryChoices()) {
-        addChoice(choice.id, choice.label, () => {
+        addChoice(actions, choice.id, choice.label, () => {
           if (choice.id === "choice-workshop-submit") submit();
           else leaveDesk();
         });
@@ -555,112 +574,49 @@ export function createDialogue(options: {
     const counter = document.createElement("p");
     counter.className = "workshop-counter";
     counter.dataset.testid = "workshop-counter";
-    counter.textContent = workshopCounter(screen.turn, screen.maxTurns);
-    const hint = document.createElement("p");
-    hint.className = "workshop-counter";
-    hint.dataset.testid = "workshop-hint";
-    hint.textContent = "Un retoque cada vez. Tú aceptas, rechazas o corriges. Como mucho cinco turnos.";
-    options.root.append(counter, hint);
-    if (screen.change) {
-      options.root.append(
-        workshopCard("workshop-now", "Ahora", [draft.title, draft.description]),
-        workshopCard("workshop-next", "Quedaría", [
-          screen.change.title,
-          screen.change.description,
-          ...(screen.change.why ? [screen.change.why] : []),
-        ]),
-      );
-    }
-    let utterance: HTMLTextAreaElement | null = null;
-    const needsField = workshopCorrecting || !screen.change;
-    if (needsField) {
-      utterance = document.createElement("textarea");
-      utterance.className = "dialogue-input";
-      utterance.dataset.testid = "workshop-utterance";
-      utterance.rows = 2;
-      utterance.maxLength = WORKSHOP_UTTERANCE_MAX;
-      utterance.autocomplete = "off";
-      utterance.spellcheck = true;
-      utterance.setAttribute("aria-label", "Tu respuesta");
-      utterance.placeholder = workshopCorrecting ? "Cómo prefieres dejarlo" : "Tu respuesta";
-      options.root.append(utterance);
-    }
-    const say = () => {
-      const value = utterance?.value.trim() ?? "";
-      if (!value) {
-        nextNotice = WORKSHOP_UI.needWords;
-        render();
-        return;
-      }
-      if (!workshopSession) {
-        leaveDesk(WORKSHOP_UI.closed);
-        return;
-      }
-      beginModelTurn({
-        op: "turn",
-        sessionId: workshopSession,
-        decision: screen.change ? "correct" : "reply",
-        utterance: value,
+    counter.textContent = workshopCounter(screen.round, screen.maxRounds);
+    options.root.append(counter);
+    const picked = new Set<string>();
+    const list = document.createElement("div");
+    list.className = "workshop-options";
+    list.setAttribute("role", "group");
+    list.setAttribute("aria-label", "Ideas de esta ronda");
+    for (const option of screen.options) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "workshop-option";
+      chip.dataset.testid = "workshop-option";
+      chip.setAttribute("aria-pressed", "false");
+      chip.textContent = option;
+      chip.addEventListener("click", () => {
+        if (picked.has(option)) picked.delete(option);
+        else picked.add(option);
+        chip.setAttribute("aria-pressed", picked.has(option) ? "true" : "false");
       });
-    };
-    utterance?.addEventListener("keydown", (event: Event) => {
-      if (!(event instanceof KeyboardEvent)) return;
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        say();
-      }
-    });
-    const turnChoices = workshopTurnChoices({ hasChange: Boolean(screen.change) }).filter(
-      (choice) => !(choice.id === "choice-workshop-correct" && workshopCorrecting),
-    );
-    if (needsField && !turnChoices.some((choice) => choice.id === "choice-workshop-say")) {
-      turnChoices.unshift({ id: "choice-workshop-say", label: "Envío la corrección" });
+      list.append(chip);
     }
-    for (const choice of turnChoices) {
-      addChoice(choice.id, choice.label, () => {
+    options.root.append(list);
+    const actions = actionRow();
+    for (const choice of workshopPickChoices()) {
+      addChoice(actions, choice.id, choice.label, () => {
         if (choice.id === "choice-workshop-back") {
           leaveDesk();
-          return;
-        }
-        if (choice.id === "choice-workshop-correct") {
-          workshopCorrecting = true;
-          render();
-          return;
-        }
-        if (choice.id === "choice-workshop-say") {
-          say();
           return;
         }
         if (!workshopSession) {
           leaveDesk(WORKSHOP_UI.closed);
           return;
         }
-        if (choice.id === "choice-workshop-accept") beginModelTurn({ op: "turn", sessionId: workshopSession, decision: "accept" });
-        else if (choice.id === "choice-workshop-reject") beginModelTurn({ op: "turn", sessionId: workshopSession, decision: "reject" });
-        else if (choice.id === "choice-workshop-stop") beginModelTurn({ op: "turn", sessionId: workshopSession, decision: "stop" });
+        const decision = choice.id === "choice-workshop-stop" ? "stop" : "next";
+        beginModelTurn({ op: "turn", sessionId: workshopSession, decision, picked: [...picked] });
       });
     }
-    focusWorkshop(utterance ?? options.root.querySelector("button"));
+    focusWorkshop(list.querySelector("button"));
   }
 
   function focusWorkshop(target: Element | null) {
     if (target instanceof HTMLElement) target.focus({ preventScroll: true });
     options.root.scrollTop = 0;
-  }
-
-  function workshopCard(testId: string, title: string, lines: string[]): HTMLElement {
-    const box = document.createElement("section");
-    box.className = "workshop-card";
-    box.dataset.testid = testId;
-    const heading = document.createElement("h3");
-    heading.textContent = title;
-    box.append(heading);
-    for (const line of lines) {
-      const paragraph = document.createElement("p");
-      paragraph.textContent = line;
-      box.append(paragraph);
-    }
-    return box;
   }
 
   function showChoices(my: number) {
@@ -768,7 +724,7 @@ export function createDialogue(options: {
     options.root.style.removeProperty("--workshop-kb");
     abandonSession();
     workshopScreen = null;
-    workshopCorrecting = false;
+    workshopClosing = false;
     originalNote = null;
     options.onWorkshopBeat?.("off");
     phase = { name: "greet" };

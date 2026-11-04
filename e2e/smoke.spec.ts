@@ -827,10 +827,17 @@ const workshopOriginal = {
   description: "Un juego corto en el que persigues una cometa con el dedo.",
 };
 
-const workshopChange = {
+const workshopOptions = [
+  "¿Y si la cometa dejara un rastro de luz?",
+  "¿Y si se pudiera guardar el camino?",
+  "¿Y si avisara al llegar al borde?",
+  "¿Y si el color cambiara con la altura?",
+];
+
+const workshopSummaryDraft = {
+  ...workshopOriginal,
   title: "Cometa con estela",
   description: "Persigues una cometa y dejas un rastro de luz.",
-  why: "Así se ve el camino.",
 };
 
 async function mockWorkshop(page: import("@playwright/test").Page, holdStart?: Promise<void>) {
@@ -839,28 +846,25 @@ async function mockWorkshop(page: import("@playwright/test").Page, holdStart?: P
     if (body.op === "start" && holdStart) await holdStart;
     const turn = {
       ok: true,
-      phase: "turn",
+      phase: "pick",
       sessionId: "a".repeat(32),
-      speech: "¿Y si la cometa deja un rastro de luz?",
-      change: workshopChange,
+      speech: "Ronda 1 de 3. Marca las ideas que quieres. Puedes no marcar ninguna.",
+      options: workshopOptions,
       draft: workshopOriginal,
       original: workshopOriginal,
-      turn: 1,
-      maxTurns: 5,
-      ready: false,
+      round: 1,
+      maxRounds: 3,
     };
     const summary = {
       ok: true,
       phase: "summary",
       speech: "Esto es lo que dejaría en el tablón. Si quieres, corrige el título o el texto.",
-      change: null,
-      draft: { ...workshopOriginal, title: workshopChange.title, description: workshopChange.description },
+      draft: workshopSummaryDraft,
       original: workshopOriginal,
-      turn: 2,
-      maxTurns: 5,
-      ready: true,
+      round: 1,
+      maxRounds: 3,
     };
-    const payload = body.op === "abandon" ? { ok: true } : body.decision === "accept" || body.decision === "stop" ? summary : turn;
+    const payload = body.op === "abandon" ? { ok: true } : body.decision === "next" || body.decision === "stop" ? summary : turn;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -882,11 +886,11 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   await page.getByTestId("choice-workshop").click();
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.beat)).toBe("work");
   releaseStart();
-  await expect(page.getByTestId("choice-workshop-accept")).toBeVisible();
+  await expect(page.getByTestId("choice-workshop-next")).toBeVisible();
+  await expect(page.getByTestId("choice-workshop-stop")).toBeVisible();
   await expect(page.getByTestId("choice-workshop-back")).toBeVisible();
-  await expect(page.getByTestId("workshop-counter")).toHaveText("1 de 5");
-  await expect(page.getByTestId("workshop-now")).toContainText("Cometa lunar");
-  await expect(page.getByTestId("workshop-next")).toContainText("Cometa con estela");
+  await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 1 de 3");
+  await expect(page.getByTestId("workshop-option")).toHaveCount(4);
   await expect(page.getByTestId("workshop-skip")).toBeHidden();
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.beat)).toBe("talk");
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.headX ?? 1)).toBeLessThan(0.4);
@@ -902,7 +906,7 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   expect(home?.x).toBeCloseTo(-1.5, 1);
   expect(home?.z).toBeCloseTo(-3.4, 1);
   await page.getByTestId("choice-workshop").click();
-  await expect(page.getByTestId("choice-workshop-accept")).toBeVisible();
+  await expect(page.getByTestId("choice-workshop-next")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   const left = await page.evaluate(() => window.__protoLab?.workshopView?.());
@@ -918,18 +922,20 @@ test("el resumen del escritorio envía solo el título y el texto finales", asyn
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await reachConfirmStep(page);
   await page.getByTestId("choice-workshop").click();
-  await page.getByTestId("choice-workshop-accept").click();
-  await expect(page.getByTestId("workshop-title")).toHaveValue(workshopChange.title);
+  await page.getByTestId("workshop-option").first().click();
+  await expect(page.getByTestId("workshop-option").first()).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("choice-workshop-stop").click();
+  await expect(page.getByTestId("workshop-title")).toHaveValue(workshopSummaryDraft.title);
   await expect(page.getByTestId("workshop-kind")).toHaveText("Propuesta nueva");
-  await expect(page.getByTestId("workshop-description")).toHaveValue(workshopChange.description);
+  await expect(page.getByTestId("workshop-description")).toHaveValue(workshopSummaryDraft.description);
   const proposal = page.waitForRequest((req) => req.method() === "POST" && /\/api\/proposals$/.test(req.url()));
   await page.getByTestId("choice-workshop-submit").click();
   const sent = (await proposal).postDataJSON() as Record<string, unknown>;
   expect(Object.keys(sent).sort()).toEqual(["description", "kind", "title"]);
   expect(sent).toEqual({
     kind: "propuesta",
-    title: workshopChange.title,
-    description: workshopChange.description,
+    title: workshopSummaryDraft.title,
+    description: workshopSummaryDraft.description,
   });
   expect(JSON.stringify(sent)).not.toMatch(/inventor|email|session|estela de la máquina/i);
   await expect(page.getByTestId("dialogue-text")).toContainText("tablón");
