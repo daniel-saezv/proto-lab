@@ -12,6 +12,10 @@ inputs:
     description: Shard current/total. Vacío para ejecutar el proyecto entero.
     required: false
     default: ""
+  build:
+    description: "Si vale false, omite pnpm build porque dist ya está en el workspace."
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -50,8 +54,13 @@ runs:
         fi
         echo "Playwright $actual alineado con lockfile"
     - name: Build
+      if: ${{ inputs.build != 'false' }}
       shell: bash
       run: pnpm build
+    - name: Comprobar el sitio ya construido
+      if: ${{ inputs.build == 'false' }}
+      shell: bash
+      run: test -f dist/index.html
     - name: Tests
       shell: bash
       run: |

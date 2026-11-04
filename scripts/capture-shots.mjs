@@ -124,7 +124,7 @@ async function composeSheet(outDir, prefix, viewpoints, debug) {
   writeFileSync(htmlPath, html);
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: 1680, height: 900 } });
     await page.goto(pathToFileURL(htmlPath).href, { waitUntil: "networkidle" });
     await page.screenshot({ path: join(outDir, contactSheetName(prefix)), fullPage: true });
   } finally {

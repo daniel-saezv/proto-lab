@@ -11,6 +11,8 @@ Lee `AGENTS.md` (sección Aplicaciones) antes de tocar `protos/<slug>/`. El text
 
 ## Móvil primero
 
+Móvil primero no es un solo teléfono. El diseño vale para el móvil en general y para escritorio, con soluciones web estándar. No hay ramas por agente de usuario salvo para textos de ayuda. Un parche de un solo motor solo si es imprescindible, aislado y justificado en un comentario del código.
+
 El build falla si falta alguno de estos puntos. Lo comprueba `scripts/app-budget.mjs` dentro de `pnpm build` y del atajo de `verificar`:
 
 - Meta viewport con `width=device-width` en el HTML servido.
@@ -18,7 +20,7 @@ El build falla si falta alguno de estos puntos. Lo comprueba `scripts/app-budget
 - Imagen o audio servidos de más de 1,5 MiB. El wasm y el pck siguen en 12 MiB por archivo y 32 MiB en total. Pages falla a 25 MiB.
 - Proyecto Godot, si existe `godot/project.godot`: viewport 390×844, `canvas_items` / `expand`, orientación vertical (`handheld/orientation=1`), `pointing/emulate_touch_from_mouse=true`, `for_desktop=false`, un solo hilo, sin PWA y sin COOP/COEP. El shell es `templates/export-estatico/godot-shell.html`.
 
-No añadas un smoke de WebKit por aplicación. La fluidez en el iPhone la confirma el dueño.
+No añadas un smoke por aplicación. La fluidez en un teléfono real la confirma el dueño.
 
 ## Cupos
 

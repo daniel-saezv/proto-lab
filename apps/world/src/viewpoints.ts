@@ -1,6 +1,6 @@
 /**
  * Puntos de cámara fijos para `pnpm shots`.
- * El jugador no se resuelve contra colisiones: el encuadre es el mismo en escritorio y en el iPhone.
+ * El jugador no se resuelve contra colisiones: el encuadre es el mismo en escritorio y en el móvil.
  * `yaw` mira hacia el sujeto (forwardX = sin(yaw), forwardZ = -cos(yaw)).
  */
 export type Viewpoint = {

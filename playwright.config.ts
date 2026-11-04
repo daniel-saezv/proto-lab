@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const ci = !!process.env.CI;
 const ciProject = process.argv.find((arg) => arg.startsWith("--project="))?.slice("--project=".length);
-/** En CI, Chromium con SwiftShader satura un runner de 2 vCPU si hay 2 mundos WebGL a la vez. */
+/** En CI, el render por software satura un runner de 2 vCPU si hay 2 mundos a la vez. */
 const ciWorkers = ci ? (ciProject === "webkit-iphone" ? 2 : 1) : undefined;
 
 export default defineConfig({
@@ -38,6 +38,16 @@ export default defineConfig({
     {
       name: "webkit-iphone",
       use: { ...devices["iPhone 13"] },
+    },
+    {
+      name: "chromium-android",
+      grep: /@movil/,
+      use: {
+        ...devices["Pixel 7"],
+        launchOptions: {
+          args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"],
+        },
+      },
     },
   ],
 });

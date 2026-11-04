@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { skipUnlessWebKitIphone } from "./helpers";
+import { skipUnlessGestureEngine, skipUnlessTouchMobile, TOUCH_MOBILE_TAG } from "./helpers";
 
-test("en el iPhone el zoom se conserva al cerrar la conversación y la pizarra", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "el zoom del lobby se comprueba en el iPhone");
+test("el zoom del lobby se conserva al cerrar la conversación y la pizarra", { tag: TOUCH_MOBILE_TAG }, async ({ page }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "el zoom del lobby se comprueba en móvil táctil");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
 
@@ -57,36 +57,79 @@ test("en el iPhone el zoom se conserva al cerrar la conversación y la pizarra",
   expect(restored).toBeLessThan(4);
 });
 
-test("en el iPhone un doble toque no agranda la página ni aleja la cámara", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "el doble toque se comprueba en el iPhone");
+test(
+  "un doble toque táctil no agranda la página ni aleja la cámara",
+  { tag: TOUCH_MOBILE_TAG },
+  async ({ page }, testInfo) => {
+    skipUnlessTouchMobile(testInfo, "el doble toque se comprueba en móvil táctil");
+    await page.goto("/?e2e=1");
+    await expect(page.getByTestId("world-ready")).toBeVisible();
+    await page.evaluate(() => window.__protoLab?.setFollowDistance?.(2.4));
+    await expect.poll(async () => page.evaluate(() => window.__protoLab?.cameraRig?.()?.span ?? -1)).toBeCloseTo(2.4, 1);
+    const beforeRig = await page.evaluate(() => window.__protoLab?.cameraRig?.() ?? null);
+    const before = beforeRig?.distance ?? 0;
+
+    const blocked = await page.evaluate(() => {
+      const target = document.querySelector("#viewport canvas");
+      if (!(target instanceof HTMLElement)) throw new Error("falta el lienzo");
+      const dblclick = (clientX: number, clientY: number) => {
+        const event = new MouseEvent("dblclick", {
+          bubbles: true,
+          cancelable: true,
+          detail: 2,
+          clientX,
+          clientY,
+        });
+        target.dispatchEvent(event);
+        return event.defaultPrevented;
+      };
+      const mouseBlocked = dblclick(40, 120);
+      target.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 4,
+          pointerType: "touch",
+          clientX: 1,
+          clientY: 1,
+        }),
+      );
+      const touchBlocked = dblclick(40, 120);
+      const meta = document.querySelector('meta[name="viewport"]')?.getAttribute("content") ?? "";
+      return { mouseBlocked, touchBlocked, meta, scale: window.visualViewport?.scale ?? 1 };
+    });
+    expect(blocked.mouseBlocked).toBe(false);
+    expect(blocked.touchBlocked).toBe(true);
+    expect(blocked.meta).toContain("user-scalable=no");
+    expect(blocked.scale).toBe(1);
+    const after = await page.evaluate(() => window.__protoLab?.cameraRig?.() ?? null);
+    expect(after?.distance).toBeCloseTo(before, 2);
+    expect(after?.yaw).toBeCloseTo(beforeRig?.yaw ?? 0, 2);
+    expect(after?.pitch).toBeCloseTo(beforeRig?.pitch ?? 0, 2);
+    expect(after?.mode).toBe("follow");
+  },
+);
+
+// gesturestart y gesturechange no forman parte de la plataforma web.
+// El parche que los cancela está justificado en apps/world/src/page-zoom.ts.
+test("el pellizco no estándar no escala la página", async ({ page }, testInfo) => {
+  skipUnlessGestureEngine(testInfo);
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
-  await page.evaluate(() => window.__protoLab?.setFollowDistance?.(2.4));
-  await expect.poll(async () => page.evaluate(() => window.__protoLab?.cameraRig?.()?.span ?? -1)).toBeCloseTo(2.4, 1);
-  const beforeRig = await page.evaluate(() => window.__protoLab?.cameraRig?.() ?? null);
-  const before = beforeRig?.distance ?? 0;
-
-  const canvas = page.locator("#viewport canvas");
-  await canvas.dblclick({ position: { x: 40, y: 120 }, force: true });
   const blocked = await page.evaluate(() => {
     const target = document.querySelector("#viewport canvas");
-    const event = new Event("gesturestart", { bubbles: true, cancelable: true });
-    target?.dispatchEvent(event);
-    const meta = document.querySelector('meta[name="viewport"]')?.getAttribute("content") ?? "";
-    return { blocked: event.defaultPrevented, meta, scale: window.visualViewport?.scale ?? 1 };
+    const start = new Event("gesturestart", { bubbles: true, cancelable: true });
+    const change = new Event("gesturechange", { bubbles: true, cancelable: true });
+    target?.dispatchEvent(start);
+    target?.dispatchEvent(change);
+    return { start: start.defaultPrevented, change: change.defaultPrevented };
   });
-  expect(blocked.blocked).toBe(true);
-  expect(blocked.meta).toContain("user-scalable=no");
-  expect(blocked.scale).toBe(1);
-  const after = await page.evaluate(() => window.__protoLab?.cameraRig?.() ?? null);
-  expect(after?.distance).toBeCloseTo(before, 2);
-  expect(after?.yaw).toBeCloseTo(beforeRig?.yaw ?? 0, 2);
-  expect(after?.pitch).toBeCloseTo(beforeRig?.pitch ?? 0, 2);
-  expect(after?.mode).toBe("follow");
+  expect(blocked.start).toBe(true);
+  expect(blocked.change).toBe(true);
 });
 
-test("en el iPhone los dos sticks actúan en los mismos fotogramas", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "los dos sticks se comprueban en el iPhone");
+test("los dos sticks actúan en los mismos fotogramas", { tag: TOUCH_MOBILE_TAG }, async ({ page }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "los dos sticks se comprueban en móvil táctil");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   const trace = await page.evaluate(async () => {
@@ -146,8 +189,8 @@ test("en el iPhone los dos sticks actúan en los mismos fotogramas", async ({ pa
   expect(trace.together).toBe(true);
 });
 
-test("en el iPhone un pellizco no cambia la cámara ni la escala", async ({ page }, testInfo) => {
-  skipUnlessWebKitIphone(testInfo, "el pellizco se comprueba en el iPhone");
+test("un pellizco no cambia la cámara ni la escala", { tag: TOUCH_MOBILE_TAG }, async ({ page }, testInfo) => {
+  skipUnlessTouchMobile(testInfo, "el pellizco se comprueba en móvil táctil");
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await page.evaluate(() => window.__protoLab?.setFollowDistance?.(2.4));
