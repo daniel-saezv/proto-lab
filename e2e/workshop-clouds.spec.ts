@@ -15,6 +15,13 @@ const roundTwo = [
   "¿Y si el rastro durara un segundo?",
 ];
 
+const roundThree = [
+  "¿Y si la cometa volviera sola?",
+  "¿Y si el cielo cambiara de hora?",
+  "¿Y si se pudiera compartir el cielo?",
+  "¿Y si guardara el mejor vuelo?",
+];
+
 const original = {
   kind: "propuesta",
   title: "Cometa lunar",
@@ -29,18 +36,21 @@ async function mockWorkshop(page: Page) {
       body: JSON.stringify({ ok: true, items: [] }),
     });
   });
+  let round = 1;
+  const rounds = [roundOne, roundTwo, roundThree];
   await page.route("**/api/workshop", async (route) => {
     const body = route.request().postDataJSON() as { op?: string; decision?: string };
     const shared = { draft: original, original, maxRounds: 3 };
-    const pick = (round: number, options: string[]) => ({
+    const pick = (current: number, options: string[]) => ({
       ok: true,
       phase: "pick",
       sessionId: "a".repeat(32),
-      speech: `Ronda ${round} de 3. Marca las ideas que quieres. Puedes no marcar ninguna.`,
+      speech: `Ronda ${current} de 3. Marca las ideas que quieres. Puedes no marcar ninguna.`,
       options,
-      round,
+      round: current,
       ...shared,
     });
+    if (body.decision === "next") round = Math.min(3, round + 1);
     const payload =
       body.op === "abandon"
         ? { ok: true }
@@ -53,9 +63,7 @@ async function mockWorkshop(page: Page) {
               ...shared,
               draft: { ...original, title: "Cometa con estela", description: "Persigues una cometa y dejas un rastro de luz." },
             }
-          : body.decision === "next"
-            ? pick(2, roundTwo)
-            : pick(1, roundOne);
+          : pick(round, rounds[round - 1] ?? roundOne);
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
   });
 }
@@ -92,6 +100,45 @@ async function expectSeguirCentered(page: Page, width: number, height: number) {
   }).toBeLessThanOrEqual(12);
 }
 
+/** Quita el modo quieto y deja terminar la llegada. Si el fill deja el -50 %, el centro se va. */
+async function expectSeguirAfterArrive(page: Page, width: number, height: number) {
+  await page.evaluate(() => {
+    const root = document.getElementById("dialogue");
+    if (!root) return;
+    root.classList.remove("dialogue-still");
+    root.classList.remove("dialogue-arrive");
+    void root.offsetWidth;
+    root.classList.add("dialogue-arrive");
+  });
+  await expect.poll(async () =>
+    page.evaluate(({ width: viewWidth, height: viewHeight }) => {
+      const root = document.getElementById("dialogue");
+      const button = document.querySelector("[data-testid='choice-workshop-next']");
+      if (!root || !(button instanceof HTMLElement)) return "missing";
+      const arrive = root.getAnimations().find((anim) => anim instanceof CSSAnimation && anim.animationName === "dlg-arrive");
+      if (arrive && arrive.playState !== "finished") return "running";
+      const box = button.getBoundingClientRect();
+      if (box.width < 20) return "empty";
+      if (box.left < -1 || box.top < -1 || box.right > viewWidth + 1 || box.bottom > viewHeight + 1) return "offscreen";
+      const offset = Math.abs(box.left + box.width / 2 - viewWidth / 2);
+      return offset <= 12 ? "ok" : `offset ${offset.toFixed(1)}`;
+    }, { width, height }),
+  ).toBe("ok");
+}
+
+async function skipTyping(page: Page) {
+  const text = page.locator("#dialogue .dialogue-text[data-typing='1']");
+  if (await text.count()) await text.click({ force: true }).catch(() => {});
+}
+
+async function skipUntil(page: Page, testId: string) {
+  await expect.poll(async () => {
+    if (await page.getByTestId(testId).isVisible().catch(() => false)) return true;
+    await skipTyping(page);
+    return false;
+  }).toBe(true);
+}
+
 async function expectTargets(page: Page, width: number, height: number) {
   const buttons = page.getByTestId("workshop-option");
   await expect(buttons).toHaveCount(4);
@@ -123,14 +170,23 @@ test("en escritorio las nubes se eligen con ratón y teclado", async ({ page }, 
   await page.getByTestId("workshop-option").nth(1).focus();
   await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: roundOne[1] })).toHaveAttribute("aria-pressed", "true");
+  await expectSeguirAfterArrive(page, 1280, 800);
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.now ?? 0)).toBe(4);
-  await page.screenshot({ path: "/opt/cursor/artifacts/taller-1280x800.png" });
+  await page.screenshot({ path: "/opt/cursor/artifacts/e2e-taller-1280x800.png" });
   await page.getByTestId("choice-workshop-next").click();
   await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 2 de 3");
+  await page.getByTestId("workshop-option").nth(0).click();
   await expectSeguirCentered(page, 1280, 800);
+  await expectSeguirAfterArrive(page, 1280, 800);
   await expect(page.getByTestId("workshop-trail")).toContainText("rastro de luz");
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.past ?? 0)).toBe(2);
-  await page.screenshot({ path: "/opt/cursor/artifacts/taller-1280x800-ronda2.png" });
+  await page.screenshot({ path: "/opt/cursor/artifacts/e2e-taller-1280x800-ronda2.png" });
+  await page.getByTestId("choice-workshop-next").click();
+  await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 3 de 3");
+  await page.getByTestId("workshop-option").nth(0).click();
+  await expect(page.getByRole("button", { name: roundThree[0] })).toHaveAttribute("aria-pressed", "true");
+  await expectSeguirCentered(page, 1280, 800);
+  await expectSeguirAfterArrive(page, 1280, 800);
   await expect(page.getByTestId("dialog-close")).toBeVisible();
   await expect(page.getByTestId("workshop-title")).toHaveCount(0);
 });
@@ -148,13 +204,23 @@ test("en el móvil táctil cada idea es un objetivo de 44 px", async ({ browser 
   await mockWorkshop(page);
   await openRound(page);
   await expectTargets(page, 390, 844);
-  await expectSeguirCentered(page, 390, 844);
   await page.getByTestId("workshop-option").nth(0).tap();
   await expect(page.getByRole("button", { name: roundOne[0] })).toHaveAttribute("aria-pressed", "true");
-  await page.screenshot({ path: "/opt/cursor/artifacts/taller-390x844.png" });
+  await expectSeguirCentered(page, 390, 844);
+  await expectSeguirAfterArrive(page, 390, 844);
+  await page.screenshot({ path: "/opt/cursor/artifacts/e2e-taller-390x844.png" });
+  await page.getByTestId("choice-workshop-next").tap();
+  await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 2 de 3");
+  await page.getByTestId("workshop-option").nth(0).tap();
+  await expectSeguirAfterArrive(page, 390, 844);
   await page.setViewportSize({ width: 412, height: 915 });
   await expectSeguirCentered(page, 412, 915);
+  await expectSeguirAfterArrive(page, 412, 915);
   await expectTargets(page, 412, 915);
+  await page.getByTestId("choice-workshop-next").tap();
+  await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 3 de 3");
+  await page.getByTestId("workshop-option").nth(0).tap();
+  await expect(page.getByRole("button", { name: roundThree[0] })).toHaveAttribute("aria-pressed", "true");
   await page.setViewportSize({ width: 844, height: 390 });
   await expect.poll(async () => {
     const box = await page.getByTestId("workshop-option").first().boundingBox();
@@ -162,7 +228,8 @@ test("en el móvil táctil cada idea es un objetivo de 44 px", async ({ browser 
   }).toBe(true);
   await expectTargets(page, 844, 390);
   await expectSeguirCentered(page, 844, 390);
-  await page.screenshot({ path: "/opt/cursor/artifacts/taller-844x390.png" });
+  await expectSeguirAfterArrive(page, 844, 390);
+  await page.screenshot({ path: "/opt/cursor/artifacts/e2e-taller-844x390.png" });
   await context.close();
 });
 
@@ -176,7 +243,74 @@ test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) =>
   await expectSeguirCentered(page, viewport!.width, viewport!.height);
   await page.getByTestId("workshop-option").nth(2).click();
   await expect(page.getByRole("button", { name: roundOne[2] })).toHaveAttribute("aria-pressed", "true");
+  await expectSeguirAfterArrive(page, viewport!.width, viewport!.height);
   await page.getByTestId("choice-workshop-next").click();
+  await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 2 de 3");
+  await page.getByTestId("workshop-option").nth(0).click();
+  await expectSeguirAfterArrive(page, viewport!.width, viewport!.height);
   await expect(page.getByTestId("workshop-trail")).toContainText("borde");
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.past ?? 0)).toBe(1);
+  await page.getByTestId("choice-workshop-next").click();
+  await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 3 de 3");
+  await page.getByTestId("workshop-option").nth(1).click();
+  await expect(page.getByRole("button", { name: roundThree[1] })).toHaveAttribute("aria-pressed", "true");
+  await expectSeguirCentered(page, viewport!.width, viewport!.height);
+  await expectSeguirAfterArrive(page, viewport!.width, viewport!.height);
+});
+
+test("Seguir queda centrado en las tres rondas con la cámara en movimiento", async ({ page }, testInfo) => {
+  skipUnlessChromium(testInfo, "escritorio");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockWorkshop(page);
+  await page.goto("/?perf=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("inventor"));
+  await page.getByTestId("interact").click();
+  await skipUntil(page, "choice-propose");
+  await page.getByTestId("choice-propose").click();
+  await page.getByTestId("dialogue-input").fill("Cometa lunar");
+  await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa con el dedo.");
+  await page.getByTestId("dialogue-send").click();
+  await skipUntil(page, "choice-workshop");
+  await page.getByTestId("choice-workshop").click();
+  await expect.poll(async () => {
+    if (await page.getByTestId("workshop-begin").isVisible().catch(() => false)) return "begin";
+    const skip = page.getByTestId("workshop-skip");
+    if (await skip.isVisible().catch(() => false)) {
+      await skip.click();
+      return "skipped";
+    }
+    await skipTyping(page);
+    return "wait";
+  }).not.toBe("wait");
+  await skipUntil(page, "workshop-begin");
+  await page.getByTestId("workshop-begin").click();
+  await skipUntil(page, "choice-workshop-next");
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.beat ?? "")).toBe("work");
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.camZ ?? 0)).toBeLessThan(-4.85);
+  const rounds = [roundOne, roundTwo, roundThree];
+  for (let index = 0; index < rounds.length; index += 1) {
+    await expect(page.getByTestId("workshop-counter")).toHaveText(`Ronda ${index + 1} de 3`);
+    await page.evaluate(() => {
+      document.querySelector("[data-testid='workshop-option']")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await expect(page.getByRole("button", { name: rounds[index]![0]! })).toHaveAttribute("aria-pressed", "true");
+    await expectSeguirCentered(page, 1280, 800);
+    await expectSeguirAfterArrive(page, 1280, 800);
+    if (index < rounds.length - 1) {
+      await page.getByTestId("choice-workshop-next").click();
+      await skipUntil(page, "choice-workshop-next");
+    }
+  }
+  for (const [width, height] of [
+    [390, 844],
+    [412, 915],
+    [844, 390],
+    [1280, 800],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await expectSeguirCentered(page, width, height);
+    await expectSeguirAfterArrive(page, width, height);
+  }
 });

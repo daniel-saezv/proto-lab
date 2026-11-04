@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { WORKSHOP_SEAT, workshopThinkCamera } from "./workshop-cinematic";
 import {
   IDEA_TRIANGLE_CAP,
+  buildCloudGlowGeometry,
   buildIdeaGeometry,
   cloudAnchor,
   ideaPalette,
@@ -12,21 +13,25 @@ import {
 } from "./workshop-letters";
 
 describe("letras del taller", () => {
-  it("una nube actual tiene volumen low-poly y doce siguen bajo el cupo de la sala", () => {
+  it("una nube actual tiene lóbulos con volumen y cuatro, con su halo, caben en el cupo", () => {
     const cloud = buildIdeaGeometry("now");
     const past = buildIdeaGeometry("past");
+    const glow = buildCloudGlowGeometry();
     const triangles = ideaTriangleCount(cloud);
+    const glowTriangles = ideaTriangleCount(glow);
     cloud.computeBoundingBox();
     const box = cloud.boundingBox;
     expect(box).toBeTruthy();
-    expect(box!.max.z - box!.min.z).toBeGreaterThan(0.2);
+    expect(box!.max.z - box!.min.z).toBeGreaterThan(0.45);
+    expect(box!.max.x - box!.min.x).toBeGreaterThan(1);
     expect(cloud.getAttribute("normal")).toBeTruthy();
-    expect(triangles, `triángulos de la nube: ${triangles}`).toBeGreaterThan(40);
+    expect(triangles, `triángulos de la nube: ${triangles}`).toBeGreaterThan(2_000);
     expect(triangles).toBeLessThanOrEqual(IDEA_TRIANGLE_CAP);
     expect(ideaTriangleCount(past)).toBe(2);
-    expect(triangles * 12 + 4_000).toBeLessThanOrEqual(40_000);
+    expect((triangles + glowTriangles) * 4 + 4_000).toBeLessThanOrEqual(40_000);
     cloud.dispose();
     past.dispose();
+    glow.dispose();
   });
 
   it("escribe en negro sobre nube blanca y marca la elegida con un brillo", () => {

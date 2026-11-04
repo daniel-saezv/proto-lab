@@ -562,6 +562,10 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   align-items: center;
   box-sizing: border-box;
 }
+#dialogue.is-workshop[data-workshop="pick"].dialogue-arrive,
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-choice {
+  animation: none;
+}
 #dialogue.is-workshop[data-workshop="pick"] .dialog-dismiss,
 #dialogue.is-workshop[data-workshop="pick"] .workshop-cloud-hit,
 #dialogue.is-workshop[data-workshop="pick"] .dialogue-choice,

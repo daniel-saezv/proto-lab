@@ -2,12 +2,11 @@ import {
   BufferAttribute,
   BufferGeometry,
   CircleGeometry,
-  IcosahedronGeometry,
   PlaneGeometry,
+  SphereGeometry,
   Vector3,
   type PerspectiveCamera,
 } from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { WorkshopTrailMark } from "./workshop-view";
 
 export type WorkshopIdeaRole = "now" | "past";
@@ -36,13 +35,12 @@ export const PAST_CANVAS = { width: 640, height: 160 } as const;
 const PAST_ASPECT = PAST_CANVAS.width / PAST_CANVAS.height;
 
 /**
- * Lóbulos de icosaedro (detalle 0) más el disco del texto.
- * Doce nubes más la sala siguen muy por debajo de 40k triángulos.
+ * Una sola superficie: la envolvente de los lóbulos. Cuatro nubes, con su halo,
+ * más la sala del primer plano siguen por debajo de 40k triángulos.
  */
-export const IDEA_TRIANGLE_CAP = 180;
+export const IDEA_TRIANGLE_CAP = 8_000;
 
-/** Franja inferior del lienzo: los lóbulos muestrean aquí, el disco del texto no. */
-const LOBE_V = 0.08;
+/** El texto vive en la franja superior del lienzo. El borde de esa franja es blanco. */
 const PLATE_V0 = 0.22;
 
 const IDEA_FONT = '"Segoe UI", "Trebuchet MS", "Liberation Sans", "DejaVu Sans", sans-serif';
@@ -98,41 +96,15 @@ export function paintIdeaCanvas(
   const palette = ideaPalette(role, picked);
   if (role === "now") {
     const faceBottom = Math.round(height * (1 - PLATE_V0));
-    const bandTop = Math.round(height * (1 - 0.16));
     context.fillStyle = palette.cloud;
     context.fillRect(0, 0, width, height);
-    if (picked && palette.glow !== "transparent") {
-      context.fillStyle = "#ffe7a0";
-      context.fillRect(0, bandTop, width, height - bandTop);
-      context.save();
-      context.beginPath();
-      context.rect(0, 0, width, faceBottom);
-      context.clip();
-      drawGlow(context, width, faceBottom, palette.glow);
-      context.restore();
-    }
-    context.fillStyle = palette.cloud;
-    context.beginPath();
-    context.ellipse(width / 2, faceBottom / 2, width * 0.4, faceBottom * 0.4, 0, 0, Math.PI * 2);
-    context.fill();
-    drawLabel(context, text, width, faceBottom, palette.ink, 0.56, 0.5, 36);
+    drawLabel(context, text, width, faceBottom, palette.ink, 0.5, 0.48, 32);
     return;
   }
   context.save();
   context.shadowColor = "rgba(0, 0, 0, 0.7)";
   context.shadowBlur = 10;
   drawLabel(context, text, width, height, palette.ink, 0.94, 0.78, 36);
-  context.restore();
-}
-
-function drawGlow(context: CanvasRenderingContext2D, width: number, height: number, color: string) {
-  context.save();
-  context.fillStyle = color;
-  context.shadowColor = color;
-  context.shadowBlur = 28;
-  context.beginPath();
-  context.ellipse(width / 2, height / 2, width * 0.49, height * 0.47, 0, 0, Math.PI * 2);
-  context.fill();
   context.restore();
 }
 
@@ -193,50 +165,72 @@ function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: nu
   return lines;
 }
 
-/** Lóbulos low-poly fundidos con el disco del texto. Una idea pasada sigue siendo un plano. */
+/**
+ * Un cuerpo y lóbulos que se meten en él. El primero lleva el texto en la cara que mira a la cámara.
+ */
 const CLOUD_LOBES: ReadonlyArray<readonly [number, number, number, number]> = [
-  [0, 0.0, -0.08, 0.4],
-  [-0.34, 0.08, -0.02, 0.26],
-  [0.34, 0.06, -0.02, 0.26],
-  [0, 0.34, -0.02, 0.24],
-  [-0.16, -0.3, 0.0, 0.24],
-  [0.18, -0.28, 0.0, 0.24],
+  [0, 0.0, 0.04, 0.5],
+  [-0.32, 0.04, 0.0, 0.36],
+  [0.34, 0.02, 0.0, 0.36],
+  [-0.14, 0.28, 0.04, 0.3],
+  [0.16, 0.3, 0.02, 0.28],
+  [0.0, 0.36, 0.02, 0.22],
+  [-0.2, -0.2, 0.06, 0.32],
+  [0.22, -0.18, 0.05, 0.32],
 ];
 
-function stampUv(geometry: BufferGeometry, u: number, v: number) {
-  const count = geometry.getAttribute("position").count;
-  const uv = new Float32Array(count * 2);
-  for (let i = 0; i < count; i += 1) {
+const CLOUD_WIDTH_SEGMENTS = 64;
+const CLOUD_HEIGHT_SEGMENTS = 48;
+
+/** Radio exterior de la unión de esferas en esa dirección. El origen queda dentro. */
+function outerRadius(dirX: number, dirY: number, dirZ: number): number {
+  let far = 0.08;
+  for (const [lx, ly, lz, radius] of CLOUD_LOBES) {
+    const toward = dirX * lx + dirY * ly + dirZ * lz;
+    const discriminant = toward * toward - (lx * lx + ly * ly + lz * lz - radius * radius);
+    if (discriminant <= 0) continue;
+    const distance = toward + Math.sqrt(discriminant);
+    if (distance > far) far = distance;
+  }
+  return far;
+}
+
+function stampCloudUv(geometry: BufferGeometry) {
+  const position = geometry.getAttribute("position");
+  const uv = new Float32Array(position.count * 2);
+  for (let i = 0; i < position.count; i += 1) {
+    const u = Math.min(0.88, Math.max(0.12, 0.5 + position.getX(i) * 0.52));
+    const vNorm = Math.min(0.86, Math.max(0.14, 0.48 + position.getY(i) * 0.55));
     uv[i * 2] = u;
-    uv[i * 2 + 1] = v;
+    uv[i * 2 + 1] = PLATE_V0 + vNorm * (1 - PLATE_V0);
   }
   geometry.setAttribute("uv", new BufferAttribute(uv, 2));
 }
 
-function liftPlateUv(geometry: BufferGeometry) {
-  const uv = geometry.getAttribute("uv");
-  for (let i = 0; i < uv.count; i += 1) uv.setY(i, PLATE_V0 + uv.getY(i) * (1 - PLATE_V0));
+/** Halo suave, un disco con el degradado. La nube tapa el centro y queda el borde. */
+export function buildCloudGlowGeometry(): BufferGeometry {
+  const glow = new CircleGeometry(1, 40);
+  glow.computeBoundingSphere();
+  return glow;
 }
 
 export function buildIdeaGeometry(role: WorkshopIdeaRole = "now"): BufferGeometry {
   if (role === "past") return new PlaneGeometry(1, 1);
-  const parts: BufferGeometry[] = CLOUD_LOBES.map(([x, y, z, radius]) => {
-    const lobe = new IcosahedronGeometry(radius, 0);
-    lobe.translate(x, y, z);
-    stampUv(lobe, 0.5, LOBE_V);
-    return lobe;
-  });
-  const indexedPlate = new CircleGeometry(0.4, 14);
-  const plate = indexedPlate.toNonIndexed();
-  indexedPlate.dispose();
-  plate.translate(0, 0, 0.36);
-  liftPlateUv(plate);
-  parts.push(plate);
-  const merged = mergeGeometries(parts, false);
-  for (const part of parts) part.dispose();
-  if (!merged) return new PlaneGeometry(1, 1);
-  merged.computeBoundingSphere();
-  return merged;
+  const cloud = new SphereGeometry(1, CLOUD_WIDTH_SEGMENTS, CLOUD_HEIGHT_SEGMENTS);
+  const position = cloud.getAttribute("position");
+  for (let i = 0; i < position.count; i += 1) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    const length = Math.hypot(x, y, z) || 1;
+    const reach = outerRadius(x / length, y / length, z / length);
+    position.setXYZ(i, (x / length) * reach, (y / length) * reach, (z / length) * reach);
+  }
+  position.needsUpdate = true;
+  stampCloudUv(cloud);
+  cloud.computeVertexNormals();
+  cloud.computeBoundingSphere();
+  return cloud;
 }
 
 export function ideaTriangleCount(geometry: BufferGeometry): number {
@@ -265,7 +259,7 @@ export function layoutCloudSlots(
   const desktop = aspect >= 1.15 && !wide;
   const nowDepth = wide ? 0.82 : desktop ? 0.74 : 0.58;
   const pastDepth = nowDepth + (wide ? 0.28 : 0.22);
-  const widthFrac = wide ? 0.22 : desktop ? 0.28 : 0.4;
+  const widthFrac = wide ? 0.18 : desktop ? 0.24 : 0.36;
   const now = nowSpots(nowCount, aspect).map((spot, index) => ({
     ndcX: spot.x,
     ndcY: spot.y,
@@ -300,10 +294,10 @@ function nowSpots(count: number, aspect: number): Array<{ x: number; y: number }
 function conceptSpots(aspect: number): Array<{ x: number; y: number }> {
   if (aspect > 1.7) {
     return [
-      { x: -0.66, y: 0.02 },
-      { x: -0.28, y: 0.34 },
-      { x: 0.46, y: 0.16 },
-      { x: 0.66, y: -0.22 },
+      { x: -0.48, y: 0.02 },
+      { x: -0.14, y: 0.32 },
+      { x: 0.32, y: 0.14 },
+      { x: 0.5, y: -0.2 },
     ];
   }
   if (aspect >= 1.15) {

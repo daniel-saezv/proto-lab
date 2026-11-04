@@ -47,6 +47,8 @@ describe("salto de la cinemática del escritorio", () => {
     expect(bar).toContain("safe-area-inset-left");
     expect(bar).toContain("safe-area-inset-right");
     expect(bar).toContain("safe-area-inset-bottom");
+    expect(bar).toContain('#dialogue.is-workshop[data-workshop="pick"].dialogue-arrive');
+    expect(bar).toContain("animation: none");
     const marker = '#dialogue.is-workshop[data-workshop="pick"] .workshop-actions {';
     const start = css.indexOf(marker, css.indexOf(marker) + marker.length);
     const actions = css.slice(start, css.indexOf("}", start));

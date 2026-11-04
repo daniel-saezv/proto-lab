@@ -140,6 +140,7 @@ import { LOUNGE_TABLE, NORTH_COUCH, SLACKER_COUCH, SOUTH_COUCH } from "./lounge-
 import { fuseMeshes } from "./mesh-fuse";
 import { batchStaticMeshes, type BatchStats } from "./static-batch";
 import {
+  buildCloudGlowGeometry,
   buildIdeaGeometry,
   cloudAnchor,
   layoutCloudSlots,
@@ -667,12 +668,15 @@ export function startWorld(options: {
   let workshopBeat: DeskBeat = "off";
   type CloudEntry = {
     mesh: Mesh;
+    glow: Mesh | null;
     slot: CloudSlot;
     idea: WorkshopIdeaMesh;
     canvas: HTMLCanvasElement;
     texture: CanvasTexture;
   };
   let cloudEntries: CloudEntry[] = [];
+  let cloudGlowGeometry: BufferGeometry | null = null;
+  let cloudGlowMaterial: MeshBasicMaterial | null = null;
   let cloudShadow: InstancedMesh | null = null;
   let cloudShadowMaterial: MeshBasicMaterial | null = null;
   const shadowDummy = new Object3D();
@@ -1450,9 +1454,15 @@ export function startWorld(options: {
       const material = entry.mesh.material;
       if (material instanceof MeshBasicMaterial || material instanceof MeshLambertMaterial) material.dispose();
       entry.mesh.geometry.dispose();
+      entry.glow?.removeFromParent();
       entry.mesh.removeFromParent();
     }
     cloudEntries = [];
+    cloudGlowGeometry?.dispose();
+    cloudGlowGeometry = null;
+    cloudGlowMaterial?.map?.dispose();
+    cloudGlowMaterial?.dispose();
+    cloudGlowMaterial = null;
     disposeCloudShadow();
     options.onWorkshopHits?.([]);
   }
@@ -1462,16 +1472,52 @@ export function startWorld(options: {
     material.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
         "vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;",
-        "vec3 outgoingLight = (reflectedLight.directDiffuse + reflectedLight.indirectDiffuse) * 1.7 + totalEmissiveRadiance;",
+        "float cottonUp = mix(0.55, 1.25, clamp(normal.y * 0.5 + 0.55, 0.0, 1.0));\n\tfloat cottonFace = mix(1.0, 1.7, clamp(normal.z, 0.0, 1.0));\n\tvec3 outgoingLight = (reflectedLight.directDiffuse + reflectedLight.indirectDiffuse) * cottonUp * cottonFace + totalEmissiveRadiance;",
       );
     };
     return material;
+  }
+
+  function cloudGlowTexture(): CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 128;
+    const context = canvas.getContext("2d");
+    if (context) {
+      const ink = context.createRadialGradient(64, 64, 20, 64, 64, 63);
+      ink.addColorStop(0, "rgba(255, 196, 48, 0)");
+      ink.addColorStop(0.42, "rgba(255, 196, 48, 0.05)");
+      ink.addColorStop(0.68, "rgba(255, 214, 70, 0.96)");
+      ink.addColorStop(1, "rgba(255, 196, 48, 0)");
+      context.fillStyle = ink;
+      context.fillRect(0, 0, 128, 128);
+    }
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    texture.generateMipmaps = false;
+    texture.minFilter = LinearFilter;
+    texture.magFilter = LinearFilter;
+    return texture;
+  }
+
+  function ensureCloudGlow(): { geometry: BufferGeometry; material: MeshBasicMaterial } {
+    if (!cloudGlowGeometry) cloudGlowGeometry = buildCloudGlowGeometry();
+    if (!cloudGlowMaterial) {
+      cloudGlowMaterial = new MeshBasicMaterial({
+        map: cloudGlowTexture(),
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false,
+      });
+    }
+    return { geometry: cloudGlowGeometry, material: cloudGlowMaterial };
   }
 
   function paintCloud(entry: CloudEntry) {
     paintIdeaCanvas(entry.canvas, entry.idea.text, entry.idea.role, entry.idea.picked);
     entry.texture.needsUpdate = true;
     entry.mesh.renderOrder = entry.idea.role === "past" ? 3 : 1;
+    if (entry.glow) entry.glow.visible = entry.idea.picked;
   }
 
   function setWorkshopIdeas(ideas: WorkshopIdeaMesh[] | null) {
@@ -1523,7 +1569,20 @@ export function startWorld(options: {
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.userData.noBatch = true;
-      const entry = { mesh, slot, idea, canvas, texture };
+      let glow: Mesh | null = null;
+      if (idea.role === "now") {
+        const shared = ensureCloudGlow();
+        glow = new Mesh(shared.geometry, shared.material);
+        glow.name = `idea-glow-${idea.id}`;
+        glow.renderOrder = 0;
+        glow.frustumCulled = false;
+        glow.userData.noBatch = true;
+        glow.scale.setScalar(0.86);
+        glow.position.set(0, 0, -0.12);
+        glow.visible = idea.picked;
+        mesh.add(glow);
+      }
+      const entry = { mesh, glow, slot, idea, canvas, texture };
       paintCloud(entry);
       scene.add(mesh);
       cloudEntries.push(entry);
@@ -1545,7 +1604,7 @@ export function startWorld(options: {
       const anchor = cloudAnchor(camera, slot, cloudScratch);
       entry.mesh.position.copy(anchor);
       if (!still) entry.mesh.position.y += Math.sin(time * 1.3 + (pastIndex + nowIndex)) * 0.012;
-      if (entry.idea.role === "now") entry.mesh.scale.setScalar(slot.scale);
+      if (entry.idea.role === "now") entry.mesh.scale.setScalar(slot.scale * 0.74);
       else entry.mesh.scale.set(slot.scale, slot.scale / slot.aspect, 1);
       cloudFacing.copy(camera.position).sub(entry.mesh.position);
       if (cloudFacing.lengthSq() > 1e-6) {
@@ -1731,6 +1790,12 @@ export function startWorld(options: {
       const index = entry.mesh.geometry.getIndex();
       const positions = entry.mesh.geometry.getAttribute("position");
       triangles += index ? index.count / 3 : positions.count / 3;
+    }
+    if (cloudGlowGeometry) {
+      const index = cloudGlowGeometry.getIndex();
+      const positions = cloudGlowGeometry.getAttribute("position");
+      const one = index ? index.count / 3 : positions.count / 3;
+      triangles += one * cloudEntries.filter((entry) => entry.glow?.visible).length;
     }
     if (cloudShadow) {
       const index = cloudShadow.geometry.getIndex();
