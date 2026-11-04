@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ORBIT_SENSITIVITY_COARSE, lookRateFromDeflection } from "./locomotion";
 import {
   TOUCH_LOOK_RATE,
   TOUCH_LOOK_RATE_Y,
@@ -35,6 +36,18 @@ describe("controles táctiles dinámicos", () => {
     const gentle = lookRatesFromStickVector(0.5, 0);
     expect(Math.abs(gentle.lookX)).toBeLessThan(TOUCH_LOOK_RATE * 0.5);
     expect(Math.abs(gentle.lookX)).toBeGreaterThan(0);
+  });
+
+  it("a fondo gira más despacio que la tasa 15", () => {
+    const yaw = lookRateFromDeflection(TOUCH_LOOK_RATE, ORBIT_SENSITIVITY_COARSE);
+    const before = lookRateFromDeflection(15, ORBIT_SENSITIVITY_COARSE);
+    expect(TOUCH_LOOK_RATE).toBe(6);
+    expect(yaw).toBeCloseTo(1.512, 5);
+    expect(before).toBeCloseTo(3.78, 5);
+    expect(yaw).toBeLessThan(before);
+    const pitch = lookRateFromDeflection(TOUCH_LOOK_RATE_Y, ORBIT_SENSITIVITY_COARSE * 0.72);
+    expect(pitch).toBeCloseTo(0.508032, 5);
+    expect(pitch).toBeLessThan(lookRateFromDeflection(7, ORBIT_SENSITIVITY_COARSE * 0.72));
   });
 
   it("inclina más despacio que gira, y el gesto corto sigue suavizado", () => {

@@ -17,6 +17,7 @@ export function attachInput(options: {
     zoneMove: HTMLElement;
     zoneLook: HTMLElement;
     activeMarker: HTMLElement;
+    onZoom?: (scale: number) => void;
   };
 }): InputHandle {
   const keys = new Set<string>();
@@ -34,6 +35,7 @@ export function attachInput(options: {
         isBlocked: options.isBlocked,
         onGesture: options.onGesture,
         onSurfaceTap: options.onSurfaceTap,
+        onZoom: options.touch.onZoom,
       })
     : null;
 
