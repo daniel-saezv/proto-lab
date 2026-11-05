@@ -48,8 +48,12 @@ export const IDEA_FONT = `"${IDEA_FONT_FAMILY}", "Trebuchet MS", "Segoe UI", san
  */
 export const CLOUD_AURA_SCALE = 1.09;
 
-const IDEA_INK = "#1a1208";
-const IDEA_CLOUD = "#fff6ee";
+const IDEA_INK = "#100c08";
+const IDEA_CLOUD = "#fffaf6";
+const IDEA_HALO = "#fffdf8";
+
+/** Plano del rótulo, dentro de la caja de la nube, para que la letra sea grande. */
+export const CLOUD_LABEL = { width: 0.94, height: 0.78, y: 0.02, minPx: 88 } as const;
 
 export function workshopIdeaMeshes(
   options: readonly string[],
@@ -111,7 +115,7 @@ export function paintIdeaCanvas(canvas: HTMLCanvasElement, text: string, picked:
   if (!context) return;
   context.clearRect(0, 0, width, height);
   const palette = ideaPalette(picked);
-  drawLabel(context, text, width, height, palette.ink, 0.92, 0.86, 40);
+  drawLabel(context, text, width, height, palette.ink, 0.9, 0.92, CLOUD_LABEL.minPx);
 }
 
 function drawLabel(
@@ -135,20 +139,27 @@ function drawLabel(
     size -= 2;
     lines = wrapLines(context, text, maxWidth, size);
   }
-  context.fillStyle = ink;
-  context.strokeStyle = ink;
-  context.lineJoin = "round";
-  context.lineWidth = Math.max(3, size * 0.07);
   context.textAlign = "center";
   context.textBaseline = "middle";
+  context.lineJoin = "round";
   context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
-  const lineHeight = size * 1.05;
+  const lineHeight = size * 1.02;
   const block = lines.length * lineHeight;
   let y = height / 2 - block / 2 + lineHeight / 2;
-  for (const line of lines) {
-    context.strokeText(line, width / 2, y);
-    context.fillText(line, width / 2, y);
+  const linesAt = lines.map((line) => {
+    const at = y;
     y += lineHeight;
+    return { line, at };
+  });
+  context.strokeStyle = IDEA_HALO;
+  context.lineWidth = Math.max(10, size * 0.2);
+  for (const { line, at } of linesAt) context.strokeText(line, width / 2, at);
+  context.fillStyle = ink;
+  context.strokeStyle = ink;
+  context.lineWidth = Math.max(2, size * 0.045);
+  for (const { line, at } of linesAt) {
+    context.strokeText(line, width / 2, at);
+    context.fillText(line, width / 2, at);
   }
 }
 
@@ -324,7 +335,7 @@ export function createCloudCottonMaterial(): ShaderMaterial {
         n = normalize(n + vec3(nx, ny, nx * 0.35) * 0.85);
         float crease = clamp(length(fwidth(n)) * 5.0, 0.0, 1.0);
         float ao = mix(1.0, 0.58, crease) * mix(0.72, 1.0, n.y * 0.5 + 0.5);
-        vec3 warmFill = mix(uGroundColor, uDeskColor, 0.82);
+        vec3 warmFill = mix(uGroundColor, uDeskColor, 0.55);
         vec3 hemi = mix(warmFill, uSkyColor, clamp(n.y * 0.55 + 0.42, 0.0, 1.0)) * uHemi;
         float wrap = clamp(dot(n, sunDir) * 0.72 + 0.22, 0.0, 1.0);
         float scatter = pow(clamp(dot(-n, sunDir), 0.0, 1.0), 1.6) * pow(clamp(dot(view, -sunDir), 0.0, 1.0), 1.15);
@@ -336,9 +347,10 @@ export function createCloudCottonMaterial(): ShaderMaterial {
         float atten = reach * reach / max(lightDistance * lightDistance, 0.08);
         float deskWrap = clamp(dot(n, deskDir) * 0.55 + 0.5, 0.0, 1.0);
         vec3 desk = uDeskColor * uDeskIntensity * atten * deskWrap;
-        vec3 albedo = vec3(0.99, 0.97, 0.94);
-        albedo *= 0.93 + wool * 0.1 + nap * 0.04;
+        vec3 albedo = vec3(1.0, 0.992, 0.982);
+        albedo *= 0.98 + wool * 0.05 + nap * 0.02;
         vec3 color = albedo * (hemi * 0.18 + sun + desk * 0.09) * ao;
+        color = mix(color, vec3(1.0), 0.07);
         float rim = pow(1.0 - max(dot(n, view), 0.0), 2.0);
         vec3 rimColor = mix(uSkyColor, uDeskColor, 0.82);
         color += rimColor * rim * 0.2;

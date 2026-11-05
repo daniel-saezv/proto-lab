@@ -149,6 +149,7 @@ import {
   createCloudCottonMaterial,
   layoutCloudSlots,
   loadIdeaFont,
+  CLOUD_LABEL,
   paintIdeaCanvas,
   type CloudSlot,
   type WorkshopIdeaMesh,
@@ -1503,7 +1504,7 @@ export function startWorld(options: {
   function ensureCloudParts() {
     if (!cloudBodyGeometry) cloudBodyGeometry = buildIdeaGeometry();
     if (!cloudBodyMaterial) cloudBodyMaterial = createCloudCottonMaterial();
-    if (!cloudTextGeometry) cloudTextGeometry = new PlaneGeometry(0.86, 0.56);
+    if (!cloudTextGeometry) cloudTextGeometry = new PlaneGeometry(CLOUD_LABEL.width, CLOUD_LABEL.height);
     if (!cloudGlowMaterial) cloudGlowMaterial = createCloudAuraMaterial();
     return {
       bodyGeometry: cloudBodyGeometry,
@@ -1564,11 +1565,10 @@ export function startWorld(options: {
         transparent: true,
         depthWrite: false,
         toneMapped: false,
-        premultipliedAlpha: true,
       });
       const text = new Mesh(shared.textGeometry, textMaterial);
       text.name = `idea-text-${idea.id}`;
-      text.position.set(0, 0.02, faceZ + 0.03);
+      text.position.set(0, CLOUD_LABEL.y, faceZ + 0.03);
       text.renderOrder = 2;
       text.userData.noBatch = true;
       mesh.add(text);

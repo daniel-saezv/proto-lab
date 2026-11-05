@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { WORKSHOP_SEAT, workshopThinkCamera } from "./workshop-cinematic";
 import {
   CLOUD_AURA_SCALE,
+  CLOUD_LABEL,
   IDEA_FONT_FAMILY,
   IDEA_FONT_URL,
   IDEA_TRIANGLE_CAP,
@@ -73,6 +74,20 @@ describe("letras del taller", () => {
     expect(cotton.fragmentShader).toContain("gl_FragColor = vec4(color, 1.0)");
     aura.dispose();
     cotton.dispose();
+  });
+
+  it("el rótulo grande cabe en la nube", () => {
+    const cloud = buildIdeaGeometry();
+    cloud.computeBoundingBox();
+    const box = cloud.boundingBox!;
+    const halfW = CLOUD_LABEL.width / 2;
+    const halfH = CLOUD_LABEL.height / 2;
+    expect(CLOUD_LABEL.minPx).toBeGreaterThanOrEqual(80);
+    expect(-halfW).toBeGreaterThan(box.min.x);
+    expect(halfW).toBeLessThan(box.max.x);
+    expect(CLOUD_LABEL.y - halfH).toBeGreaterThan(box.min.y);
+    expect(CLOUD_LABEL.y + halfH).toBeLessThan(box.max.y);
+    cloud.dispose();
   });
 
   it("escribe en negro sobre nube clara y marca la elegida con amarillo", () => {
