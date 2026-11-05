@@ -22,6 +22,7 @@ import {
   workshopSpeech,
   workshopSummaryChoices,
   workshopSummaryError,
+  workshopSummaryPicks,
   workshopTrailBefore,
   workshopTrailLine,
   type WorkshopDraftView,
@@ -588,6 +589,40 @@ export function createDialogue(options: {
     return row;
   }
 
+  function showSummaryPicks() {
+    const picks = workshopSummaryPicks(workshopTrail);
+    if (picks.length === 0) return;
+    const block = document.createElement("section");
+    block.className = "workshop-summary-picks";
+    block.dataset.testid = "workshop-summary-picks";
+    block.setAttribute("aria-label", "Ideas que has elegido");
+    const heading = document.createElement("h2");
+    heading.textContent = "Lo que has elegido";
+    const list = document.createElement("ol");
+    for (const pick of picks) {
+      const item = document.createElement("li");
+      const label = document.createElement("strong");
+      label.textContent = `Ronda ${pick.round}`;
+      item.append(label);
+      if (pick.ideas.length === 0) {
+        const none = document.createElement("span");
+        none.textContent = "Ninguna";
+        item.append(none);
+      } else {
+        const ideas = document.createElement("ul");
+        for (const idea of pick.ideas) {
+          const line = document.createElement("li");
+          line.textContent = idea;
+          ideas.append(line);
+        }
+        item.append(ideas);
+      }
+      list.append(item);
+    }
+    block.append(heading, list);
+    content().append(block);
+  }
+
   function showTrail(trail: WorkshopTrailMark[]) {
     if (trail.length === 0) return;
     const list = document.createElement("ol");
@@ -695,7 +730,9 @@ export function createDialogue(options: {
       paintDiff();
       title.addEventListener("input", paintDiff);
       description.addEventListener("input", paintDiff);
-      content().append(counter, kind, titleLabel, descriptionField.root, diff);
+      content().append(counter, kind);
+      showSummaryPicks();
+      content().append(titleLabel, descriptionField.root, diff);
       const submit = () => {
         const error = workshopSummaryError(title.value, description.value);
         if (error) {
@@ -732,7 +769,7 @@ export function createDialogue(options: {
     list.setAttribute("role", "group");
     list.setAttribute("aria-label", "Ideas de esta ronda");
     const publish = () => {
-      options.onWorkshopIdeas?.(workshopIdeaMeshes(screen.options, picked, screen.trail));
+      options.onWorkshopIdeas?.(workshopIdeaMeshes(screen.options, picked));
     };
     for (const [index, option] of screen.options.entries()) {
       const chip = document.createElement("button");

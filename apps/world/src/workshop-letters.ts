@@ -2,14 +2,13 @@ import {
   BufferAttribute,
   BufferGeometry,
   CircleGeometry,
-  PlaneGeometry,
+  ShaderMaterial,
   SphereGeometry,
   Vector3,
   type PerspectiveCamera,
 } from "three";
-import type { WorkshopTrailMark } from "./workshop-view";
 
-export type WorkshopIdeaRole = "now" | "past";
+export type WorkshopIdeaRole = "now";
 
 export type WorkshopIdeaMesh = {
   id: string;
@@ -22,90 +21,108 @@ export type CloudSlot = {
   ndcX: number;
   ndcY: number;
   depth: number;
-  /** Ancho en metros. La nube actual es redonda; el alto de una idea pasada es este ancho partido del aspecto. */
+  /** Ancho en metros. La geometría de la nube mide 1 en X. */
   scale: number;
   aspect: number;
 };
 
-/** Lienzo de la nube actual: texto grande y nube ancha. */
+/** Lienzo del rótulo, solo la letra. La nube se ilumina aparte. */
 export const IDEA_CANVAS = { width: 768, height: 512 } as const;
-/** Lienzo de una idea ya elegida: una línea, sin nube. */
-export const PAST_CANVAS = { width: 640, height: 160 } as const;
-
-const PAST_ASPECT = PAST_CANVAS.width / PAST_CANVAS.height;
 
 /**
- * Una sola superficie: la envolvente de los lóbulos. Cuatro nubes, con su halo,
- * más la sala del primer plano siguen por debajo de 40k triángulos.
+ * Una superficie suave compartida. Cuatro nubes, el rótulo y el halo
+ * siguen por debajo de 40k triángulos junto con la sala del primer plano.
  */
 export const IDEA_TRIANGLE_CAP = 8_000;
 
-/** El texto vive en la franja superior del lienzo. El borde de esa franja es blanco. */
-const PLATE_V0 = 0.22;
+/** Familia incluida en el repo (Nunito, SIL OFL). Redondeada y pesada. */
+export const IDEA_FONT_FAMILY = "ProtoNunito";
+export const IDEA_FONT_URL = "/fonts/nunito-latin-800.woff2";
+export const IDEA_FONT = `"${IDEA_FONT_FAMILY}", "Trebuchet MS", "Segoe UI", sans-serif`;
 
-const IDEA_FONT = '"Segoe UI", "Trebuchet MS", "Liberation Sans", "DejaVu Sans", sans-serif';
+/**
+ * El halo es un disco en el plano de la nube. El mural pinta código en
+ * `#7dff6b`: cualquier alfa por debajo de 1 mezcla esos glifos y salen
+ * puntitos verdes (el antialiasing del borde hace lo mismo si el fragmento
+ * es semitransparente). El cuerpo es opaco del todo y el borde se descarta
+ * de golpe. La suavidad es un degradado de color, no de alfa.
+ */
+export const GLOW_EDGE_END = 0.97;
+/** No hay alfa intermedio: o el fragmento es opaco o se descarta. */
+export const GLOW_MIN_ALPHA = 1;
+/** Amarillo del concepto, en lineal, para el shader (sRGB #ffc430). */
+export const GLOW_LINEAR = [1, 0.552, 0.0296] as const;
+/** Centro más claro, para que el anillo no sea un plástico plano. */
+export const GLOW_CORE_LINEAR = [1, 0.82, 0.28] as const;
+
+/**
+ * El disco (radio 1) se escala así en el espacio local de la nube (ancho 1,
+ * el borde queda hacia ±0,5). 0,64 deja un cerco justo por fuera del algodón,
+ * como el resplandor del concepto, sin un sol que tape al Inventor.
+ */
+export const CLOUD_GLOW_SCALE = 0.64;
+
+const IDEA_INK = "#1a1208";
+const IDEA_CLOUD = "#fff6ee";
 
 export function workshopIdeaMeshes(
   options: readonly string[],
   picked: ReadonlySet<string>,
-  trail: readonly WorkshopTrailMark[],
 ): WorkshopIdeaMesh[] {
-  const past: WorkshopIdeaMesh[] = [];
-  for (const mark of trail) {
-    mark.ideas.forEach((text, index) => {
-      const clean = text.trim();
-      if (!clean) return;
-      past.push({ id: `past-${mark.round}-${index}`, text: clean, role: "past", picked: true });
-    });
-  }
-  const now = options.map((text, index) => ({
+  return options.map((text, index) => ({
     id: `now-${index}`,
     text,
     role: "now" as const,
     picked: picked.has(text),
   }));
-  return [...past, ...now];
 }
 
-export function ideaPalette(role: WorkshopIdeaRole, picked: boolean): { ink: string; cloud: string; glow: string } {
-  if (role === "past") return { ink: "#d9d3c7", cloud: "transparent", glow: "transparent" };
+export function ideaPalette(picked: boolean): { ink: string; cloud: string; glow: string } {
   return {
-    ink: "#1a1208",
-    cloud: "#fffdf8",
+    ink: IDEA_INK,
+    cloud: IDEA_CLOUD,
     glow: picked ? "#ffc430" : "transparent",
   };
 }
 
-export function ideaCanvasSize(role: WorkshopIdeaRole): { width: number; height: number } {
-  return role === "past" ? PAST_CANVAS : IDEA_CANVAS;
+/** 1 dentro del disco, 0 fuera. Sin franja semitransparente. */
+export function glowOpacity(radius: number): number {
+  const clamped = Math.min(1, Math.max(0, radius));
+  return clamped >= GLOW_EDGE_END ? 0 : 1;
 }
 
-/** Nube blanca y texto oscuro en negrita, o la idea ya elegida en letra clara. */
-export function paintIdeaCanvas(
-  canvas: HTMLCanvasElement,
-  text: string,
-  role: WorkshopIdeaRole,
-  picked: boolean,
-): void {
-  const { width, height } = ideaCanvasSize(role);
+let fontLoad: Promise<boolean> | null = null;
+
+/** Carga la Nunito del repo. Si falla, el rótulo usa la fuente de reserva. */
+export function loadIdeaFont(): Promise<boolean> {
+  if (fontLoad) return fontLoad;
+  fontLoad = (async () => {
+    if (typeof FontFace === "undefined" || typeof document === "undefined") return false;
+    try {
+      const face = new FontFace(IDEA_FONT_FAMILY, `url(${IDEA_FONT_URL})`, {
+        weight: "800",
+        style: "normal",
+      });
+      await face.load();
+      document.fonts.add(face);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  return fontLoad;
+}
+
+/** Rótulo oscuro sobre transparente. La nube blanca va en otra malla, con la luz de la sala. */
+export function paintIdeaCanvas(canvas: HTMLCanvasElement, text: string, picked: boolean): void {
+  const { width, height } = IDEA_CANVAS;
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) return;
   context.clearRect(0, 0, width, height);
-  const palette = ideaPalette(role, picked);
-  if (role === "now") {
-    const faceBottom = Math.round(height * (1 - PLATE_V0));
-    context.fillStyle = palette.cloud;
-    context.fillRect(0, 0, width, height);
-    drawLabel(context, text, width, faceBottom, palette.ink, 0.5, 0.48, 32);
-    return;
-  }
-  context.save();
-  context.shadowColor = "rgba(0, 0, 0, 0.7)";
-  context.shadowBlur = 10;
-  drawLabel(context, text, width, height, palette.ink, 0.94, 0.78, 36);
-  context.restore();
+  const palette = ideaPalette(picked);
+  drawLabel(context, text, width, height, palette.ink, 0.92, 0.86, 40);
 }
 
 function drawLabel(
@@ -120,10 +137,10 @@ function drawLabel(
 ) {
   const maxWidth = width * widthFrac;
   const maxHeight = height * heightFrac;
-  let size = Math.floor(height * 0.34);
+  let size = Math.floor(height * 0.4);
   let lines = wrapLines(context, text, maxWidth, size);
   while (size > minSize) {
-    const block = lines.length * size * 1.12;
+    const block = lines.length * size * 1.08;
     const fits = block <= maxHeight && lines.every((line) => measure(context, line, size) <= maxWidth);
     if (fits) break;
     size -= 2;
@@ -132,8 +149,8 @@ function drawLabel(
   context.fillStyle = ink;
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.font = `700 ${size}px ${IDEA_FONT}`;
-  const lineHeight = size * 1.12;
+  context.font = `800 ${size}px ${IDEA_FONT}`;
+  const lineHeight = size * 1.08;
   const block = lines.length * lineHeight;
   let y = height / 2 - block / 2 + lineHeight / 2;
   for (const line of lines) {
@@ -143,12 +160,12 @@ function drawLabel(
 }
 
 function measure(context: CanvasRenderingContext2D, line: string, size: number): number {
-  context.font = `700 ${size}px ${IDEA_FONT}`;
+  context.font = `800 ${size}px ${IDEA_FONT}`;
   return context.measureText(line).width;
 }
 
 function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: number, size: number): string[] {
-  context.font = `700 ${size}px ${IDEA_FONT}`;
+  context.font = `800 ${size}px ${IDEA_FONT}`;
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
   const lines: string[] = [];
@@ -166,70 +183,162 @@ function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: nu
 }
 
 /**
- * Un cuerpo y lóbulos que se meten en él. El primero lleva el texto en la cara que mira a la cámara.
+ * Lóbulos que se funden. El campo es la suma de bolas suaves, no la unión
+ * radial: la unión deja aristas donde se cruzan las esferas.
  */
 const CLOUD_LOBES: ReadonlyArray<readonly [number, number, number, number]> = [
-  [0, 0.0, 0.04, 0.5],
-  [-0.32, 0.04, 0.0, 0.36],
-  [0.34, 0.02, 0.0, 0.36],
-  [-0.14, 0.28, 0.04, 0.3],
-  [0.16, 0.3, 0.02, 0.28],
-  [0.0, 0.36, 0.02, 0.22],
-  [-0.2, -0.2, 0.06, 0.32],
-  [0.22, -0.18, 0.05, 0.32],
+  [0.0, 0.02, 0.02, 0.5],
+  [-0.38, 0.0, 0.0, 0.36],
+  [0.4, -0.02, 0.0, 0.36],
+  [-0.2, 0.34, 0.02, 0.3],
+  [0.22, 0.36, 0.02, 0.28],
+  [0.02, 0.46, 0.0, 0.2],
+  [-0.26, -0.26, 0.03, 0.32],
+  [0.28, -0.24, 0.02, 0.32],
+  [0.0, -0.32, 0.02, 0.22],
 ];
 
-const CLOUD_WIDTH_SEGMENTS = 64;
-const CLOUD_HEIGHT_SEGMENTS = 48;
+const CLOUD_ISO = 0.42;
+const CLOUD_DEPTH = 0.58;
 
-/** Radio exterior de la unión de esferas en esa dirección. El origen queda dentro. */
-function outerRadius(dirX: number, dirY: number, dirZ: number): number {
-  let far = 0.08;
+function cloudField(x: number, y: number, z: number): number {
+  let field = 0;
   for (const [lx, ly, lz, radius] of CLOUD_LOBES) {
-    const toward = dirX * lx + dirY * ly + dirZ * lz;
-    const discriminant = toward * toward - (lx * lx + ly * ly + lz * lz - radius * radius);
-    if (discriminant <= 0) continue;
-    const distance = toward + Math.sqrt(discriminant);
-    if (distance > far) far = distance;
+    const dx = x - lx;
+    const dy = y - ly;
+    const dz = z - lz;
+    const reach = radius * radius;
+    const dist = dx * dx + dy * dy + dz * dz;
+    if (dist >= reach) continue;
+    const q = 1 - dist / reach;
+    field += q * q;
   }
-  return far;
+  return field;
 }
 
-function stampCloudUv(geometry: BufferGeometry) {
-  const position = geometry.getAttribute("position");
-  const uv = new Float32Array(position.count * 2);
-  for (let i = 0; i < position.count; i += 1) {
-    const u = Math.min(0.88, Math.max(0.12, 0.5 + position.getX(i) * 0.52));
-    const vNorm = Math.min(0.86, Math.max(0.14, 0.48 + position.getY(i) * 0.55));
-    uv[i * 2] = u;
-    uv[i * 2 + 1] = PLATE_V0 + vNorm * (1 - PLATE_V0);
+function cloudReach(dirX: number, dirY: number, dirZ: number): number {
+  let lo = 0;
+  let hi = 1.45;
+  if (cloudField(dirX * 0.04, dirY * 0.04, dirZ * 0.04) < CLOUD_ISO) return 0.16;
+  for (let step = 0; step < 14; step += 1) {
+    const mid = (lo + hi) * 0.5;
+    if (cloudField(dirX * mid, dirY * mid, dirZ * mid) >= CLOUD_ISO) lo = mid;
+    else hi = mid;
   }
-  geometry.setAttribute("uv", new BufferAttribute(uv, 2));
+  return lo;
 }
 
-/** Halo suave, un disco con el degradado. La nube tapa el centro y queda el borde. */
+function cloudGradient(x: number, y: number, z: number): [number, number, number] {
+  const e = 0.014;
+  return [
+    cloudField(x + e, y, z) - cloudField(x - e, y, z),
+    cloudField(x, y + e, z) - cloudField(x, y - e, z),
+    cloudField(x, y, z + e) - cloudField(x, y, z - e),
+  ];
+}
+
+/** Halo: círculo denso. El borde visible lo recorta el shader, no la malla. */
 export function buildCloudGlowGeometry(): BufferGeometry {
-  const glow = new CircleGeometry(1, 40);
+  const glow = new CircleGeometry(1, 48);
   glow.computeBoundingSphere();
   return glow;
 }
 
-export function buildIdeaGeometry(role: WorkshopIdeaRole = "now"): BufferGeometry {
-  if (role === "past") return new PlaneGeometry(1, 1);
-  const cloud = new SphereGeometry(1, CLOUD_WIDTH_SEGMENTS, CLOUD_HEIGHT_SEGMENTS);
+export function createCloudGlowMaterial(): ShaderMaterial {
+  const [red, green, blue] = GLOW_LINEAR;
+  const [coreRed, coreGreen, coreBlue] = GLOW_CORE_LINEAR;
+  const material = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    premultipliedAlpha: true,
+    toneMapped: false,
+    fog: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec2 vUv;
+      void main() {
+        float radius = length(vUv - vec2(0.5)) * 2.0;
+        if (radius >= ${GLOW_EDGE_END.toFixed(4)}) discard;
+        float edge = smoothstep(0.42, 0.96, radius);
+        vec3 core = vec3(${coreRed.toFixed(4)}, ${coreGreen.toFixed(4)}, ${coreBlue.toFixed(4)});
+        vec3 rim = vec3(${red.toFixed(4)}, ${green.toFixed(4)}, ${blue.toFixed(4)});
+        gl_FragColor = vec4(mix(core, rim, edge), 1.0);
+        #include <colorspace_fragment>
+        #include <premultiplied_alpha_fragment>
+      }
+    `,
+  });
+  return material;
+}
+
+/** Nube de pensamiento: lóbulos fundidos, más ancha que profunda, normales hacia fuera. */
+export function buildIdeaGeometry(): BufferGeometry {
+  const cloud = new SphereGeometry(1, 64, 40);
   const position = cloud.getAttribute("position");
+  const normals = new Float32Array(position.count * 3);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
   for (let i = 0; i < position.count; i += 1) {
     const x = position.getX(i);
     const y = position.getY(i);
     const z = position.getZ(i);
     const length = Math.hypot(x, y, z) || 1;
-    const reach = outerRadius(x / length, y / length, z / length);
-    position.setXYZ(i, (x / length) * reach, (y / length) * reach, (z / length) * reach);
+    const dirX = x / length;
+    const dirY = y / length;
+    const dirZ = z / length;
+    const reach = cloudReach(dirX, dirY, dirZ);
+    const px = dirX * reach;
+    const py = dirY * reach;
+    const pz = dirZ * reach;
+    position.setXYZ(i, px, py, pz);
+    const gradient = cloudGradient(px, py, pz);
+    const gx = -gradient[0];
+    const gy = -gradient[1];
+    const gz = -gradient[2];
+    const glen = Math.hypot(gx, gy, gz) || 1;
+    normals[i * 3] = gx / glen;
+    normals[i * 3 + 1] = gy / glen;
+    normals[i * 3 + 2] = gz / glen;
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+  const width = Math.max(0.001, maxX - minX);
+  const midX = (minX + maxX) / 2;
+  const midY = (minY + maxY) / 2;
+  const fit = 1 / width;
+  let faceZ = 0;
+  for (let i = 0; i < position.count; i += 1) {
+    const x = (position.getX(i) - midX) * fit;
+    const y = (position.getY(i) - midY) * fit;
+    const z = position.getZ(i) * fit * CLOUD_DEPTH;
+    position.setXYZ(i, x, y, z);
+    const nx = normals[i * 3] ?? 0;
+    const ny = normals[i * 3 + 1] ?? 0;
+    const nz = (normals[i * 3 + 2] ?? 0) / CLOUD_DEPTH;
+    const nlen = Math.hypot(nx, ny, nz) || 1;
+    normals[i * 3] = nx / nlen;
+    normals[i * 3 + 1] = ny / nlen;
+    normals[i * 3 + 2] = nz / nlen;
+    if (z > faceZ) faceZ = z;
   }
   position.needsUpdate = true;
-  stampCloudUv(cloud);
-  cloud.computeVertexNormals();
+  cloud.setAttribute("normal", new BufferAttribute(normals, 3));
   cloud.computeBoundingSphere();
+  cloud.userData.faceZ = faceZ;
   return cloud;
 }
 
@@ -245,41 +354,19 @@ function worldWidth(fovDeg: number, depth: number, aspect: number, widthFrac: nu
   return fullHeight * aspect * widthFrac;
 }
 
-/**
- * Cuatro nubes alrededor del busto: una a la izquierda y el resto a la derecha.
- * Las ya elegidas van arriba, más lejos y más pequeñas.
- */
-export function layoutCloudSlots(
-  nowCount: number,
-  pastCount: number,
-  aspect: number,
-  fovDeg: number,
-): { now: CloudSlot[]; past: CloudSlot[] } {
+/** Cuatro nubes alrededor del busto: una a la izquierda y el resto a la derecha. */
+export function layoutCloudSlots(nowCount: number, aspect: number, fovDeg: number): CloudSlot[] {
   const wide = aspect > 1.7;
   const desktop = aspect >= 1.15 && !wide;
-  const nowDepth = wide ? 0.82 : desktop ? 0.74 : 0.58;
-  const pastDepth = nowDepth + (wide ? 0.28 : 0.22);
-  const widthFrac = wide ? 0.18 : desktop ? 0.24 : 0.36;
-  const now = nowSpots(nowCount, aspect).map((spot, index) => ({
+  const nowDepth = wide ? 0.86 : desktop ? 0.74 : 0.58;
+  const widthFrac = wide ? 0.16 : desktop ? 0.24 : 0.36;
+  return nowSpots(nowCount, aspect).map((spot, index) => ({
     ndcX: spot.x,
     ndcY: spot.y,
     depth: nowDepth - index * 0.015,
     scale: worldWidth(fovDeg, nowDepth, aspect, widthFrac * (index === 0 ? 1.06 : 0.92)),
     aspect: 1,
   }));
-  const pastWidth = wide ? 0.16 : desktop ? 0.18 : 0.28;
-  const past = Array.from({ length: pastCount }, (_, index) => {
-    const span = pastCount <= 1 ? 0 : 1.3;
-    const ndcX = pastCount <= 1 ? 0 : -span / 2 + ((index + 0.5) / pastCount) * span;
-    return {
-      ndcX,
-      ndcY: 0.86 - (index % 2) * 0.02,
-      depth: pastDepth,
-      scale: worldWidth(fovDeg, pastDepth, aspect, pastWidth),
-      aspect: PAST_ASPECT,
-    };
-  });
-  return { now, past };
 }
 
 function nowSpots(count: number, aspect: number): Array<{ x: number; y: number }> {
@@ -294,18 +381,18 @@ function nowSpots(count: number, aspect: number): Array<{ x: number; y: number }
 function conceptSpots(aspect: number): Array<{ x: number; y: number }> {
   if (aspect > 1.7) {
     return [
-      { x: -0.48, y: 0.02 },
-      { x: -0.14, y: 0.32 },
-      { x: 0.32, y: 0.14 },
-      { x: 0.5, y: -0.2 },
+      { x: -0.58, y: 0.04 },
+      { x: -0.14, y: 0.3 },
+      { x: 0.34, y: 0.12 },
+      { x: 0.6, y: -0.24 },
     ];
   }
   if (aspect >= 1.15) {
     return [
-      { x: -0.48, y: 0.06 },
-      { x: 0.28, y: 0.38 },
-      { x: 0.5, y: 0.02 },
-      { x: 0.18, y: -0.34 },
+      { x: -0.5, y: 0.06 },
+      { x: 0.3, y: 0.36 },
+      { x: 0.52, y: 0.02 },
+      { x: 0.16, y: -0.32 },
     ];
   }
   return [

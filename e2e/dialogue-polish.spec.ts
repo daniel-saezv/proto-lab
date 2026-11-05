@@ -284,8 +284,11 @@ test("el escritorio espera, muestra lo elegido y al cerrar no llama otra vez al 
   await page.getByTestId("dialogue-send").click();
   await page.getByTestId("choice-workshop").click();
   await page.getByTestId("workshop-begin").click();
+  await page.getByTestId("workshop-option").nth(0).click();
   await page.getByTestId("choice-workshop-stop").dispatchEvent("click");
   await expect(page.getByTestId("workshop-title")).toHaveValue("Cometa con estela");
+  await expect(page.getByTestId("workshop-summary-picks")).toBeVisible();
+  await expect(page.getByTestId("workshop-summary-picks")).toContainText("rastro de luz");
   await expectOneScroll(page, "workshop-description");
   await expectLongFieldOn(page, "workshop-description", PHONE_TALL);
   await expectLongFieldOn(page, "workshop-description", PHONE_WIDE);

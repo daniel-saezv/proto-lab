@@ -179,7 +179,7 @@ test("en escritorio las nubes se eligen con ratón y teclado", async ({ page }, 
   await expectSeguirCentered(page, 1280, 800);
   await expectSeguirAfterArrive(page, 1280, 800);
   await expect(page.getByTestId("workshop-trail")).toContainText("rastro de luz");
-  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.past ?? 0)).toBe(2);
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.past ?? 0)).toBe(0);
   await page.screenshot({ path: "/opt/cursor/artifacts/e2e-taller-1280x800-ronda2.png" });
   await page.getByTestId("choice-workshop-next").click();
   await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 3 de 3");
@@ -249,7 +249,7 @@ test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) =>
   await page.getByTestId("workshop-option").nth(0).click();
   await expectSeguirAfterArrive(page, viewport!.width, viewport!.height);
   await expect(page.getByTestId("workshop-trail")).toContainText("borde");
-  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.past ?? 0)).toBe(1);
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.past ?? 0)).toBe(0);
   await page.getByTestId("choice-workshop-next").click();
   await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 3 de 3");
   await page.getByTestId("workshop-option").nth(1).click();

@@ -433,6 +433,43 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   margin: 0 0 8px;
   flex-shrink: 0;
 }
+.workshop-summary-picks {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 2px solid var(--amber);
+  border-radius: 14px;
+  background: rgba(255, 183, 3, 0.14);
+  flex-shrink: 0;
+}
+.workshop-summary-picks h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.workshop-summary-picks ol,
+.workshop-summary-picks ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.workshop-summary-picks > ol > li {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 8px;
+}
+.workshop-summary-picks > ol > li:last-child { margin-bottom: 0; }
+.workshop-summary-picks strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.workshop-summary-picks ul li,
+.workshop-summary-picks span {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+.workshop-summary-picks ul li + li { margin-top: 2px; }
 .workshop-counter { font-size: 0.85rem; opacity: 0.8; }
 .workshop-kind { font-weight: 800; }
 .workshop-cards,

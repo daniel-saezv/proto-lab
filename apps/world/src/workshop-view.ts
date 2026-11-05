@@ -99,6 +99,16 @@ export function rememberWorkshopPick(
   return next;
 }
 
+/** Cierre: una ronda, y cada idea en su propia línea. Vacío si no se marcó ninguna. */
+export function workshopSummaryPicks(trail: readonly WorkshopTrailMark[]): Array<{ round: number; ideas: string[] }> {
+  return [...trail]
+    .sort((a, b) => a.round - b.round)
+    .map((mark) => ({
+      round: mark.round,
+      ideas: mark.ideas.map((idea) => idea.trim()).filter(Boolean),
+    }));
+}
+
 export function workshopCounter(round: number, maxRounds: number): string {
   return `Ronda ${round} de ${maxRounds}`;
 }
