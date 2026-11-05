@@ -323,8 +323,9 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape") {
-    if (overlay.isOpen()) overlay.close();
-    else if (reading) {
+    // Con un prototipo abierto, Escape pliega y despliega el cromo (overlay).
+    if (overlay.isOpen()) return;
+    if (reading) {
       if (!world?.clearBoardSelection()) world?.exitWhiteboard();
     } else if (fallbackBoard?.clearSelection()) {
       focusBoardControl();

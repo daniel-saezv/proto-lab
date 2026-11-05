@@ -1,5 +1,5 @@
 import { devices, expect, test } from "@playwright/test";
-import { skipUnlessChromium, skipUnlessTouchMobile, TOUCH_MOBILE_TAG } from "./helpers";
+import { expandPrototypeHud, skipUnlessChromium, skipUnlessTouchMobile, TOUCH_MOBILE_TAG } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/proposals/status", async (route) => {
@@ -107,6 +107,7 @@ test("con un prototipo abierto el lobby deja de renderizar y la música se liber
       }),
   );
   expect(await page.evaluate(() => window.__protoLab?.renderFrame?.() ?? -1)).toBe(frozen);
+  await expandPrototypeHud(page);
   await page.getByTestId("close-prototype").click();
   await expect(page.locator("#viewport")).toHaveAttribute("data-render-suspended", "0");
   await expect.poll(async () => page.getByTestId("mute-music").getAttribute("data-playback")).toBe("playing");
@@ -385,6 +386,7 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
   await expect(page.getByTestId("prototype-player")).toHaveAttribute("data-prototype-ready", "1");
   await expect(frame.getByTestId("game-title")).toHaveText("Pozo de bolas");
   await expect(frame.locator("canvas")).toBeVisible();
+  await expandPrototypeHud(page, isMobile ? "tap" : "click");
   await page.getByTestId("close-prototype").click();
   await expect(page.getByTestId("prototype-player")).toBeHidden();
   await expect(page.getByTestId("world-ready")).toBeVisible();
@@ -538,6 +540,7 @@ test("detrás de Access el prototipo arranca y Volver responde al tacto", async 
   await expect(frame.locator("canvas")).toBeVisible();
   await expect(page.locator("iframe")).not.toHaveAttribute("sandbox", /.+/);
   await expect(page.getByTestId("prototype-player")).toHaveAttribute("data-prototype-ready", "1");
+  await expandPrototypeHud(page, "tap");
   const back = page.getByTestId("close-prototype");
   await expect(back).toBeVisible();
   const hit = await back.evaluate((element) => {
@@ -552,7 +555,7 @@ test("detrás de Access el prototipo arranca y Volver responde al tacto", async 
   await context.close();
 });
 
-test("Escape dentro del prototipo vuelve al laboratorio", async ({ page }) => {
+test("Escape dentro del prototipo pliega y despliega el cromo", async ({ page }) => {
   await page.context().addCookies([{ name: "CF_Authorization", value: "sesion-de-prueba", url: "http://127.0.0.1:4173" }]);
   await simulateAccess(page);
   await page.goto("/?e2e=1");
@@ -561,9 +564,17 @@ test("Escape dentro del prototipo vuelve al laboratorio", async ({ page }) => {
   await playFromSelector(page, false);
   const canvas = page.frameLocator("iframe").locator("canvas");
   await expect(canvas).toBeVisible();
+  const handle = page.getByTestId("hud-handle");
+  await expect(handle).toHaveAttribute("aria-expanded", "false");
   await canvas.click();
   await page.keyboard.press("Escape");
-  await expect(page.getByTestId("prototype-player")).toBeHidden();
+  await expect(handle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("close-prototype")).toBeVisible();
+  await expect(page.getByTestId("prototype-player")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(handle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("close-prototype")).toBeHidden();
+  await expect(page.getByTestId("prototype-player")).toBeVisible();
 });
 
 test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browser }, testInfo) => {
@@ -582,6 +593,7 @@ test("si Access bloquea el prototipo, Volver sigue funcionando", async ({ browse
   await expect(page.getByTestId("prototype-error")).toContainText("volver al laboratorio");
   await expect(page.getByTestId("prototype-error")).not.toContainText("salir del laboratorio");
   await expect(page.locator("iframe")).toHaveCount(0);
+  await expandPrototypeHud(page, "tap");
   await page.getByTestId("close-prototype").tap();
   await expect(page.getByTestId("prototype-player")).toBeHidden();
   await expect(page.getByTestId("world-ready")).toBeVisible();
@@ -620,8 +632,11 @@ test("si la pantalla completa nativa falla, el overlay ocupa la pantalla", { tag
   });
   const full = page.getByTestId("fullscreen");
   await expect(full).toHaveText("Pantalla completa");
+  const hudMode = isMobile ? "tap" : "click";
+  await expandPrototypeHud(page, hudMode);
   if (isMobile) await full.tap();
   else await full.click();
+  await expect(page.getByTestId("hud-handle")).toHaveAttribute("aria-expanded", "false");
   const stage = page.locator("#stage");
   await expect(stage).toHaveClass(/is-pseudo-fullscreen/);
   await expect(full).toHaveText("Salir");
@@ -645,11 +660,13 @@ test("si la pantalla completa nativa falla, el overlay ocupa la pantalla", { tag
   expect(box.lab).toBe("hidden");
   expect(box.width).toBeGreaterThanOrEqual(box.vw - 1);
   expect(box.height).toBeGreaterThanOrEqual(box.vh - 1);
+  await expandPrototypeHud(page, hudMode);
   if (isMobile) await full.tap();
   else await full.click();
   await expect(stage).not.toHaveClass(/is-pseudo-fullscreen/);
   await expect(full).toHaveText("Pantalla completa");
   await expect(page.locator("html")).not.toHaveClass(/is-pseudo-fullscreen/);
+  await expandPrototypeHud(page, hudMode);
   const back = page.getByTestId("close-prototype");
   if (isMobile) await back.tap();
   else await back.click();
@@ -677,10 +694,13 @@ test("en escritorio la pantalla completa nativa no usa el modo CSS", async ({ pa
     };
   });
   const full = page.getByTestId("fullscreen");
+  await expandPrototypeHud(page);
   await full.click();
+  await expect(page.getByTestId("hud-handle")).toHaveAttribute("aria-expanded", "false");
   await expect(full).toHaveText("Salir");
   await expect(page.locator("#stage")).not.toHaveClass(/is-pseudo-fullscreen/);
   await expect(page.locator("#stage")).toHaveAttribute("data-fs", "native");
+  await expandPrototypeHud(page);
   await full.click();
   await expect(full).toHaveText("Pantalla completa");
   await expect(page.locator("#stage")).not.toHaveAttribute("data-fs", "native");
@@ -1223,6 +1243,7 @@ test("el hash #p= abre un prototipo y un slug desconocido se ignora", async ({ p
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
   await expect(page.locator("iframe")).toHaveCount(1);
   expect(page.url()).toContain("#p=chispa");
+  await expandPrototypeHud(page, isMobile ? "tap" : "click");
   const back = page.getByTestId("close-prototype");
   if (isMobile) await back.tap();
   else await back.click();
@@ -1238,6 +1259,7 @@ test("Sugerir mejora abre una iteración del prototipo abierto", async ({ page, 
   skipUnlessChromium(testInfo, "propuesta de iteración desde el overlay");
   await page.goto("/?e2e=1#p=chispa");
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
+  await expandPrototypeHud(page, isMobile ? "tap" : "click");
   const suggest = page.getByTestId("suggest-improvement");
   if (isMobile) await suggest.tap();
   else await suggest.click();
