@@ -41,6 +41,7 @@ export function createGameSelector(options: {
     const description = options.root.querySelector<HTMLElement>("[data-testid='selector-description']");
     const image = options.root.querySelector<HTMLImageElement>("[data-testid='selector-preview']");
     const counter = options.root.querySelector<HTMLElement>("[data-testid='selector-counter']");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (title) title.textContent = entry.title;
     if (author) author.textContent = entry.author;
     if (version) version.textContent = `v${entry.version}`;
@@ -49,6 +50,10 @@ export function createGameSelector(options: {
     if (image) {
       image.src = previewSrc(entry);
       image.alt = `Vista previa de ${entry.title}`;
+      if (!reduceMotion && image.dataset.shown === "1") {
+        image.animate([{ opacity: 0.45 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+      }
+      image.dataset.shown = "1";
     }
     const badge = options.root.querySelector<HTMLElement>("[data-testid='selector-update-badge']");
     if (badge) {
@@ -67,10 +72,17 @@ export function createGameSelector(options: {
     const panel = document.createElement("div");
     panel.className = "selector-panel";
 
+    const marquee = document.createElement("p");
+    marquee.className = "selector-marquee";
+    marquee.setAttribute("aria-hidden", "true");
+    marquee.textContent = "Proto Arcade";
+
     const heading = document.createElement("h2");
     heading.id = "selector-heading";
     heading.textContent = "Elige un prototipo";
 
+    const bezel = document.createElement("div");
+    bezel.className = "selector-bezel";
     const previewWrap = document.createElement("div");
     previewWrap.className = "selector-preview-wrap";
     const image = document.createElement("img");
@@ -78,6 +90,7 @@ export function createGameSelector(options: {
     image.dataset.testid = "selector-preview";
     image.decoding = "async";
     previewWrap.append(image);
+    bezel.append(previewWrap);
 
     const nav = document.createElement("div");
     nav.className = "selector-nav";
@@ -139,7 +152,7 @@ export function createGameSelector(options: {
     });
     actions.append(back, play);
 
-    panel.append(createDialogCloseButton(() => close()), heading, previewWrap, nav, meta, actions);
+    panel.append(createDialogCloseButton(() => close()), marquee, heading, bezel, nav, meta, actions);
     options.root.append(panel);
 
     previewWrap.addEventListener(
