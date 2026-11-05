@@ -5,16 +5,15 @@ import { PerspectiveCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { WORKSHOP_SEAT, workshopThinkCamera } from "./workshop-cinematic";
 import {
-  CLOUD_GLOW_SCALE,
-  GLOW_MIN_ALPHA,
+  CLOUD_AURA_SCALE,
   IDEA_FONT_FAMILY,
   IDEA_FONT_URL,
   IDEA_TRIANGLE_CAP,
-  buildCloudGlowGeometry,
   buildIdeaGeometry,
   cloudAnchor,
-  createCloudGlowMaterial,
-  glowOpacity,
+  cloudPop,
+  createCloudAuraMaterial,
+  createCloudCottonMaterial,
   ideaPalette,
   ideaTriangleCount,
   layoutCloudSlots,
@@ -26,9 +25,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 describe("letras del taller", () => {
   it("una nube tiene lóbulos suaves y cuatro, con halo y rótulo, caben en el cupo", () => {
     const cloud = buildIdeaGeometry();
-    const glow = buildCloudGlowGeometry();
     const triangles = ideaTriangleCount(cloud);
-    const glowTriangles = ideaTriangleCount(glow);
+    const glowTriangles = triangles;
     cloud.computeBoundingBox();
     const box = cloud.boundingBox;
     expect(box).toBeTruthy();
@@ -49,26 +47,27 @@ describe("letras del taller", () => {
     expect(normalsFaceOut(cloud)).toBe(true);
     const textTriangles = 2;
     expect((triangles + glowTriangles + textTriangles) * 4 + 4_000).toBeLessThanOrEqual(40_000);
-    expect(CLOUD_GLOW_SCALE).toBeGreaterThan(0.5);
+    expect(CLOUD_AURA_SCALE).toBeGreaterThan(1);
+    expect(CLOUD_AURA_SCALE).toBeLessThan(1.45);
+    expect(cloudPop(0)).toBeCloseTo(0, 5);
+    expect(cloudPop(1)).toBeCloseTo(1, 5);
+    expect(cloudPop(0.7)).toBeGreaterThan(1);
     cloud.dispose();
-    glow.dispose();
   });
 
-  it("el halo es opaco salvo un borde que se descarta, para no dejar ver el verde del mural", () => {
-    for (let step = 0; step <= 100; step += 1) {
-      const alpha = glowOpacity(step / 100);
-      expect(alpha === 0 || alpha >= GLOW_MIN_ALPHA).toBe(true);
-    }
-    expect(glowOpacity(0.5)).toBe(1);
-    expect(glowOpacity(1)).toBe(0);
-    const glow = createCloudGlowMaterial();
-    expect(glow.transparent).toBe(true);
-    expect(glow.premultipliedAlpha).toBe(true);
-    expect(glow.depthWrite).toBe(false);
-    expect(glow.toneMapped).toBe(false);
-    expect(glow.fragmentShader).toContain("discard");
-    expect(glow.fragmentShader).not.toContain("texture");
-    glow.dispose();
+  it("el resplandor es opaco, para no dejar ver el verde del mural", () => {
+    const aura = createCloudAuraMaterial();
+    const cotton = createCloudCottonMaterial();
+    expect(aura.transparent).toBe(false);
+    expect(aura.depthWrite).toBe(true);
+    expect(aura.toneMapped).toBe(false);
+    expect(aura.fragmentShader).toContain("gl_FragColor = vec4(color, 1.0)");
+    expect(aura.fragmentShader).not.toContain("discard");
+    expect(aura.fragmentShader).not.toContain("texture");
+    expect(cotton.transparent).toBe(false);
+    expect(cotton.fragmentShader).toContain("gl_FragColor = vec4(color, 1.0)");
+    aura.dispose();
+    cotton.dispose();
   });
 
   it("escribe en negro sobre nube clara y marca la elegida con amarillo", () => {
@@ -86,15 +85,15 @@ describe("letras del taller", () => {
     expect(green).toBeGreaterThan(blue + 40);
   });
 
-  it("la letra es la Nunito redondeada incluida en el repo", () => {
-    const font = readFileSync(join(here, "../public/fonts/nunito-latin-800.woff2"));
-    const license = readFileSync(join(here, "../public/fonts/OFL-nunito.txt"), "utf8");
+  it("la letra es la Fredoka redondeada incluida en el repo", () => {
+    const font = readFileSync(join(here, "../public/fonts/fredoka-latin-700.woff2"));
+    const license = readFileSync(join(here, "../public/fonts/OFL-fredoka.txt"), "utf8");
     expect(font.subarray(0, 4).toString("ascii")).toBe("wOF2");
     expect(font.byteLength).toBeLessThan(40_000);
     expect(license).toContain("SIL OPEN FONT LICENSE");
-    expect(license).toContain("Nunito");
-    expect(IDEA_FONT_FAMILY).toBe("ProtoNunito");
-    expect(IDEA_FONT_URL).toBe("/fonts/nunito-latin-800.woff2");
+    expect(license).toContain("Fredoka");
+    expect(IDEA_FONT_FAMILY).toBe("ProtoFredoka");
+    expect(IDEA_FONT_URL).toBe("/fonts/fredoka-latin-700.woff2");
   });
 
   it("rodea al Inventor y deja las nubes dentro del encuadre", () => {

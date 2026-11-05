@@ -597,7 +597,7 @@ export function createDialogue(options: {
     block.dataset.testid = "workshop-summary-picks";
     block.setAttribute("aria-label", "Ideas que has elegido");
     const heading = document.createElement("h2");
-    heading.textContent = "Lo que has elegido";
+    heading.textContent = "Lo que nos quedamos";
     const list = document.createElement("ol");
     for (const pick of picks) {
       const item = document.createElement("li");

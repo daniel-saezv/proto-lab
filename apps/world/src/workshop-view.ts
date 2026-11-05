@@ -2,9 +2,9 @@ import { LIMITS } from "./limits";
 
 export const WORKSHOP_UI = {
   intro:
-    "En tres rondas te propongo ideas para enriquecer la nota. Marca las que te gusten: una, varias o ninguna. Al final la dejo escrita para que la revises antes del {em}tablón{/em}.",
-  thinking: "Estoy mirando la nota…",
-  summarizing: "Estoy pasando a limpio lo que has elegido.",
+    "Ideas en tres rondas. Marca las que te gusten, varias o ninguna, y al final lo paso a limpio para el {em}tablón{/em}.",
+  thinking: "A ver qué se me ocurre…",
+  summarizing: "Lo junto y te lo dejo listo para leer.",
   closed: "Esta charla ya se ha cerrado. Tu nota sigue como la dejaste.",
   config: "El escritorio está, pero la máquina no responde. Tu nota sigue igual.",
   failed: "La máquina no ha respondido. Puedes probar otra vez o seguir con tu nota.",

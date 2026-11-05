@@ -1,7 +1,6 @@
 import {
   BufferAttribute,
   BufferGeometry,
-  CircleGeometry,
   ShaderMaterial,
   SphereGeometry,
   Vector3,
@@ -35,32 +34,19 @@ export const IDEA_CANVAS = { width: 768, height: 512 } as const;
  */
 export const IDEA_TRIANGLE_CAP = 8_000;
 
-/** Familia incluida en el repo (Nunito, SIL OFL). Redondeada y pesada. */
-export const IDEA_FONT_FAMILY = "ProtoNunito";
-export const IDEA_FONT_URL = "/fonts/nunito-latin-800.woff2";
+/** Familia incluida en el repo (Fredoka, SIL OFL). Redonda, de juego. */
+export const IDEA_FONT_FAMILY = "ProtoFredoka";
+export const IDEA_FONT_URL = "/fonts/fredoka-latin-700.woff2";
+export const IDEA_FONT_WEIGHT = "700";
 export const IDEA_FONT = `"${IDEA_FONT_FAMILY}", "Trebuchet MS", "Segoe UI", sans-serif`;
 
 /**
- * El halo es un disco en el plano de la nube. El mural pinta código en
- * `#7dff6b`: cualquier alfa por debajo de 1 mezcla esos glifos y salen
- * puntitos verdes (el antialiasing del borde hace lo mismo si el fragmento
- * es semitransparente). El cuerpo es opaco del todo y el borde se descarta
- * de golpe. La suavidad es un degradado de color, no de alfa.
+ * El resplandor es otra copia de la nube, un poco más grande y opaca.
+ * El mural pinta código en `#7dff6b`: un halo con alfa deja ver esos glifos
+ * como puntitos verdes. Aquí no hay alfa. El algodón blanco tapa el centro
+ * y el borde amarillo sigue los lóbulos.
  */
-export const GLOW_EDGE_END = 0.97;
-/** No hay alfa intermedio: o el fragmento es opaco o se descarta. */
-export const GLOW_MIN_ALPHA = 1;
-/** Amarillo del concepto, en lineal, para el shader (sRGB #ffc430). */
-export const GLOW_LINEAR = [1, 0.552, 0.0296] as const;
-/** Centro más claro, para que el anillo no sea un plástico plano. */
-export const GLOW_CORE_LINEAR = [1, 0.82, 0.28] as const;
-
-/**
- * El disco (radio 1) se escala así en el espacio local de la nube (ancho 1,
- * el borde queda hacia ±0,5). 0,64 deja un cerco justo por fuera del algodón,
- * como el resplandor del concepto, sin un sol que tape al Inventor.
- */
-export const CLOUD_GLOW_SCALE = 0.64;
+export const CLOUD_AURA_SCALE = 1.09;
 
 const IDEA_INK = "#1a1208";
 const IDEA_CLOUD = "#fff6ee";
@@ -85,22 +71,25 @@ export function ideaPalette(picked: boolean): { ink: string; cloud: string; glow
   };
 }
 
-/** 1 dentro del disco, 0 fuera. Sin franja semitransparente. */
-export function glowOpacity(radius: number): number {
-  const clamped = Math.min(1, Math.max(0, radius));
-  return clamped >= GLOW_EDGE_END ? 0 : 1;
+/** Aparición: de cero a uno, con un pequeño rebote. */
+export function cloudPop(t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  const s = u - 1;
+  const c1 = 1.35;
+  const c3 = c1 + 1;
+  return 1 + c3 * s * s * s + c1 * s * s;
 }
 
 let fontLoad: Promise<boolean> | null = null;
 
-/** Carga la Nunito del repo. Si falla, el rótulo usa la fuente de reserva. */
+/** Carga la Fredoka del repo. Si falla, el rótulo usa la fuente de reserva. */
 export function loadIdeaFont(): Promise<boolean> {
   if (fontLoad) return fontLoad;
   fontLoad = (async () => {
     if (typeof FontFace === "undefined" || typeof document === "undefined") return false;
     try {
       const face = new FontFace(IDEA_FONT_FAMILY, `url(${IDEA_FONT_URL})`, {
-        weight: "800",
+        weight: IDEA_FONT_WEIGHT,
         style: "normal",
       });
       await face.load();
@@ -147,25 +136,29 @@ function drawLabel(
     lines = wrapLines(context, text, maxWidth, size);
   }
   context.fillStyle = ink;
+  context.strokeStyle = ink;
+  context.lineJoin = "round";
+  context.lineWidth = Math.max(3, size * 0.07);
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.font = `800 ${size}px ${IDEA_FONT}`;
-  const lineHeight = size * 1.08;
+  context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
+  const lineHeight = size * 1.05;
   const block = lines.length * lineHeight;
   let y = height / 2 - block / 2 + lineHeight / 2;
   for (const line of lines) {
+    context.strokeText(line, width / 2, y);
     context.fillText(line, width / 2, y);
     y += lineHeight;
   }
 }
 
 function measure(context: CanvasRenderingContext2D, line: string, size: number): number {
-  context.font = `800 ${size}px ${IDEA_FONT}`;
+  context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
   return context.measureText(line).width;
 }
 
 function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: number, size: number): string[] {
-  context.font = `800 ${size}px ${IDEA_FONT}`;
+  context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
   const lines: string[] = [];
@@ -187,19 +180,20 @@ function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: nu
  * radial: la unión deja aristas donde se cruzan las esferas.
  */
 const CLOUD_LOBES: ReadonlyArray<readonly [number, number, number, number]> = [
-  [0.0, 0.02, 0.02, 0.5],
-  [-0.38, 0.0, 0.0, 0.36],
-  [0.4, -0.02, 0.0, 0.36],
-  [-0.2, 0.34, 0.02, 0.3],
-  [0.22, 0.36, 0.02, 0.28],
-  [0.02, 0.46, 0.0, 0.2],
-  [-0.26, -0.26, 0.03, 0.32],
-  [0.28, -0.24, 0.02, 0.32],
-  [0.0, -0.32, 0.02, 0.22],
+  [0.0, 0.0, 0.0, 0.42],
+  [-0.36, 0.04, 0.02, 0.3],
+  [0.38, 0.02, 0.0, 0.31],
+  [-0.2, 0.3, 0.02, 0.27],
+  [0.22, 0.32, 0.0, 0.28],
+  [0.0, 0.42, 0.02, 0.2],
+  [-0.28, -0.24, 0.02, 0.27],
+  [0.3, -0.22, 0.0, 0.28],
+  [0.0, -0.34, 0.02, 0.22],
+  [-0.06, 0.12, 0.05, 0.16],
 ];
 
-const CLOUD_ISO = 0.42;
-const CLOUD_DEPTH = 0.58;
+const CLOUD_ISO = 0.36;
+const CLOUD_DEPTH = 0.46;
 
 function cloudField(x: number, y: number, z: number): number {
   let field = 0;
@@ -237,53 +231,72 @@ function cloudGradient(x: number, y: number, z: number): [number, number, number
   ];
 }
 
-/** Halo: círculo denso. El borde visible lo recorta el shader, no la malla. */
-export function buildCloudGlowGeometry(): BufferGeometry {
-  const glow = new CircleGeometry(1, 48);
-  glow.computeBoundingSphere();
-  return glow;
-}
+const CLOUD_VARYING = `
+  varying vec3 vNormal;
+  varying vec3 vView;
+  void main() {
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vNormal = normalize(mat3(modelMatrix) * normal);
+    vView = normalize(cameraPosition - world.xyz);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
 
-export function createCloudGlowMaterial(): ShaderMaterial {
-  const [red, green, blue] = GLOW_LINEAR;
-  const [coreRed, coreGreen, coreBlue] = GLOW_CORE_LINEAR;
-  const material = new ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    depthTest: true,
-    premultipliedAlpha: true,
+/** Algodón blanco: luz suave, sin el aplastado de un Lambert muy emisivo. */
+export function createCloudCottonMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
     toneMapped: false,
     fog: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
+    vertexShader: CLOUD_VARYING,
     fragmentShader: `
-      varying vec2 vUv;
+      varying vec3 vNormal;
+      varying vec3 vView;
       void main() {
-        float radius = length(vUv - vec2(0.5)) * 2.0;
-        if (radius >= ${GLOW_EDGE_END.toFixed(4)}) discard;
-        float edge = smoothstep(0.42, 0.96, radius);
-        vec3 core = vec3(${coreRed.toFixed(4)}, ${coreGreen.toFixed(4)}, ${coreBlue.toFixed(4)});
-        vec3 rim = vec3(${red.toFixed(4)}, ${green.toFixed(4)}, ${blue.toFixed(4)});
-        gl_FragColor = vec4(mix(core, rim, edge), 1.0);
+        vec3 n = normalize(vNormal);
+        vec3 view = normalize(vView);
+        float wrap = clamp(dot(n, normalize(vec3(-0.22, 0.78, 0.5))) * 0.5 + 0.62, 0.0, 1.0);
+        float up = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
+        float rim = pow(1.0 - max(dot(n, view), 0.0), 2.4);
+        vec3 shadow = vec3(0.80, 0.75, 0.72);
+        vec3 cotton = vec3(1.0, 0.988, 0.965);
+        vec3 color = mix(shadow, cotton, smoothstep(0.12, 0.82, wrap));
+        color += vec3(1.0, 0.94, 0.84) * up * 0.07;
+        color = mix(color, vec3(1.0, 0.97, 0.92), rim * 0.28);
+        gl_FragColor = vec4(color, 1.0);
         #include <colorspace_fragment>
-        #include <premultiplied_alpha_fragment>
       }
     `,
   });
-  return material;
+}
+
+/** Borde amarillo opaco. El alfa mezclaría el verde del mural. */
+export function createCloudAuraMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    toneMapped: false,
+    fog: false,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
+    vertexShader: CLOUD_VARYING,
+    fragmentShader: `
+      varying vec3 vNormal;
+      varying vec3 vView;
+      void main() {
+        vec3 n = normalize(vNormal);
+        float rim = pow(1.0 - max(dot(n, normalize(vView)), 0.0), 1.2);
+        vec3 gold = vec3(1.0, 0.55, 0.04);
+        vec3 hot = vec3(1.0, 0.88, 0.38);
+        vec3 color = mix(gold, hot, rim);
+        gl_FragColor = vec4(color, 1.0);
+        #include <colorspace_fragment>
+      }
+    `,
+  });
 }
 
 /** Nube de pensamiento: lóbulos fundidos, más ancha que profunda, normales hacia fuera. */
 export function buildIdeaGeometry(): BufferGeometry {
-  const cloud = new SphereGeometry(1, 64, 40);
+  const cloud = new SphereGeometry(1, 42, 28);
   const position = cloud.getAttribute("position");
   const normals = new Float32Array(position.count * 3);
   let minX = Infinity;
@@ -359,7 +372,7 @@ export function layoutCloudSlots(nowCount: number, aspect: number, fovDeg: numbe
   const wide = aspect > 1.7;
   const desktop = aspect >= 1.15 && !wide;
   const nowDepth = wide ? 0.86 : desktop ? 0.74 : 0.58;
-  const widthFrac = wide ? 0.16 : desktop ? 0.24 : 0.36;
+  const widthFrac = wide ? 0.15 : desktop ? 0.18 : 0.34;
   return nowSpots(nowCount, aspect).map((spot, index) => ({
     ndcX: spot.x,
     ndcY: spot.y,

@@ -24,6 +24,7 @@ import {
   Raycaster,
   RingGeometry,
   Scene,
+  ShaderMaterial,
   SphereGeometry,
   ClampToEdgeWrapping,
   LinearFilter,
@@ -140,11 +141,12 @@ import { LOUNGE_TABLE, NORTH_COUCH, SLACKER_COUCH, SOUTH_COUCH } from "./lounge-
 import { fuseMeshes } from "./mesh-fuse";
 import { batchStaticMeshes, type BatchStats } from "./static-batch";
 import {
-  CLOUD_GLOW_SCALE,
-  buildCloudGlowGeometry,
+  CLOUD_AURA_SCALE,
   buildIdeaGeometry,
   cloudAnchor,
-  createCloudGlowMaterial,
+  cloudPop,
+  createCloudAuraMaterial,
+  createCloudCottonMaterial,
   layoutCloudSlots,
   loadIdeaFont,
   paintIdeaCanvas,
@@ -303,6 +305,9 @@ export function startWorld(options: {
   const hemi = new HemisphereLight(0xd5e4ff, 0x5a4638, 1.55);
   scene.add(hemi);
   const sun = new DirectionalLight(0xfff1d0, 1.85);
+  const deskKey = new PointLight(0xffd2a4, 0, 3.1, 2);
+  deskKey.position.set(LAYOUT.desk.x, 1.55, LAYOUT.desk.z + 0.85);
+  scene.add(deskKey);
   sun.position.set(-3, 10, 4);
   sun.castShadow = shadows;
   sun.shadow.mapSize.set(1024, 1024);
@@ -677,17 +682,30 @@ export function startWorld(options: {
     idea: WorkshopIdeaMesh;
     canvas: HTMLCanvasElement;
     texture: CanvasTexture;
+    born: number;
+    glowKick: number;
   };
   let cloudEntries: CloudEntry[] = [];
   let cloudBodyGeometry: BufferGeometry | null = null;
-  let cloudBodyMaterial: MeshLambertMaterial | null = null;
+  let cloudBodyMaterial: ShaderMaterial | null = null;
   let cloudTextGeometry: BufferGeometry | null = null;
-  let cloudGlowGeometry: BufferGeometry | null = null;
-  let cloudGlowMaterial: ReturnType<typeof createCloudGlowMaterial> | null = null;
+  let cloudGlowMaterial: ShaderMaterial | null = null;
+  let thoughtMotes: InstancedMesh | null = null;
   let cloudShadow: InstancedMesh | null = null;
   let cloudShadowMaterial: MeshBasicMaterial | null = null;
   const shadowDummy = new Object3D();
   const cloudScratch = new Vector3();
+  const moteDummy = new Object3D();
+  const MOTE_SPOTS: ReadonlyArray<readonly [number, number, number]> = [
+    [-0.55, 1.95, 0.08],
+    [0.5, 2.02, 0.12],
+    [-0.22, 2.2, -0.05],
+    [0.28, 1.72, 0.18],
+    [-0.7, 1.6, 0.05],
+    [0.62, 1.78, 0.02],
+    [0.08, 2.28, 0.1],
+    [-0.38, 1.48, 0.2],
+  ];
   const cloudFacing = new Vector3();
   const cloudForward = new Vector3(0, 0, 1);
   let perfWorkMs = 0;
@@ -899,6 +917,8 @@ export function startWorld(options: {
       }
       const sconceBase = (lampLight.userData.base as number) ?? SCONCE_LIGHT.intensity;
       lampLight.intensity = sconceBase * (0.94 + Math.sin(frame * 2.2) * 0.06) * lampBeat;
+      const deskWant = workshopBeat === "work" ? 4.2 : workshopBeat === "talk" ? 1.4 : 0;
+      deskKey.intensity += (deskWant - deskKey.intensity) * 0.08;
       if (!e2eRender) {
         const arm = inventor.userData.arm as Object3D | undefined;
         const armL = inventor.userData.armL as Object3D | undefined;
@@ -1010,7 +1030,13 @@ export function startWorld(options: {
       camera.lookAt(player.position.x, 1.15, player.position.z);
     }
     updateTarget();
+    if (workshopBeat === "work" && !reduced && !e2eRender && dialoguePhase === "hold") {
+      camera.position.x += Math.sin(frame * 0.38) * 0.03;
+      camera.position.y += Math.sin(frame * 0.24) * 0.012;
+      camera.lookAt(dialogueLook);
+    }
     if (cloudEntries.length > 0) placeWorkshopClouds(frame, reduced || e2eRender);
+    placeThoughtMotes(frame, reduced || e2eRender);
     renderer.render(scene, activeCamera);
     labelRenderer.render(scene, activeCamera);
     if (options.perf) perfWorkMs = performance.now() - now;
@@ -1395,20 +1421,24 @@ export function startWorld(options: {
     const armL = inventor.userData.armL as Object3D | undefined;
     const head = inventor.userData.head as Object3D | undefined;
     const talking = workshopBeat === "talk";
+    const ponder = still ? 0 : Math.sin(frame * 1.15);
     if (talking) {
-      if (arm) arm.rotation.set(-0.4, 0, 0);
-      if (armL) armL.rotation.set(-0.22, 0, 0);
+      if (arm) arm.rotation.set(-0.55, 0.1, -0.35);
+      if (armL) armL.rotation.set(-0.2, 0, 0.15);
       if (head) {
-        head.rotation.x = 0.28;
-        head.rotation.y = 0.12;
+        head.rotation.x = 0.12;
+        head.rotation.y = 0.14;
+        head.rotation.z = 0;
       }
       return;
     }
-    if (arm) arm.rotation.set(-0.35, 0, 0.2);
-    if (armL) armL.rotation.set(0.4, -0.6, 2.3);
+    // El brazo de la izquierda del personaje (a la derecha en cámara) sube a la barbilla.
+    if (arm) arm.rotation.set(0.25, 0, -0.18);
+    if (armL) armL.rotation.set(-1.063, -0.774, 1.212 + ponder * 0.04);
     if (head) {
-      head.rotation.x = 0.42;
-      head.rotation.y = still ? -0.06 : Math.sin(frame * 1.1) * 0.04;
+      head.rotation.x = 0.18 + ponder * 0.03;
+      head.rotation.y = still ? -0.06 : Math.sin(frame * 0.7) * 0.04 - 0.06;
+      head.rotation.z = 0.12;
     }
   }
 
@@ -1471,21 +1501,13 @@ export function startWorld(options: {
 
   function ensureCloudParts() {
     if (!cloudBodyGeometry) cloudBodyGeometry = buildIdeaGeometry();
-    if (!cloudBodyMaterial) {
-      cloudBodyMaterial = new MeshLambertMaterial({
-        color: 0xffffff,
-        emissive: 0xc9beb4,
-        emissiveIntensity: 0.42,
-      });
-    }
-    if (!cloudTextGeometry) cloudTextGeometry = new PlaneGeometry(0.82, 0.54);
-    if (!cloudGlowGeometry) cloudGlowGeometry = buildCloudGlowGeometry();
-    if (!cloudGlowMaterial) cloudGlowMaterial = createCloudGlowMaterial();
+    if (!cloudBodyMaterial) cloudBodyMaterial = createCloudCottonMaterial();
+    if (!cloudTextGeometry) cloudTextGeometry = new PlaneGeometry(0.86, 0.56);
+    if (!cloudGlowMaterial) cloudGlowMaterial = createCloudAuraMaterial();
     return {
       bodyGeometry: cloudBodyGeometry,
       bodyMaterial: cloudBodyMaterial,
       textGeometry: cloudTextGeometry,
-      glowGeometry: cloudGlowGeometry,
       glowMaterial: cloudGlowMaterial,
     };
   }
@@ -1511,6 +1533,7 @@ export function startWorld(options: {
         const entry = cloudEntries[index];
         if (!entry || entry.idea.picked === idea.picked) return;
         entry.idea = idea;
+        if (idea.picked) entry.glowKick = 1;
         paintCloud(entry);
       });
       return;
@@ -1548,17 +1571,16 @@ export function startWorld(options: {
       text.renderOrder = 2;
       text.userData.noBatch = true;
       mesh.add(text);
-      const glow = new Mesh(shared.glowGeometry, shared.glowMaterial);
+      const glow = new Mesh(shared.bodyGeometry, shared.glowMaterial);
       glow.name = `idea-glow-${idea.id}`;
       glow.renderOrder = 0;
       glow.frustumCulled = false;
       glow.userData.noBatch = true;
-      glow.scale.set(CLOUD_GLOW_SCALE, CLOUD_GLOW_SCALE * 0.92, 1);
-      // En el plano de la nube. El cuerpo opaco tapa el centro; el borde asoma.
-      glow.position.set(0, 0.01, -0.02);
+      glow.scale.setScalar(CLOUD_AURA_SCALE);
+      glow.position.set(0, 0, -0.03);
       glow.visible = idea.picked;
       mesh.add(glow);
-      const entry = { mesh, text, glow, slot, idea, canvas, texture };
+      const entry = { mesh, text, glow, slot, idea, canvas, texture, born: frame, glowKick: idea.picked ? 1 : 0 };
       paintCloud(entry);
       scene.add(mesh);
       cloudEntries.push(entry);
@@ -1567,7 +1589,38 @@ export function startWorld(options: {
       if (!ready) return;
       for (const entry of cloudEntries) paintCloud(entry);
     });
-    placeWorkshopClouds(0, true);
+    placeWorkshopClouds(frame, reduced || e2eRender);
+  }
+
+  function placeThoughtMotes(time: number, still: boolean) {
+    const show = workshopBeat === "work" && !still;
+    if (!show && !thoughtMotes) return;
+    if (!thoughtMotes) {
+      const geometry = new CircleGeometry(0.018, 10);
+      const material = new MeshBasicMaterial({
+        color: 0xffe1b0,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      thoughtMotes = new InstancedMesh(geometry, material, MOTE_SPOTS.length);
+      thoughtMotes.frustumCulled = false;
+      thoughtMotes.renderOrder = 3;
+      scene.add(thoughtMotes);
+    }
+    thoughtMotes.visible = show;
+    if (!show) return;
+    for (let index = 0; index < MOTE_SPOTS.length; index += 1) {
+      const [x, y, z] = MOTE_SPOTS[index];
+      const drift = Math.sin(time * 0.55 + index) * 0.025;
+      moteDummy.position.set(inventor.position.x + x, y + drift, inventor.position.z + z);
+      moteDummy.lookAt(camera.position);
+      moteDummy.scale.setScalar(0.75 + Math.sin(time * 1.3 + index * 0.8) * 0.25);
+      moteDummy.updateMatrix();
+      thoughtMotes.setMatrixAt(index, moteDummy.matrix);
+    }
+    thoughtMotes.instanceMatrix.needsUpdate = true;
   }
 
   function placeWorkshopClouds(time: number, still: boolean) {
@@ -1579,8 +1632,20 @@ export function startWorld(options: {
       entry.slot = slot;
       const anchor = cloudAnchor(camera, slot, cloudScratch);
       entry.mesh.position.copy(anchor);
-      if (!still) entry.mesh.position.y += Math.sin(time * 1.3 + index) * 0.012;
-      entry.mesh.scale.setScalar(slot.scale);
+      const age = still ? 1 : Math.min(1, Math.max(0, (time - entry.born) / 0.46));
+      const pop = still ? 1 : cloudPop(age);
+      const bob = still ? 0 : Math.sin(time * 0.95 + index * 1.4) * 0.016;
+      const rise = still ? 0 : (1 - Math.min(1, age)) * 0.05;
+      entry.mesh.position.y += bob + rise;
+      const breathe = still ? 1 : 1 + Math.sin(time * 1.5 + index) * 0.012;
+      entry.mesh.scale.setScalar(slot.scale * pop * breathe);
+      if (entry.glow) {
+        const kick = still ? 0 : entry.glowKick;
+        entry.glowKick = Math.max(0, entry.glowKick - (still ? 1 : 0.02));
+        const selected = entry.idea.picked ? 1 : 0;
+        entry.glow.visible = selected > 0 && pop > 0.2;
+        entry.glow.scale.setScalar(CLOUD_AURA_SCALE * (1 + kick * 0.08));
+      }
       cloudFacing.copy(camera.position).sub(entry.mesh.position);
       if (cloudFacing.lengthSq() > 1e-6) {
         cloudFacing.normalize();
@@ -1766,11 +1831,18 @@ export function startWorld(options: {
       const positions = entry.mesh.geometry.getAttribute("position");
       triangles += index ? index.count / 3 : positions.count / 3;
     }
-    if (cloudGlowGeometry) {
-      const index = cloudGlowGeometry.getIndex();
-      const positions = cloudGlowGeometry.getAttribute("position");
+    const aura = cloudEntries.filter((entry) => entry.glow?.visible).length;
+    if (aura > 0 && cloudEntries[0]) {
+      const index = cloudEntries[0].mesh.geometry.getIndex();
+      const positions = cloudEntries[0].mesh.geometry.getAttribute("position");
       const one = index ? index.count / 3 : positions.count / 3;
-      triangles += one * cloudEntries.filter((entry) => entry.glow?.visible).length;
+      triangles += one * aura;
+    }
+    if (thoughtMotes?.visible) {
+      const index = thoughtMotes.geometry.getIndex();
+      const positions = thoughtMotes.geometry.getAttribute("position");
+      const one = index ? index.count / 3 : positions.count / 3;
+      triangles += one * thoughtMotes.count;
     }
     if (cloudShadow) {
       const index = cloudShadow.geometry.getIndex();

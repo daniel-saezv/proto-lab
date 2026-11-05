@@ -98,13 +98,13 @@ export function workshopThinkCamera(aspect: number, _fovDeg: number) {
   const subject = workshopSeatSubject();
   const wide = aspect > 1.7;
   const desktop = aspect >= 1.15 && !wide;
-  const dist = wide ? 1.5 : desktop ? 1.85 : 1.78;
+  const dist = wide ? 1.38 : desktop ? 1.62 : 1.5;
   return {
     x: subject.x,
-    y: wide ? 1.08 : desktop ? 1.02 : 0.98,
+    y: wide ? 1.16 : desktop ? 1.14 : 1.12,
     z: subject.z + dist,
     lookX: subject.x,
-    lookY: wide ? 1.36 : desktop ? 1.28 : 1.2,
+    lookY: wide ? 1.42 : desktop ? 1.38 : 1.34,
     lookZ: subject.z,
   };
 }
