@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Coptero de escudos</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #071426;
+        color: #f7f4ec;
+        font-family: system-ui, sans-serif;
+        touch-action: none;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      body {
+        box-sizing: border-box;
+        padding:
+          env(safe-area-inset-top)
+          env(safe-area-inset-right)
+          env(safe-area-inset-bottom)
+          env(safe-area-inset-left);
+      }
+      #app { position: relative; height: 100%; }
+      canvas { display: block; width: 100%; height: 100%; background: #071426; touch-action: none; user-select: none; }
+      .solo-lectura {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <main id="app">
+      <p id="estado" class="solo-lectura">Coptero. Mantén pulsado para subir y suelta para bajar.</p>
+      <canvas id="juego" width="390" height="700"></canvas>
+      <input id="foto0" type="file" accept="image/*" aria-label="Foto del jugador 1" />
+      <input id="foto1" type="file" accept="image/*" aria-label="Foto del jugador 2" />
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "slug": "coptero",
+  "title": "Coptero de escudos",
+  "description": "Mantén el helicóptero en el aire y no choques con los bordes. Esos bordes son escudos blancos y oro inspirados en el Real Madrid, dibujados para el juego. El jugador 1 sale con un avatar dibujado y puedes cambiarlo por tu foto. Dos personas pueden volar a la vez, cada una en su mitad.",
+  "author": "daniel-saezv",
+  "date": "2026-11-04",
+  "tags": [
+    "helicoptero",
+    "arcade",
+    "dos-jugadores"
+  ],
+  "cover": null,
+  "version": "0.2.0",
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-04",
+      "note": "Vuelo entre escudos blancos y oro, foto en el helicóptero y dos jugadores a la vez."
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-11-04",
+      "note": "El jugador 1 sale con un avatar dibujado; se puede sustituir por una foto."
+    }
+  ],
+  "preview": "preview.webp"
+}
