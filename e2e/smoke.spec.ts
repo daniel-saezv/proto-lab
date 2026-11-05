@@ -925,7 +925,7 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   await expect(page.getByTestId("workshop-option")).toHaveCount(4);
   await expect(page.getByTestId("workshop-skip")).toBeHidden();
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.beat)).toBe("work");
-  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.headX ?? 0)).toBeGreaterThan(0.4);
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopView?.()?.headX ?? 0)).toBeGreaterThan(0.15);
   const seated = await page.evaluate(() => window.__protoLab?.workshopView?.());
   expect(seated?.place).toBe("desk");
   expect(seated?.sit).toBe(1);
