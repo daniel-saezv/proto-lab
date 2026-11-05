@@ -1,5 +1,5 @@
 import { devices, expect, test } from "@playwright/test";
-import { skipUnlessChromium } from "./helpers";
+import { expandPrototypeHud, skipUnlessChromium } from "./helpers";
 
 async function focusArcade(page: import("@playwright/test").Page) {
   await page.evaluate(() => window.__protoLab?.focus("arcade"));
@@ -162,6 +162,7 @@ test.describe("recursos privados del puente", () => {
     expect(bag).toContain("noche-1");
     expect(bag).not.toContain("intruso");
     expect(await page.evaluate(() => localStorage.getItem("proto-lab:app:chispa"))).toBeNull();
+    await expandPrototypeHud(page);
     await page.getByTestId("close-prototype").click();
     await expect(page.getByTestId("prototype-chrome")).toBeHidden();
     await page.evaluate(() => {

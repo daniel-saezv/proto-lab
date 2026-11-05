@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { expandPrototypeHud } from "./helpers";
 
 const slowApp = `<!doctype html><html><body><p>abriendo</p><script>
 window.__protoLabApp = { stop: function () {} };
@@ -71,6 +72,7 @@ test("la apertura muestra el avance y desaparece con ready", async ({ page }) =>
   });
   await expect(status).toHaveCount(0);
   await expect(page.getByTestId("prototype-player")).toHaveAttribute("data-prototype-ready", "1");
+  await expandPrototypeHud(page);
   await page.getByTestId("close-prototype").click();
   await expect(page.getByTestId("prototype-player")).toBeHidden();
 });

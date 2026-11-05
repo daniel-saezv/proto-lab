@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expandPrototypeHud } from "./helpers";
 
 test("cada aplicación visible abre, avisa ready y el laboratorio vuelve", async ({ page }) => {
   await page.goto("/?e2e=1");
@@ -33,6 +34,7 @@ test("cada aplicación visible abre, avisa ready y el laboratorio vuelve", async
     await expect(page.locator("iframe")).not.toHaveAttribute("sandbox", /.+/);
     await expect(page.locator("iframe")).toHaveAttribute("src", new RegExp(`/protos/${slug}/`));
 
+    await expandPrototypeHud(page);
     await page.getByTestId("close-prototype").click();
     await expect(page.getByTestId("prototype-player")).toBeHidden();
     await expect(page.locator("iframe")).toHaveCount(0);
