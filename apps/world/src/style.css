@@ -845,18 +845,82 @@ body.is-pseudo-fullscreen #boot {
   visibility: hidden !important;
 }
 .prototype-chrome {
-  flex: 0 0 auto;
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: none;
+  min-height: 0;
+  padding: 0;
+}
+.hud-catcher {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: transparent;
+}
+.hud-handle,
+.prototype-hud,
+.hud-catcher {
+  pointer-events: auto;
+}
+.hud-handle {
+  position: absolute;
+  z-index: 3;
+  bottom: env(safe-area-inset-bottom, 0px);
+  right: env(safe-area-inset-right, 0px);
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(246, 241, 231, 0.9);
+  cursor: pointer;
+  touch-action: manipulation;
+  display: grid;
+  place-items: center;
+}
+.hud-handle-grip {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(16, 12, 24, 0.32);
+  border: 1px solid rgba(246, 241, 231, 0.38);
+  opacity: 0.72;
+}
+.hud-handle-grip svg { width: 12px; height: 12px; display: block; }
+.hud-handle:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -3px;
+}
+.hud-handle:focus-visible .hud-handle-grip { opacity: 1; }
+.prototype-hud {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: calc(6px + env(safe-area-inset-top)) 8px 6px;
+  padding: calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 6px calc(8px + env(safe-area-inset-left));
   touch-action: manipulation;
   background:
     linear-gradient(90deg, rgba(255, 93, 115, 0.85), rgba(255, 183, 3, 0.85) 32%, rgba(62, 198, 255, 0.85) 68%, rgba(232, 107, 255, 0.85))
     top / 100% 2px no-repeat,
     #1a1428;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .prototype-chrome[data-expanded="true"] .prototype-hud { animation: hud-in 160ms ease-out; }
+}
+@keyframes hud-in {
+  from { transform: translateY(-6px); }
+  to { transform: none; }
 }
 .prototype-banner {
   flex: 0 0 auto;
@@ -866,7 +930,10 @@ body.is-pseudo-fullscreen #boot {
   border-radius: 12px;
   padding: 10px 12px;
 }
-.prototype-chrome h1 {
+.prototype-chrome[data-expanded="true"] ~ .prototype-banner {
+  margin-top: calc(56px + env(safe-area-inset-top, 0px));
+}
+.prototype-hud h1 {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;

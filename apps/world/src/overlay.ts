@@ -39,6 +39,9 @@ export function createOverlay(
   let boot: BootPhase = "opening";
   let assetHost: ReturnType<typeof createPrototypeAssetHost> | null = null;
   let saveBridge: ReturnType<typeof createSaveBridge> | null = null;
+  let hudTimer = 0;
+  let hudExpanded = false;
+  const HUD_IDLE_MS = 4000;
 
   function setPseudo(on: boolean) {
     root.classList.toggle("is-pseudo-fullscreen", on);
@@ -167,6 +170,7 @@ export function createOverlay(
   document.addEventListener("webkitfullscreenchange", onFullscreenChange);
   document.addEventListener("fullscreenerror", onFullscreenError);
   document.addEventListener("webkitfullscreenerror", onFullscreenError);
+  document.addEventListener("keydown", onHudKey);
 
   function callStop(current: HTMLIFrameElement) {
     try {
@@ -211,9 +215,64 @@ export function createOverlay(
     boot = "opening";
   }
 
+  function clearHudTimer() {
+    window.clearTimeout(hudTimer);
+    hudTimer = 0;
+  }
+
+  function errorPinned(): boolean {
+    const banner = root.querySelector<HTMLElement>(".prototype-banner");
+    return Boolean(banner && !banner.hidden);
+  }
+
+  function setHud(expanded: boolean, focus?: "keyboard") {
+    if (!opened) return;
+    const panel = root.querySelector<HTMLElement>("[data-testid=prototype-hud]");
+    const handle = root.querySelector<HTMLButtonElement>("[data-testid=hud-handle]");
+    const catcher = root.querySelector<HTMLElement>("[data-testid=hud-catcher]");
+    const header = root.querySelector<HTMLElement>(".prototype-chrome");
+    const returning = !expanded && Boolean(panel?.contains(document.activeElement));
+    hudExpanded = expanded;
+    clearHudTimer();
+    if (header) header.dataset.expanded = expanded ? "true" : "false";
+    if (handle) {
+      handle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      handle.setAttribute("aria-label", expanded ? "Ocultar controles" : "Mostrar controles");
+    }
+    if (panel) panel.hidden = !expanded;
+    if (catcher) catcher.hidden = !expanded || errorPinned();
+    if (expanded && !errorPinned()) {
+      hudTimer = window.setTimeout(() => setHud(false), HUD_IDLE_MS);
+    }
+    if (focus === "keyboard") {
+      const target = expanded ? root.querySelector<HTMLElement>("[data-testid=close-prototype]") : handle;
+      target?.focus();
+      return;
+    }
+    if (returning) handle?.focus();
+  }
+
+  function bumpHudIdle() {
+    if (!hudExpanded || errorPinned()) return;
+    clearHudTimer();
+    hudTimer = window.setTimeout(() => setHud(false), HUD_IDLE_MS);
+  }
+
+  function onHudKey(event: KeyboardEvent) {
+    if (!opened || event.key !== "Escape" || event.repeat) return;
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+    if (target instanceof HTMLElement && target.isContentEditable) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setHud(!hudExpanded, "keyboard");
+  }
+
   async function close() {
     if (!opened) return;
     opened = false;
+    clearHudTimer();
+    hudExpanded = false;
     const mine = ++generation;
     window.clearTimeout(readyTimer);
     readyTimer = 0;
@@ -239,6 +298,7 @@ export function createOverlay(
     banner.hidden = false;
     banner.dataset.testid = "prototype-error";
     banner.textContent = message;
+    setHud(true);
   }
 
   function markReady(status: HTMLElement | null) {
@@ -254,9 +314,10 @@ export function createOverlay(
       next.contentWindow?.addEventListener(
         "keydown",
         (event) => {
-          if (event.key !== "Escape") return;
+          if (event.key !== "Escape" || event.repeat) return;
           event.preventDefault();
-          void close();
+          event.stopPropagation();
+          setHud(!hudExpanded, "keyboard");
         },
         true,
       );
@@ -336,6 +397,8 @@ export function createOverlay(
     generation += 1;
     const mine = generation;
     opened = true;
+    clearHudTimer();
+    hudExpanded = false;
     frame = null;
     assetHost = null;
     saveBridge = null;
@@ -383,16 +446,12 @@ export function createOverlay(
       event.stopPropagation();
       const plan = planFullscreen(readFacts());
       applyPlan(full, plan);
-      if (plan === "hidden") return;
-      if (nativeFullscreenElement() === root || root.classList.contains("is-pseudo-fullscreen")) {
-        exitFullscreenModes();
-        return;
+      if (plan !== "hidden") {
+        if (nativeFullscreenElement() === root || root.classList.contains("is-pseudo-fullscreen")) exitFullscreenModes();
+        else if (plan === "css") useCssFullscreen();
+        else void enterFullscreen();
       }
-      if (plan === "css") {
-        useCssFullscreen();
-        return;
-      }
-      void enterFullscreen();
+      setHud(false);
     });
 
     const suggest = document.createElement("button");
@@ -404,6 +463,7 @@ export function createOverlay(
     suggest.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      setHud(false);
       hooks?.onSuggestImprovement?.(entry);
     });
 
@@ -412,7 +472,45 @@ export function createOverlay(
     banner.hidden = true;
 
     applyPlan(full, planFullscreen(readFacts()));
-    header.append(back, title, suggest, full);
+
+    const panel = document.createElement("div");
+    panel.id = "prototype-hud";
+    panel.className = "prototype-hud";
+    panel.dataset.testid = "prototype-hud";
+    panel.hidden = true;
+    panel.setAttribute("role", "group");
+    panel.setAttribute("aria-label", "Controles");
+    panel.append(back, title, suggest, full);
+    panel.addEventListener("pointerdown", () => bumpHudIdle());
+
+    const catcher = document.createElement("div");
+    catcher.className = "hud-catcher";
+    catcher.dataset.testid = "hud-catcher";
+    catcher.hidden = true;
+    catcher.setAttribute("aria-hidden", "true");
+    catcher.addEventListener("pointerdown", (event) => {
+      if (errorPinned()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setHud(false);
+    });
+
+    const handle = document.createElement("button");
+    handle.type = "button";
+    handle.className = "hud-handle";
+    handle.dataset.testid = "hud-handle";
+    handle.setAttribute("aria-expanded", "false");
+    handle.setAttribute("aria-controls", "prototype-hud");
+    handle.setAttribute("aria-label", "Mostrar controles");
+    handle.append(hudGrip());
+    handle.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setHud(!hudExpanded);
+    });
+
+    header.dataset.expanded = "false";
+    header.append(catcher, panel, handle);
     const slot = document.createElement("div");
     slot.className = "prototype-frame";
     slot.append(createBootScreen());
@@ -463,6 +561,24 @@ export function createOverlay(
     close,
     isOpen: () => opened,
   };
+}
+
+function hudGrip(): HTMLSpanElement {
+  const grip = document.createElement("span");
+  grip.className = "hud-handle-grip";
+  grip.setAttribute("aria-hidden", "true");
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "1.75");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("d", "M5 8h14M5 12h14M5 16h14");
+  icon.append(path);
+  grip.append(icon);
+  return grip;
 }
 
 function fullscreenGlyph(kind: "enter" | "exit"): SVGSVGElement {

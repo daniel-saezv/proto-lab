@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expandPrototypeHud } from "./helpers";
 
 test("allow sale de la lista y save sin declarar se ignora", async ({ page }) => {
   const home = await page.request.get("/");
@@ -33,6 +34,7 @@ test("allow sale de la lista y save sin declarar se ignora", async ({ page }) =>
   });
   const lab = page.locator("iframe");
   await expect(lab).toHaveAttribute("allow", "geolocation");
+  await expandPrototypeHud(page);
   await page.getByTestId("close-prototype").click();
   await expect(page.locator("iframe")).toHaveCount(0);
 

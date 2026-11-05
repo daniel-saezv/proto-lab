@@ -1,4 +1,4 @@
-import { test, type TestInfo } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 /** Marca de los tests de móvil táctil. El proyecto reducido de CI filtra por ella. */
 export const TOUCH_MOBILE_TAG = "@movil";
@@ -27,6 +27,17 @@ export function isTouchMobileProject(name: string): boolean {
 /** Comportamiento táctil que no es exclusivo de un motor. */
 export function skipUnlessTouchMobile(testInfo: TestInfo, reason = "solo en móvil táctil") {
   test.skip(!isTouchMobileProject(testInfo.project.name), reason);
+}
+
+/** Abre la barra de Volver, pantalla completa y Sugerir. El cromo nace plegado. */
+export async function expandPrototypeHud(page: Page, mode: "click" | "tap" = "click") {
+  const handle = page.getByTestId("hud-handle");
+  await expect(handle).toBeVisible();
+  if ((await handle.getAttribute("aria-expanded")) !== "true") {
+    if (mode === "tap") await handle.tap();
+    else await handle.click();
+  }
+  await expect(page.getByTestId("close-prototype")).toBeVisible();
 }
 
 /** Solo el motor que emite el evento de pellizco no estándar. */
