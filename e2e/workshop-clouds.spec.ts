@@ -235,6 +235,57 @@ test("en el móvil táctil cada idea es un objetivo de 44 px", async ({ browser 
   await context.close();
 });
 
+async function expectCloudsApart(page: Page) {
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const boxes = window.__protoLab?.workshopCloudBoxes?.() ?? [];
+      if (boxes.length !== 4) return `count ${boxes.length}`;
+      for (const box of boxes) {
+        if (box.width < 8 || box.height < 8) return "tiny";
+      }
+      for (let i = 0; i < boxes.length; i += 1) {
+        for (let j = i + 1; j < boxes.length; j += 1) {
+          const a = boxes[i]!;
+          const b = boxes[j]!;
+          const separated =
+            a.x + a.width <= b.x + 0.5 ||
+            b.x + b.width <= a.x + 0.5 ||
+            a.y + a.height <= b.y + 0.5 ||
+            b.y + b.height <= a.y + 0.5;
+          if (!separated) return `overlap ${i}-${j}`;
+        }
+      }
+      return "ok";
+    }),
+  ).toBe("ok");
+}
+
+test("las nubes no se pisan en las tres rondas", async ({ page }, testInfo) => {
+  skipUnlessChromium(testInfo, "escritorio");
+  test.setTimeout(30_000);
+  const views = [
+    [390, 844],
+    [412, 915],
+    [844, 390],
+    [1280, 800],
+  ] as const;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockWorkshop(page);
+  await openRound(page);
+  for (let round = 1; round <= 3; round += 1) {
+    await expect(page.getByTestId("workshop-counter")).toHaveText(`Ronda ${round} de 3`);
+    await page.getByTestId("workshop-option").first().click();
+    for (const [width, height] of views) {
+      await page.setViewportSize({ width, height });
+      await expectCloudsApart(page);
+    }
+    if (round < 3) {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByTestId("choice-workshop-next").click();
+    }
+  }
+});
+
 test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) => {
   skipUnlessProject("webkit-iphone", testInfo, "proyecto webkit-iphone");
   await mockWorkshop(page);

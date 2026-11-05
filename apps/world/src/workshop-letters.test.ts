@@ -17,6 +17,7 @@ import {
   ideaPalette,
   ideaTriangleCount,
   layoutCloudSlots,
+  slotNdcHalf,
   workshopIdeaMeshes,
 } from "./workshop-letters";
 
@@ -65,6 +66,10 @@ describe("letras del taller", () => {
     expect(aura.fragmentShader).not.toContain("discard");
     expect(aura.fragmentShader).not.toContain("texture");
     expect(cotton.transparent).toBe(false);
+    expect(cotton.toneMapped).toBe(true);
+    expect(cotton.fragmentShader).toContain("uSunDir");
+    expect(cotton.fragmentShader).toContain("uDeskPos");
+    expect(cotton.fragmentShader).toContain("fiberNoise");
     expect(cotton.fragmentShader).toContain("gl_FragColor = vec4(color, 1.0)");
     aura.dispose();
     cotton.dispose();
@@ -112,6 +117,45 @@ describe("letras del taller", () => {
       }
       expect(slots.filter((slot) => slot.ndcX < 0).length).toBeGreaterThan(0);
       expect(slots.filter((slot) => slot.ndcX > 0).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("las cajas de una ronda no se solapan en los encuadres del laboratorio", () => {
+    const cloud = buildIdeaGeometry();
+    cloud.computeBoundingBox();
+    const height = cloud.boundingBox!.max.y - cloud.boundingBox!.min.y;
+    cloud.dispose();
+    const views = [
+      [390 / 844, 78],
+      [412 / 915, 78],
+      [844 / 390, 58],
+      [1280 / 800, 58],
+    ] as const;
+    for (const [aspect, fov] of views) {
+      const slots = layoutCloudSlots(4, aspect, fov);
+      const boxes = slots.map((slot) => {
+        const half = slotNdcHalf(slot, aspect, fov, height, CLOUD_AURA_SCALE);
+        return {
+          x0: slot.ndcX - half.halfW,
+          x1: slot.ndcX + half.halfW,
+          y0: slot.ndcY - half.halfH,
+          y1: slot.ndcY + half.halfH,
+        };
+      });
+      for (const box of boxes) {
+        expect(box.x0, `${aspect}`).toBeGreaterThan(-1);
+        expect(box.x1, `${aspect}`).toBeLessThan(1);
+        expect(box.y0, `${aspect}`).toBeGreaterThan(-0.72);
+        expect(box.y1, `${aspect}`).toBeLessThan(1);
+      }
+      for (let i = 0; i < boxes.length; i += 1) {
+        for (let j = i + 1; j < boxes.length; j += 1) {
+          const a = boxes[i]!;
+          const b = boxes[j]!;
+          const separated = a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0;
+          expect(separated, `${aspect} ${i}-${j}`).toBe(true);
+        }
+      }
     }
   });
 

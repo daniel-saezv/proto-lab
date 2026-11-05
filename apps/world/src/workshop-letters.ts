@@ -242,27 +242,108 @@ const CLOUD_VARYING = `
   }
 `;
 
-/** Algodón blanco: luz suave, sin el aplastado de un Lambert muy emisivo. */
+/**
+ * Algodón del taller. Los uniformes los rellena el mundo con el sol, el
+ * hemisferio y la lámpara del escritorio, para que el color y la dirección
+ * sean los de la sala. El detalle es ruido en el espacio del objeto.
+ */
 export function createCloudCottonMaterial(): ShaderMaterial {
   return new ShaderMaterial({
-    toneMapped: false,
+    toneMapped: true,
     fog: false,
-    vertexShader: CLOUD_VARYING,
-    fragmentShader: `
+    uniforms: {
+      uSunDir: { value: new Vector3(0, 1, 0) },
+      uSunColor: { value: new Vector3(1, 0.94, 0.82) },
+      uSkyColor: { value: new Vector3(0.7, 0.78, 1) },
+      uGroundColor: { value: new Vector3(0.16, 0.12, 0.08) },
+      uHemi: { value: 1 },
+      uDeskPos: { value: new Vector3() },
+      uDeskColor: { value: new Vector3(1, 0.75, 0.45) },
+      uDeskIntensity: { value: 0 },
+      uDeskDistance: { value: 3.1 },
+    },
+    vertexShader: `
       varying vec3 vNormal;
-      varying vec3 vView;
+      varying vec3 vWorld;
+      varying vec3 vLocal;
+      void main() {
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vWorld = world.xyz;
+        vLocal = position;
+        vNormal = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uSunDir;
+      uniform vec3 uSunColor;
+      uniform vec3 uSkyColor;
+      uniform vec3 uGroundColor;
+      uniform float uHemi;
+      uniform vec3 uDeskPos;
+      uniform vec3 uDeskColor;
+      uniform float uDeskIntensity;
+      uniform float uDeskDistance;
+      varying vec3 vNormal;
+      varying vec3 vWorld;
+      varying vec3 vLocal;
+
+      float fiberHash(vec3 p) {
+        p = fract(p * 0.1031);
+        p += dot(p, p.zyx + 31.32);
+        return fract((p.x + p.y) * p.z);
+      }
+
+      float fiberNoise(vec3 p) {
+        vec3 i = floor(p);
+        vec3 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float n000 = fiberHash(i);
+        float n100 = fiberHash(i + vec3(1.0, 0.0, 0.0));
+        float n010 = fiberHash(i + vec3(0.0, 1.0, 0.0));
+        float n110 = fiberHash(i + vec3(1.0, 1.0, 0.0));
+        float n001 = fiberHash(i + vec3(0.0, 0.0, 1.0));
+        float n101 = fiberHash(i + vec3(1.0, 0.0, 1.0));
+        float n011 = fiberHash(i + vec3(0.0, 1.0, 1.0));
+        float n111 = fiberHash(i + vec3(1.0, 1.0, 1.0));
+        return mix(
+          mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+          mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+          f.z
+        );
+      }
+
       void main() {
         vec3 n = normalize(vNormal);
-        vec3 view = normalize(vView);
-        float wrap = clamp(dot(n, normalize(vec3(-0.22, 0.78, 0.5))) * 0.5 + 0.62, 0.0, 1.0);
-        float up = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
-        float rim = pow(1.0 - max(dot(n, view), 0.0), 2.4);
-        vec3 shadow = vec3(0.80, 0.75, 0.72);
-        vec3 cotton = vec3(1.0, 0.988, 0.965);
-        vec3 color = mix(shadow, cotton, smoothstep(0.12, 0.82, wrap));
-        color += vec3(1.0, 0.94, 0.84) * up * 0.07;
-        color = mix(color, vec3(1.0, 0.97, 0.92), rim * 0.28);
+        vec3 view = normalize(cameraPosition - vWorld);
+        vec3 sunDir = normalize(uSunDir);
+        float wool = fiberNoise(vLocal * 8.0);
+        float nap = fiberNoise(vLocal * 16.0);
+        float nx = fiberNoise(vLocal * 8.0 + vec3(0.18, 0.0, 0.0)) - wool;
+        float ny = fiberNoise(vLocal * 8.0 + vec3(0.0, 0.18, 0.0)) - wool;
+        n = normalize(n + vec3(nx, ny, nx * 0.35) * 0.85);
+        float crease = clamp(length(fwidth(n)) * 5.0, 0.0, 1.0);
+        float ao = mix(1.0, 0.58, crease) * mix(0.72, 1.0, n.y * 0.5 + 0.5);
+        vec3 warmFill = mix(uGroundColor, uDeskColor, 0.82);
+        vec3 hemi = mix(warmFill, uSkyColor, clamp(n.y * 0.55 + 0.42, 0.0, 1.0)) * uHemi;
+        float wrap = clamp(dot(n, sunDir) * 0.72 + 0.22, 0.0, 1.0);
+        float scatter = pow(clamp(dot(-n, sunDir), 0.0, 1.0), 1.6) * pow(clamp(dot(view, -sunDir), 0.0, 1.0), 1.15);
+        vec3 sun = uSunColor * (wrap * 0.2 + scatter * 0.07);
+        vec3 toDesk = uDeskPos - vWorld;
+        float lightDistance = length(toDesk);
+        vec3 deskDir = toDesk / max(lightDistance, 0.001);
+        float reach = clamp(1.0 - pow(lightDistance / max(uDeskDistance, 0.001), 4.0), 0.0, 1.0);
+        float atten = reach * reach / max(lightDistance * lightDistance, 0.08);
+        float deskWrap = clamp(dot(n, deskDir) * 0.55 + 0.5, 0.0, 1.0);
+        vec3 desk = uDeskColor * uDeskIntensity * atten * deskWrap;
+        vec3 albedo = vec3(0.99, 0.97, 0.94);
+        albedo *= 0.93 + wool * 0.1 + nap * 0.04;
+        vec3 color = albedo * (hemi * 0.18 + sun + desk * 0.09) * ao;
+        float rim = pow(1.0 - max(dot(n, view), 0.0), 2.0);
+        vec3 rimColor = mix(uSkyColor, uDeskColor, 0.82);
+        color += rimColor * rim * 0.2;
         gl_FragColor = vec4(color, 1.0);
+        #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
     `,
@@ -367,52 +448,68 @@ function worldWidth(fovDeg: number, depth: number, aspect: number, widthFrac: nu
   return fullHeight * aspect * widthFrac;
 }
 
-/** Cuatro nubes alrededor del busto: una a la izquierda y el resto a la derecha. */
+/** Mitad de la nube en NDC, con el borde de selección incluido si `pad` > 1. */
+export function slotNdcHalf(
+  slot: CloudSlot,
+  aspect: number,
+  fovDeg: number,
+  height: number,
+  pad: number,
+): { halfW: number; halfH: number } {
+  const fullHeight = 2 * Math.tan((fovDeg * Math.PI) / 360) * slot.depth;
+  const fullWidth = fullHeight * aspect;
+  return {
+    halfW: (slot.scale * pad) / fullWidth,
+    halfH: (slot.scale * height * pad) / fullHeight,
+  };
+}
+
+/** Cuatro nubes alrededor del busto, con hueco entre sus cajas. */
 export function layoutCloudSlots(nowCount: number, aspect: number, fovDeg: number): CloudSlot[] {
   const wide = aspect > 1.7;
   const desktop = aspect >= 1.15 && !wide;
-  const nowDepth = wide ? 0.86 : desktop ? 0.74 : 0.58;
-  const widthFrac = wide ? 0.15 : desktop ? 0.18 : 0.34;
-  return nowSpots(nowCount, aspect).map((spot, index) => ({
+  const depth = wide ? 0.82 : desktop ? 0.7 : 0.54;
+  const widthFrac = wide ? 0.13 : desktop ? 0.155 : 0.3;
+  return nowSpots(nowCount, aspect, widthFrac).map((spot) => ({
     ndcX: spot.x,
     ndcY: spot.y,
-    depth: nowDepth - index * 0.015,
-    scale: worldWidth(fovDeg, nowDepth, aspect, widthFrac * (index === 0 ? 1.06 : 0.92)),
+    depth,
+    scale: worldWidth(fovDeg, depth, aspect, widthFrac),
     aspect: 1,
   }));
 }
 
-function nowSpots(count: number, aspect: number): Array<{ x: number; y: number }> {
+function nowSpots(count: number, aspect: number, widthFrac: number): Array<{ x: number; y: number }> {
   if (count === 4) return conceptSpots(aspect);
-  return Array.from({ length: count }, (_, index) => {
-    const t = count === 1 ? 0.5 : index / (count - 1);
-    return { x: -0.72 + t * 1.44, y: index % 2 === 0 ? 0.16 : -0.16 };
-  });
+  const halfW = widthFrac * CLOUD_AURA_SCALE + 0.03;
+  const step = halfW * 2 + 0.04;
+  const start = -step * (count - 1) * 0.5;
+  return Array.from({ length: count }, (_, index) => ({ x: start + index * step, y: 0.04 }));
 }
 
 /** La composición del concepto: una nube grande a la izquierda y tres a la derecha. */
 function conceptSpots(aspect: number): Array<{ x: number; y: number }> {
   if (aspect > 1.7) {
     return [
-      { x: -0.58, y: 0.04 },
-      { x: -0.14, y: 0.3 },
-      { x: 0.34, y: 0.12 },
-      { x: 0.6, y: -0.24 },
+      { x: -0.64, y: 0.12 },
+      { x: -0.22, y: 0.12 },
+      { x: 0.22, y: 0.12 },
+      { x: 0.64, y: 0.12 },
     ];
   }
   if (aspect >= 1.15) {
     return [
-      { x: -0.5, y: 0.06 },
-      { x: 0.3, y: 0.36 },
-      { x: 0.52, y: 0.02 },
-      { x: 0.16, y: -0.32 },
+      { x: -0.62, y: 0.38 },
+      { x: 0.22, y: 0.46 },
+      { x: 0.66, y: -0.06 },
+      { x: -0.08, y: -0.2 },
     ];
   }
   return [
-    { x: -0.6, y: 0.02 },
-    { x: 0.46, y: 0.38 },
-    { x: 0.54, y: 0.0 },
-    { x: 0.14, y: -0.36 },
+    { x: -0.5, y: 0.5 },
+    { x: 0.42, y: 0.62 },
+    { x: -0.42, y: 0.08 },
+    { x: 0.5, y: 0.22 },
   ];
 }
 

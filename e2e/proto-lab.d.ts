@@ -52,6 +52,7 @@ interface Window {
       headX?: number;
     };
     workshopClouds?: () => { count: number; past: number; now: number; triangles: number };
+    workshopCloudBoxes?: () => Array<{ id: string; x: number; y: number; width: number; height: number }>;
   };
   __chispa?: {
     drop: (x?: number) => void;

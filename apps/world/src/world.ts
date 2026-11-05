@@ -695,6 +695,7 @@ export function startWorld(options: {
   let cloudShadowMaterial: MeshBasicMaterial | null = null;
   const shadowDummy = new Object3D();
   const cloudScratch = new Vector3();
+  const cloudCorner = new Vector3();
   const moteDummy = new Object3D();
   const MOTE_SPOTS: ReadonlyArray<readonly [number, number, number]> = [
     [-0.55, 1.95, 0.08],
@@ -1623,8 +1624,24 @@ export function startWorld(options: {
     thoughtMotes.instanceMatrix.needsUpdate = true;
   }
 
+  function syncCloudLight() {
+    const cotton = cloudBodyMaterial;
+    if (!cotton?.uniforms.uSunDir) return;
+    const sunDir = cotton.uniforms.uSunDir.value as Vector3;
+    sunDir.copy(sun.position).sub(sun.target.position).normalize();
+    (cotton.uniforms.uSunColor.value as Vector3).set(sun.color.r, sun.color.g, sun.color.b).multiplyScalar(sun.intensity);
+    (cotton.uniforms.uSkyColor.value as Vector3).set(hemi.color.r, hemi.color.g, hemi.color.b);
+    (cotton.uniforms.uGroundColor.value as Vector3).set(hemi.groundColor.r, hemi.groundColor.g, hemi.groundColor.b);
+    cotton.uniforms.uHemi.value = hemi.intensity;
+    (cotton.uniforms.uDeskPos.value as Vector3).copy(deskKey.position);
+    (cotton.uniforms.uDeskColor.value as Vector3).set(deskKey.color.r, deskKey.color.g, deskKey.color.b);
+    cotton.uniforms.uDeskIntensity.value = deskKey.intensity;
+    cotton.uniforms.uDeskDistance.value = deskKey.distance;
+  }
+
   function placeWorkshopClouds(time: number, still: boolean) {
     if (cloudEntries.length === 0) return;
+    syncCloudLight();
     const laid = layoutCloudSlots(cloudEntries.length, camera.aspect, camera.fov);
     cloudEntries.forEach((entry, index) => {
       const slot = laid[index];
@@ -1858,6 +1875,44 @@ export function startWorld(options: {
     };
   }
 
+  function workshopCloudBoxes() {
+    const rect = renderer.domElement.getBoundingClientRect();
+    return cloudEntries.map((entry) => {
+      entry.mesh.updateWorldMatrix(true, false);
+      const geometry = entry.mesh.geometry;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      const bounds = geometry.boundingBox;
+      if (!bounds) return { id: entry.idea.id, x: 0, y: 0, width: 0, height: 0 };
+      const pad = entry.glow?.visible ? CLOUD_AURA_SCALE : 1;
+      const cx = (bounds.min.x + bounds.max.x) / 2;
+      const cy = (bounds.min.y + bounds.max.y) / 2;
+      const cz = (bounds.min.z + bounds.max.z) / 2;
+      const hx = ((bounds.max.x - bounds.min.x) / 2) * pad;
+      const hy = ((bounds.max.y - bounds.min.y) / 2) * pad;
+      const hz = ((bounds.max.z - bounds.min.z) / 2) * pad;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            cloudCorner.set(cx + hx * sx, cy + hy * sy, cz + hz * sz);
+            cloudCorner.applyMatrix4(entry.mesh.matrixWorld);
+            cloudCorner.project(camera);
+            const x = (cloudCorner.x * 0.5 + 0.5) * rect.width + rect.left;
+            const y = (-cloudCorner.y * 0.5 + 0.5) * rect.height + rect.top;
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      return { id: entry.idea.id, x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    });
+  }
+
   function workshopView() {
     const head = inventor.userData.head as Object3D | undefined;
     return {
@@ -2079,6 +2134,7 @@ export function startWorld(options: {
       batchStats: () => batchStats,
       workshopView,
       workshopClouds: workshopCloudStats,
+      workshopCloudBoxes,
       probeWalkable: () => {
         const bounds = playerLobbyBounds();
         const start = { x: 0, z: 1.7 };
@@ -2106,6 +2162,7 @@ export function startWorld(options: {
       batchStats: () => batchStats,
       workshopView,
       workshopClouds: workshopCloudStats,
+      workshopCloudBoxes,
       frameWorkMs: () => Number(perfWorkMs.toFixed(2)),
       setViewpoint: applyViewpoint,
       frameAt(x: number, z: number, lookYaw: number, lookPitch: number, distance?: number) {
@@ -2947,6 +3004,7 @@ declare global {
         headX: number;
       };
       workshopClouds?: () => { count: number; past: number; now: number; triangles: number };
+      workshopCloudBoxes?: () => Array<{ id: string; x: number; y: number; width: number; height: number }>;
     };
   }
 }
