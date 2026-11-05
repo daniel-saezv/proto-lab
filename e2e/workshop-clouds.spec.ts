@@ -127,8 +127,10 @@ async function expectSeguirAfterArrive(page: Page, width: number, height: number
 }
 
 async function skipTyping(page: Page) {
-  const text = page.locator("#dialogue .dialogue-text[data-typing='1']");
-  if (await text.count()) await text.click({ force: true }).catch(() => {});
+  await page.evaluate(() => {
+    const text = document.querySelector("#dialogue .dialogue-text[data-typing='1']");
+    text?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
 }
 
 async function skipUntil(page: Page, testId: string) {
