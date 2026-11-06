@@ -37,6 +37,8 @@ export type ProposalDraft = {
   kind: "propuesta" | "iteracion";
   title: string;
   description: string;
+  /** Obligatorio al enviar una propuesta nueva; no se usa en iteración. */
+  author?: string;
   slug?: string;
 };
 

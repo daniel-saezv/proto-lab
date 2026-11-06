@@ -64,6 +64,8 @@ export function inventorChoices(
         },
         { id: "choice-cancel", label: "Mejor no", action: { type: "close" } },
       ];
+    case "author":
+      return [];
     case "workshop":
       return [];
     default:

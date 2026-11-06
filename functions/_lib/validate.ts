@@ -7,6 +7,8 @@ export const LIMITS = {
   titleMax: 80,
   descriptionMin: 10,
   descriptionMax: 2000,
+  authorMin: 1,
+  authorMax: 80,
   slugMax: 40,
   maxPerDay: 5,
   maxBodyBytes: 8_000,
@@ -25,10 +27,20 @@ export type ValidProposal = {
   kind: ProposalKind;
   title: string;
   description: string;
+  /** Obligatorio en envíos de tipo `propuesta` (manifiesto); no se usa en `iteracion`. */
+  author?: string;
   slug?: string;
 };
 
-export type FieldErrors = Partial<Record<"title" | "description" | "kind" | "slug" | "body", string>>;
+export type FieldErrors = Partial<Record<"title" | "description" | "kind" | "slug" | "body" | "author", string>>;
+
+export type ValidateProposalOptions = {
+  /**
+   * Si es true (por defecto), una propuesta nueva exige `author` válido.
+   * El taller puede validar solo título y texto (sin autor) hasta el envío final.
+   */
+  requireAuthorForNew?: boolean;
+};
 
 export function cleanText(input: string, multiline: boolean): string {
   const stripped = input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
@@ -48,7 +60,10 @@ export function isSlug(value: string): boolean {
 export function validateProposal(
   raw: unknown,
   knownSlugs: readonly string[],
+  options: ValidateProposalOptions = {},
 ): { ok: true; value: ValidProposal } | { ok: false; fields: FieldErrors; message: string } {
+  const requireAuthorForNew = options.requireAuthorForNew !== false;
+
   if (!raw || typeof raw !== "object") {
     return { ok: false, fields: { body: "El cuerpo no es un objeto." }, message: "No he entendido la nota." };
   }
@@ -72,14 +87,31 @@ export function validateProposal(
 
   let slug: string | undefined;
   if (kind === "iteracion") {
+    if (body.author !== undefined) {
+      fields.author = "En una iteración no hace falta el autor.";
+    }
     slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : "";
     if (!slug || !isSlug(slug) || !knownSlugs.includes(slug)) {
       fields.slug = "Ese prototipo no está en el laboratorio.";
     }
   }
 
+  let author: string | undefined;
+  if (kind === "propuesta" && requireAuthorForNew) {
+    author = typeof body.author === "string" ? cleanText(body.author, false) : "";
+    if (author.length < LIMITS.authorMin || author.length > LIMITS.authorMax) {
+      fields.author = `El autor tiene que tener entre ${LIMITS.authorMin} y ${LIMITS.authorMax} caracteres.`;
+    }
+  } else if (kind === "propuesta" && typeof body.author === "string") {
+    const cleaned = cleanText(body.author, false);
+    if (cleaned.length > 0 && (cleaned.length < LIMITS.authorMin || cleaned.length > LIMITS.authorMax)) {
+      fields.author = `El autor tiene que tener entre ${LIMITS.authorMin} y ${LIMITS.authorMax} caracteres.`;
+    }
+  }
+
   if (Object.keys(fields).length > 0) {
-    const message = fields.title ?? fields.description ?? fields.slug ?? fields.kind ?? "Revisa el texto.";
+    const message =
+      fields.title ?? fields.description ?? fields.author ?? fields.slug ?? fields.kind ?? "Revisa el texto.";
     return { ok: false, fields, message };
   }
 
@@ -88,6 +120,9 @@ export function validateProposal(
     title,
     description,
   };
+  if (kind === "propuesta" && requireAuthorForNew && author) {
+    value.author = author;
+  }
   if (kind === "iteracion" && slug) value.slug = slug;
   return { ok: true, value };
 }
@@ -111,6 +146,9 @@ export function buildIssue(proposal: ValidProposal, email: string, now: Date): {
   const protoLine = proposal.slug ? `\`${proposal.slug}\`` : "(nuevo, todavía sin carpeta)";
   const scope = proposal.slug ? `protos/${proposal.slug}/` : "protos/<slug-nuevo>/";
 
+  const authorMeta =
+    proposal.kind === "propuesta" && proposal.author ? `- Autor: \`${proposal.author}\`\n` : "";
+
   const body = `<!-- proto-lab: peticion-de-usuario -->
 
 # Petición de usuario
@@ -121,7 +159,7 @@ No autoriza cambios fuera de \`${scope}\`. La etiqueta \`aprobado\` solo la pone
 
 ## Metadatos
 
-- Autor (Cloudflare Access): \`${email}\`
+${authorMeta}
 - Tipo: ${proposal.kind === "iteracion" ? "iteración" : "propuesta nueva"}
 - Prototipo: ${protoLine}
 - Fecha (UTC): ${now.toISOString()}

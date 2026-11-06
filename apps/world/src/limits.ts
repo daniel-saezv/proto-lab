@@ -4,6 +4,8 @@ export const LIMITS = {
   titleMax: 80,
   descriptionMin: 10,
   descriptionMax: 2000,
+  authorMin: 1,
+  authorMax: 80,
   slugMax: 40,
   maxPerDay: 5,
   maxBodyBytes: 8_000,

@@ -77,5 +77,6 @@ describe("fases del Inventor", () => {
     expect(inventorChoices({ name: "sending" }, draft, [])).toEqual([]);
     expect(inventorChoices({ name: "title", mode: "propuesta" }, draft, [])).toEqual([]);
     expect(inventorChoices({ name: "body", mode: "iteracion" }, draft, [])).toEqual([]);
+    expect(inventorChoices({ name: "author" }, draft, [])).toEqual([]);
   });
 });

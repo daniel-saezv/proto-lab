@@ -78,6 +78,8 @@ async function openRound(page: Page) {
   await page.getByTestId("dialogue-send").click();
   await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa con el dedo.");
   await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-author").fill("Autora e2e");
+  await page.getByTestId("dialogue-send").click();
   await page.getByTestId("choice-workshop").click();
   await expect(page.getByTestId("workshop-begin")).toBeVisible();
   await expect(page.getByTestId("dialog-close")).toBeVisible();
@@ -379,6 +381,8 @@ test("la primera respuesta enseña nubes mientras llega", async ({ page }, testI
   await page.getByTestId("dialogue-send").click();
   await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa con el dedo.");
   await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-author").fill("Autora e2e");
+  await page.getByTestId("dialogue-send").click();
   await page.getByTestId("choice-workshop").click();
   await page.getByTestId("workshop-begin").click();
   await expect(page.getByTestId("workshop-waiting")).toBeVisible();
@@ -434,6 +438,8 @@ test("Seguir queda centrado en las tres rondas con la cámara en movimiento", as
   await page.getByTestId("choice-propose").click();
   await sendField(page, "Cometa lunar");
   await sendField(page, "Un juego corto en el que persigues una cometa con el dedo.");
+  await page.getByTestId("dialogue-author").fill("Autora e2e");
+  await page.getByTestId("dialogue-send").click();
   await skipUntil(page, "choice-workshop");
   await page.getByTestId("choice-workshop").click();
   await expect.poll(async () => {

@@ -20,6 +20,7 @@ import {
   workshopKindLabel,
   workshopPickChoices,
   workshopSpeech,
+  workshopAuthorSummaryError,
   workshopSummaryChoices,
   workshopSummaryError,
   workshopSummaryPicks,
@@ -228,12 +229,21 @@ export function createDialogue(options: {
       title: source.title,
       description: source.description,
       ...(source.slug ? { slug: source.slug } : {}),
+      ...(source.kind === "propuesta" && source.author?.trim() ? { author: source.author.trim() } : {}),
     };
   }
 
   function restoreOriginalNote() {
     if (!originalNote) return;
-    draft = { kind: originalNote.kind, title: originalNote.title, description: originalNote.description, slug: originalNote.slug };
+    draft = {
+      kind: originalNote.kind,
+      title: originalNote.title,
+      description: originalNote.description,
+      slug: originalNote.slug,
+      ...(originalNote.kind === "propuesta" && originalNote.author?.trim()
+        ? { author: originalNote.author.trim() }
+        : {}),
+    };
   }
 
   function abandonSession() {
@@ -310,7 +320,12 @@ export function createDialogue(options: {
       render();
       return;
     }
-    draft = { ...draft, title: result.draft.title, description: result.draft.description };
+    draft = {
+      ...draft,
+      title: result.draft.title,
+      description: result.draft.description,
+      ...(result.draft.kind === "propuesta" && result.draft.author !== undefined ? { author: result.draft.author } : {}),
+    };
     commitPendingPick();
     if (result.phase === "summary") {
       workshopSession = null;
@@ -386,6 +401,9 @@ export function createDialogue(options: {
       return;
     }
     if (action.reset) resetDraft(action.reset);
+    if (action.type === "phase" && action.phase.name === "title" && draft.kind === "propuesta") {
+      delete draft.author;
+    }
     phase = action.phase;
     render();
   }
@@ -402,7 +420,13 @@ export function createDialogue(options: {
       atDesk = dest === "desk";
       phase = phaseAfterWorkshopTrip(dest);
       if (dest === "desk") {
-        originalNote = { kind: draft.kind, title: draft.title, description: draft.description, slug: draft.slug };
+        originalNote = {
+          kind: draft.kind,
+          title: draft.title,
+          description: draft.description,
+          slug: draft.slug,
+          ...(draft.kind === "propuesta" && draft.author?.trim() ? { author: draft.author.trim() } : {}),
+        };
         workshopSession = null;
         workshopClosing = false;
         clearWorkshopMemory();
@@ -489,7 +513,7 @@ export function createDialogue(options: {
       text.dataset.typing = "0";
       line.caret.remove();
       if (phase.name === "confirm") showConfirmNote(my);
-      if (phase.name === "title" || phase.name === "body") showInput(my);
+      if (phase.name === "title" || phase.name === "body" || phase.name === "author") showInput(my);
       else if (phase.name === "workshop") showWorkshop(my);
       else showChoices(my);
     };
@@ -733,6 +757,27 @@ export function createDialogue(options: {
       const titleCaption = document.createElement("span");
       titleCaption.textContent = "Título";
       titleLabel.append(titleCaption, title);
+
+      let author: HTMLInputElement | null = null;
+      let authorFieldLabel: HTMLLabelElement | null = null;
+      if (draft.kind === "propuesta") {
+        author = document.createElement("input");
+        author.type = "text";
+        author.className = "dialogue-input";
+        author.dataset.testid = "workshop-author";
+        author.maxLength = LIMITS.authorMax;
+        author.autocomplete = "off";
+        author.spellcheck = true;
+        author.placeholder = "Nombre o seudónimo en el manifiesto";
+        author.setAttribute("aria-label", "Autor");
+        author.value = draft.author ?? "";
+        authorFieldLabel = document.createElement("label");
+        authorFieldLabel.className = "field-label";
+        const authorCaption = document.createElement("span");
+        authorCaption.textContent = "Autor";
+        authorFieldLabel.append(authorCaption, author);
+      }
+
       const descriptionField = createLongText({
         mode: "edit",
         value: draft.description,
@@ -749,25 +794,46 @@ export function createDialogue(options: {
       diff.className = "workshop-diff";
       diff.dataset.testid = "workshop-diff";
       const paintDiff = () => {
-        diff.textContent = workshopDiffLine(originalNote ?? draft, { title: title.value, description: description.value });
+        const o = originalNote ?? draft;
+        const curTitle = title.value;
+        const curDesc = description.value;
+        const curAuthor = author?.value ?? "";
+        const titleLine =
+          o.title.trim() === curTitle.trim() ? "El título sigue igual." : "El título ha cambiado.";
+        const textLine =
+          o.description.trim() === curDesc.trim() ? "El texto sigue igual." : "El texto ha cambiado.";
+        const authorLine =
+          draft.kind !== "propuesta"
+            ? ""
+            : (o as ProposalDraft).author?.trim() === curAuthor.trim()
+              ? " El autor sigue igual."
+              : " El autor ha cambiado.";
+        diff.textContent = `${titleLine} ${textLine}${authorLine}`;
       };
       paintDiff();
       title.addEventListener("input", paintDiff);
       description.addEventListener("input", paintDiff);
+      author?.addEventListener("input", paintDiff);
       content().append(counter, kind);
       showSummaryPicks();
-      content().append(titleLabel, descriptionField.root, diff);
+      content().append(titleLabel);
+      if (authorFieldLabel) content().append(authorFieldLabel);
+      content().append(descriptionField.root, diff);
       const submit = () => {
-        const error = workshopSummaryError(title.value, description.value);
+        const error =
+          workshopSummaryError(title.value, description.value) ??
+          (author ? workshopAuthorSummaryError("propuesta", author.value) : null);
         if (error) {
           nextNotice = error;
           draft.title = title.value;
           draft.description = description.value;
+          if (author) draft.author = author.value;
           render();
           return;
         }
         draft.title = title.value.trim().replace(/\s+/g, " ");
         draft.description = description.value.trim();
+        if (author) draft.author = author.value.trim().replace(/\s+/g, " ");
         void send();
       };
       const actions = actionRow();
@@ -886,7 +952,7 @@ export function createDialogue(options: {
   }
 
   function showInput(my: number) {
-    if (my !== token || (phase.name !== "title" && phase.name !== "body")) return;
+    if (my !== token || (phase.name !== "title" && phase.name !== "body" && phase.name !== "author")) return;
     const say = document.createElement("button");
     say.type = "button";
     say.className = "dialogue-choice";
@@ -909,6 +975,35 @@ export function createDialogue(options: {
       const accept = () => acceptField(field);
       say.addEventListener("click", accept);
       content().append(note.root);
+      pinActions().append(say);
+      field.focus({ preventScroll: true });
+      refreshSheetCue();
+      return;
+    }
+
+    if (phase.name === "author") {
+      const field = document.createElement("input");
+      field.type = "text";
+      field.className = "dialogue-input";
+      field.dataset.testid = "dialogue-author";
+      field.maxLength = LIMITS.authorMax;
+      field.autocomplete = "off";
+      field.spellcheck = true;
+      field.placeholder = "Tu nombre o seudónimo";
+      field.setAttribute("aria-label", "Autor de la petición");
+      field.enterKeyHint = "send";
+      field.value = draft.author ?? "";
+
+      const accept = () => acceptField(field);
+      say.addEventListener("click", accept);
+      field.addEventListener("keydown", (event: Event) => {
+        if (!(event instanceof KeyboardEvent)) return;
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          accept();
+        }
+      });
+      content().append(field);
       pinActions().append(say);
       field.focus({ preventScroll: true });
       refreshSheetCue();
@@ -943,9 +1038,14 @@ export function createDialogue(options: {
   }
 
   function acceptField(field: HTMLInputElement | HTMLTextAreaElement) {
-    if (phase.name !== "title" && phase.name !== "body") return;
+    if (phase.name !== "title" && phase.name !== "body" && phase.name !== "author") return;
     const value = field.value;
-    const min = phase.name === "title" ? LIMITS.titleMin : LIMITS.descriptionMin;
+    const min =
+      phase.name === "title"
+        ? LIMITS.titleMin
+        : phase.name === "body"
+          ? LIMITS.descriptionMin
+          : LIMITS.authorMin;
     const cleaned = value.trim();
     if (cleaned.length < min) {
       render("Un poco más, que si no no sé qué apuntar.");
@@ -954,8 +1054,16 @@ export function createDialogue(options: {
     if (phase.name === "title") {
       draft.title = cleaned.replace(/\s+/g, " ");
       phase = { name: "body", mode: phase.mode };
-    } else {
+    } else if (phase.name === "body") {
       draft.description = cleaned;
+      const bodyMode = phase.mode;
+      if (bodyMode === "propuesta") {
+        phase = { name: "author" };
+      } else {
+        phase = { name: "confirm" };
+      }
+    } else {
+      draft.author = cleaned.replace(/\s+/g, " ");
       phase = { name: "confirm" };
     }
     render();

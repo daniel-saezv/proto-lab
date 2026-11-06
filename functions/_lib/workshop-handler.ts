@@ -272,7 +272,7 @@ export async function handleWorkshop(
   }
 
   if (op === "start") {
-    const validated = validateProposal(body.draft, knownSlugs);
+    const validated = validateProposal(body.draft, knownSlugs, { requireAuthorForNew: false });
     if (!validated.ok) return restore(400, "validation", validated.message);
     return startSession(kv, env.AI, email, day, validated.value);
   }

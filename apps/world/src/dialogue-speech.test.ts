@@ -43,6 +43,9 @@ describe("inventorSpeech", () => {
 
   it("la confirmación ofrece el escritorio y conserva la nota", () => {
     const draft = { kind: "propuesta" as const, title: "Farol", description: "Una app para anotar turnos." };
+    const authorText = inventorSpeech({ name: "author" }, draft, []);
+    expect(authorText).toContain("tablón");
+    expect(authorText).toContain("manifiesto");
     const text = inventorSpeech({ name: "confirm" }, draft, []);
     expect(text).toContain("¿Lo envío así?");
     expect(text).toContain("Farol");

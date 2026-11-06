@@ -14,6 +14,8 @@ export type WorkshopDraftView = {
   kind: "propuesta" | "iteracion";
   title: string;
   description: string;
+  /** Solo propuesta nueva; el taller no lo exige hasta el envío. */
+  author?: string;
   slug?: string;
 };
 
@@ -140,6 +142,16 @@ export function workshopSummaryError(title: string, description: string): string
   return null;
 }
 
+/** Validación al enviar desde el resumen del taller: propuesta nueva exige autor. */
+export function workshopAuthorSummaryError(kind: "propuesta" | "iteracion", author: string): string | null {
+  if (kind !== "propuesta") return null;
+  const clean = author.trim().replace(/\s+/g, " ");
+  if (clean.length < LIMITS.authorMin || clean.length > LIMITS.authorMax) {
+    return `El autor tiene que ir entre ${LIMITS.authorMin} y ${LIMITS.authorMax} caracteres.`;
+  }
+  return null;
+}
+
 export function workshopIntroChoices(): WorkshopChoice[] {
   return [
     { id: WORKSHOP_BEGIN_ID, label: "Empezar" },
@@ -175,6 +187,7 @@ function isDraft(value: unknown): value is WorkshopDraftView {
   if (body.kind !== "propuesta" && body.kind !== "iteracion") return false;
   if (typeof body.title !== "string" || typeof body.description !== "string") return false;
   if (body.slug !== undefined && typeof body.slug !== "string") return false;
+  if (body.author !== undefined && typeof body.author !== "string") return false;
   return true;
 }
 
@@ -219,12 +232,14 @@ export function readWorkshopResult(data: unknown): WorkshopResult | null {
       title: body.draft.title,
       description: body.draft.description,
       ...(body.draft.slug ? { slug: body.draft.slug } : {}),
+      ...(body.draft.author !== undefined ? { author: body.draft.author } : {}),
     },
     original: {
       kind: body.original.kind,
       title: body.original.title,
       description: body.original.description,
       ...(body.original.slug ? { slug: body.original.slug } : {}),
+      ...(body.original.author !== undefined ? { author: body.original.author } : {}),
     },
     round: body.round,
     maxRounds: body.maxRounds,

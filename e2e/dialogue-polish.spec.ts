@@ -149,6 +149,8 @@ test("la cruz cierra cada diálogo y la descripción larga se desplaza", async (
   await expectLongFieldOn(page, "dialogue-input", PHONE_WIDE);
   await page.setViewportSize(home);
   await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-author").fill("Autora de prueba");
+  await page.getByTestId("dialogue-send").click();
   await expect(page.getByTestId("dialogue-note")).toContainText("Fin.");
   await expectOneScroll(page, "dialogue-note");
   await page.getByTestId("dialog-close").click();
@@ -245,6 +247,8 @@ test("el escritorio espera, muestra lo elegido y al cerrar no llama otra vez al 
   await reachBody(page, "Cometa lunar");
   await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa.");
   await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-author").fill("Autora de prueba");
+  await page.getByTestId("dialogue-send").click();
   await page.getByTestId("choice-workshop").click();
   await expect(page.getByTestId("workshop-begin")).toBeVisible();
   await expect(page.getByTestId("dialogue-text")).toContainText("tres rondas");
@@ -281,6 +285,8 @@ test("el escritorio espera, muestra lo elegido y al cerrar no llama otra vez al 
 
   await reachBody(page, "Cometa lunar");
   await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa.");
+  await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-author").fill("Autora de prueba");
   await page.getByTestId("dialogue-send").click();
   await page.getByTestId("choice-workshop").click();
   await page.getByTestId("workshop-begin").click();
@@ -330,5 +336,8 @@ test("en un móvil alto la cruz y el texto largo caben en un solo desplazamiento
   await page.getByTestId("dialogue-input").fill(LONG);
   await expectOneScroll(page, "dialogue-input");
   await expectLongFieldOn(page, "dialogue-input", { width: phone.height, height: phone.width });
+  await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-author").fill("Autora de prueba");
+  await page.getByTestId("dialogue-send").click();
   await context.close();
 });
