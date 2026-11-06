@@ -1,5 +1,5 @@
 import { loungeNpc, yawToward, type LoungeNpc } from "./lounge-layout";
-import { LAYOUT } from "./navigation";
+import { LAYOUT, PLAYER_RADIUS, ROOM_INNER, lobbyStaticColliders, type ColliderSpot } from "./navigation";
 import {
   CAT_BED,
   CAT_HOME_YAW,
@@ -25,6 +25,15 @@ export const ANIMAL_NAP_SPAN = 10;
 
 const YIELD_SQ = 0.72 * 0.72;
 const ERRAND_SPEED = 1.05;
+/** Cuerpo del paseo. Solo empuja muebles al rodear; el camino recto ya está libre. */
+const NPC_BODY = 0.22;
+/**
+ * Hueco entre centros al rodear al jugador.
+ * El collider del paseo es 0,34 y el del jugador, 0,38: por debajo se empujan.
+ */
+const BODY_GAP = PLAYER_RADIUS + 0.34 + 0.08;
+const PASS = 0.07;
+const ERRAND_OBSTACLES: readonly ColliderSpot[] = lobbyStaticColliders();
 const ANIMAL_SPEED = 0.55;
 const RISE_S = 0.7;
 const REACH_S = 0.85;
@@ -108,6 +117,17 @@ export type ErrandState = {
   carrying: boolean;
   justSat: boolean;
   pendingSwap: boolean;
+  /** 0 recto, 1 a la izquierda del tramo, -1 a la derecha. */
+  avoidSide: -1 | 0 | 1;
+  /** Dirección del tramo en el momento de elegir lado. No gira con el desvío. */
+  avoidDirX: number;
+  avoidDirZ: number;
+  /** Ya va hacia el punto: el lado no vuelve a cambiar hasta pasar al jugador. */
+  avoidPast: boolean;
+  /** Segundos casi sin avanzar mientras rodea. */
+  avoidStall: number;
+  /** Este rodeo ya probó el otro lado. */
+  avoidFlipped: boolean;
 };
 
 export type AnimalState = {
@@ -212,6 +232,12 @@ export function createErrand(rng: () => number = Math.random): ErrandState {
     carrying: false,
     justSat: false,
     pendingSwap: false,
+    avoidSide: 0,
+    avoidDirX: 0,
+    avoidDirZ: 1,
+    avoidPast: false,
+    avoidStall: 0,
+    avoidFlipped: false,
   };
 }
 
@@ -254,13 +280,18 @@ export function tickErrand(
     state.reach = 0;
     state.door = 0;
     state.carrying = false;
+    clearAvoid(state);
   }
 
   const motion = dt > 0.05 ? 0.05 : dt;
+  const originX = state.x;
+  const originZ = state.z;
   if (state.phase === "wait") {
     if (!view.hold) state.waitLeft -= dt;
     const home = actorHome(state.actor);
     const near = (view.playerX - home.x) ** 2 + (view.playerZ - home.z) ** 2 < 1.44;
+    // La cámara solo decide el arranque. El viaje sigue lejos: si se congela,
+    // la fase se queda en caminar y las piernas se mueven sin avanzar.
     if (state.waitLeft <= 0 && !view.hold && view.visible && !near) {
       state.phase = "rise";
       state.phaseTime = 0;
@@ -268,8 +299,6 @@ export function tickErrand(
       state.z = home.z;
       state.yaw = home.yaw;
     }
-  } else if (!view.visible || blocked(view, state.x, state.z)) {
-    // Quieto fuera de cámara o si el jugador está encima. Sin buscar camino.
   } else if (state.phase === "rise") {
     state.phaseTime += motion;
     state.stand = clamp01(state.phaseTime / RISE_S);
@@ -279,10 +308,11 @@ export function tickErrand(
       state.phaseTime = 0;
     }
   } else if (state.phase === "walk") {
-    const done = stepPath(state, motion, ERRAND_PATHS[state.actor]!, 1, ERRAND_SPEED);
+    const done = stepErrand(state, motion, ERRAND_PATHS[state.actor]!, 1, ERRAND_SPEED, view.playerX, view.playerZ);
     if (done) {
       state.phase = "reach";
       state.phaseTime = 0;
+      clearAvoid(state);
     }
   } else if (state.phase === "reach") {
     state.phaseTime += motion;
@@ -314,10 +344,11 @@ export function tickErrand(
       state.phaseTime = 0;
     }
   } else if (state.phase === "return") {
-    const done = stepPath(state, motion, ERRAND_PATHS[state.actor]!, -1, ERRAND_SPEED);
+    const done = stepErrand(state, motion, ERRAND_PATHS[state.actor]!, -1, ERRAND_SPEED, view.playerX, view.playerZ);
     if (done) {
       state.phase = "sit";
       state.phaseTime = 0;
+      clearAvoid(state);
     }
   } else {
     state.phaseTime += motion;
@@ -348,7 +379,9 @@ export function tickErrand(
   pose.reach = state.reach;
   pose.door = state.door;
   pose.carrying = state.carrying;
-  pose.walking = state.phase === "walk" || state.phase === "return";
+  const moved = Math.hypot(state.x - originX, state.z - originZ);
+  const stepping = state.phase === "walk" || state.phase === "return";
+  pose.walking = stepping && moved > 0.001;
 }
 
 export function tickAnimal(state: AnimalState, dt: number, view: RoutineView, pose: AnimalPose, rng: () => number = Math.random): void {
@@ -434,6 +467,7 @@ export function snapErrandAtFridge(state: ErrandState, pose: ErrandPose): void {
   state.carrying = true;
   state.justSat = false;
   state.pendingSwap = false;
+  clearAvoid(state);
   pose.id = "remolon";
   pose.engaged = true;
   pose.x = state.x;
@@ -486,6 +520,247 @@ function stepPath(
   state.z += (dz / dist) * step;
   state.yaw = Math.atan2(dx, dz);
   return false;
+}
+
+/**
+ * Sigue el camino y, si el jugador tapa el tramo, lo rodea por un lado fijo.
+ * Sin malla de navegación: un punto al lado y el hueco del cuerpo.
+ */
+function stepErrand(
+  state: ErrandState,
+  dt: number,
+  points: readonly XZ[],
+  dir: 1 | -1,
+  speed: number,
+  playerX: number,
+  playerZ: number,
+): boolean {
+  const done = stepErrandCourse(state, dt, points, dir, speed, playerX, playerZ);
+  const home = actorHome(state.actor);
+  if ((state.x - home.x) ** 2 + (state.z - home.z) ** 2 < 1.44) return done;
+  const clear = separateObstacles(state.x, state.z);
+  const placed = separateCircle(clear.x, clear.z, playerX, playerZ, BODY_GAP);
+  state.x = placed.x;
+  state.z = placed.z;
+  return done;
+}
+
+function stepErrandCourse(
+  state: ErrandState,
+  dt: number,
+  points: readonly XZ[],
+  dir: 1 | -1,
+  speed: number,
+  playerX: number,
+  playerZ: number,
+): boolean {
+  const targetIndex = state.waypoint + dir;
+  if (targetIndex < 0 || targetIndex >= points.length) return true;
+  const target = points[targetIndex]!;
+  const dx = target[0] - state.x;
+  const dz = target[1] - state.z;
+  const dist = Math.hypot(dx, dz);
+  const pDist = Math.hypot(playerX - state.x, playerZ - state.z);
+  const segDist = pointSegmentDistance(playerX, playerZ, state.x, state.z, target[0], target[1]);
+  const terminal = targetIndex === 0 || targetIndex === points.length - 1;
+  const playerOnTarget = Math.hypot(playerX - target[0], playerZ - target[1]) < BODY_GAP;
+
+  if (playerOnTarget && dist < BODY_GAP + 0.45) {
+    clearAvoid(state);
+    if (terminal) return true;
+    state.waypoint = targetIndex;
+    return false;
+  }
+
+  if (dist < PASS && pDist >= BODY_GAP) {
+    clearAvoid(state);
+    state.x = target[0];
+    state.z = target[1];
+    state.waypoint = targetIndex;
+    return terminal;
+  }
+
+  const desiredX = dist < 1e-6 ? 0 : dx / dist;
+  const desiredZ = dist < 1e-6 ? 1 : dz / dist;
+  const ahead = (playerX - state.x) * desiredX + (playerZ - state.z) * desiredZ;
+  const blocking = segDist < BODY_GAP || pDist < BODY_GAP;
+  if (state.avoidPast && ahead < -0.25 && pDist > BODY_GAP + 0.05 && segDist >= BODY_GAP) clearAvoid(state);
+  if (state.avoidSide === 0 && !blocking) {
+    const beforeX = state.x;
+    const beforeZ = state.z;
+    const done = stepPath(state, dt, points, dir, speed);
+    const pushed = separateCircle(state.x, state.z, playerX, playerZ, BODY_GAP);
+    if (pushed.x !== state.x || pushed.z !== state.z) {
+      state.yaw = Math.atan2(pushed.x - beforeX, pushed.z - beforeZ);
+    }
+    state.x = pushed.x;
+    state.z = pushed.z;
+    return done;
+  }
+
+  if (state.avoidSide === 0) {
+    state.avoidSide = pickSide(state.x, state.z, desiredX, desiredZ, playerX, playerZ);
+    state.avoidDirX = desiredX;
+    state.avoidDirZ = desiredZ;
+    state.avoidStall = 0;
+    state.avoidFlipped = false;
+    state.avoidPast = false;
+  }
+
+  const perpX = -state.avoidDirZ * state.avoidSide;
+  const perpZ = state.avoidDirX * state.avoidSide;
+  const sideGap = (state.x - playerX) * perpX + (state.z - playerZ) * perpZ;
+  const opened = pDist >= BODY_GAP && sideGap >= BODY_GAP - 0.04;
+  if (!state.avoidPast && opened && ahead < 0.55) state.avoidPast = true;
+
+  let aimX = target[0];
+  let aimZ = target[1];
+  if (!state.avoidPast) {
+    const lateral = lateralPoint(playerX, playerZ, perpX, perpZ);
+    aimX = lateral.x;
+    aimZ = lateral.z;
+  }
+
+  const moved = moveSkirt(state, aimX, aimZ, dt, speed, playerX, playerZ);
+  if (moved < speed * dt * 0.3) state.avoidStall += dt;
+  else state.avoidStall = 0;
+  if (state.avoidStall > 0.5) {
+    if (!state.avoidFlipped) {
+      state.avoidSide = state.avoidSide === 1 ? -1 : 1;
+      state.avoidDirX = desiredX;
+      state.avoidDirZ = desiredZ;
+      state.avoidFlipped = true;
+      state.avoidPast = false;
+      state.avoidStall = 0;
+    } else {
+      clearAvoid(state);
+      if (terminal) return dist < 2.4;
+      state.waypoint = targetIndex;
+      return false;
+    }
+  }
+  return false;
+}
+
+function clearAvoid(state: ErrandState): void {
+  state.avoidSide = 0;
+  state.avoidDirX = 0;
+  state.avoidDirZ = 1;
+  state.avoidPast = false;
+  state.avoidStall = 0;
+  state.avoidFlipped = false;
+}
+
+function pickSide(x: number, z: number, desiredX: number, desiredZ: number, playerX: number, playerZ: number): -1 | 1 {
+  const leftX = -desiredZ;
+  const leftZ = desiredX;
+  const cross = desiredX * (playerZ - z) - desiredZ * (playerX - x);
+  const prefer: -1 | 1 = cross >= 0 ? -1 : 1;
+  const other: -1 | 1 = prefer === 1 ? -1 : 1;
+  const preferRoom = obstacleGap(x + leftX * prefer * 1.05, z + leftZ * prefer * 1.05);
+  const otherRoom = obstacleGap(x + leftX * other * 1.05, z + leftZ * other * 1.05);
+  return otherRoom > preferRoom + 0.35 ? other : prefer;
+}
+
+function lateralPoint(playerX: number, playerZ: number, perpX: number, perpZ: number): { x: number; z: number } {
+  let reach = BODY_GAP + 0.28;
+  let x = playerX + perpX * reach;
+  let z = playerZ + perpZ * reach;
+  for (let i = 0; i < 4; i++) {
+    const placed = clampRoom(x, z);
+    x = placed.x;
+    z = placed.z;
+    if (obstacleGap(x, z) >= 0.02) break;
+    reach += 0.22;
+    x = playerX + perpX * reach;
+    z = playerZ + perpZ * reach;
+  }
+  return clampRoom(x, z);
+}
+
+function moveSkirt(
+  state: ErrandState,
+  aimX: number,
+  aimZ: number,
+  dt: number,
+  speed: number,
+  playerX: number,
+  playerZ: number,
+): number {
+  const dx = aimX - state.x;
+  const dz = aimZ - state.z;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 1e-6) return 0;
+  const step = Math.min(speed * dt, dist);
+  let x = state.x + (dx / dist) * step;
+  let z = state.z + (dz / dist) * step;
+  let placed = separateCircle(x, z, playerX, playerZ, BODY_GAP);
+  placed = separateObstacles(placed.x, placed.z);
+  placed = separateCircle(placed.x, placed.z, playerX, playerZ, BODY_GAP);
+  placed = clampRoom(placed.x, placed.z);
+  placed = separateCircle(placed.x, placed.z, playerX, playerZ, BODY_GAP);
+  const moved = Math.hypot(placed.x - state.x, placed.z - state.z);
+  if (moved > 1e-5) state.yaw = Math.atan2(placed.x - state.x, placed.z - state.z);
+  state.x = placed.x;
+  state.z = placed.z;
+  return moved;
+}
+
+function separateCircle(x: number, z: number, cx: number, cz: number, gap: number): { x: number; z: number } {
+  const dx = x - cx;
+  const dz = z - cz;
+  const dist = Math.hypot(dx, dz);
+  if (dist >= gap || dist < 1e-6) return { x, z };
+  return { x: cx + (dx / dist) * gap, z: cz + (dz / dist) * gap };
+}
+
+function separateObstacles(x: number, z: number): { x: number; z: number } {
+  let px = x;
+  let pz = z;
+  for (let pass = 0; pass < 2; pass++) {
+    for (const spot of ERRAND_OBSTACLES) {
+      const dx = px - spot.x;
+      const dz = pz - spot.z;
+      const min = spot.collider + NPC_BODY;
+      const distSq = dx * dx + dz * dz;
+      if (distSq >= min * min || distSq < 1e-8) continue;
+      const dist = Math.sqrt(distSq);
+      const push = (min - dist) / dist;
+      px += dx * push;
+      pz += dz * push;
+    }
+  }
+  return { x: px, z: pz };
+}
+
+function obstacleGap(x: number, z: number): number {
+  const room = clampRoom(x, z);
+  if (room.x !== x || room.z !== z) return -1;
+  let gap = 4;
+  for (const spot of ERRAND_OBSTACLES) {
+    const clear = Math.hypot(x - spot.x, z - spot.z) - spot.collider - NPC_BODY;
+    if (clear < gap) gap = clear;
+  }
+  return gap;
+}
+
+function clampRoom(x: number, z: number): { x: number; z: number } {
+  return {
+    x: clamp(x, ROOM_INNER.minX + NPC_BODY, ROOM_INNER.maxX - NPC_BODY),
+    z: clamp(z, ROOM_INNER.minZ + NPC_BODY, ROOM_INNER.maxZ - NPC_BODY),
+  };
+}
+
+function pointSegmentDistance(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const abx = bx - ax;
+  const abz = bz - az;
+  const ab2 = abx * abx + abz * abz;
+  const t = ab2 < 1e-8 ? 0 : clamp01(((px - ax) * abx + (pz - az) * abz) / ab2);
+  return Math.hypot(ax + abx * t - px, az + abz * t - pz);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function clamp01(value: number): number {
