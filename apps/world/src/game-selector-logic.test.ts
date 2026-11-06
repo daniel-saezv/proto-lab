@@ -2,14 +2,11 @@ import { describe, expect, it } from "vitest";
 import { selectorKeyAction, stepIndex, wrapIndex } from "./game-selector-logic";
 
 describe("game-selector-logic", () => {
-  it("envuelve el índice", () => {
+  it("envuelve el índice al avanzar y al retroceder", () => {
     expect(wrapIndex(0, 3)).toBe(0);
     expect(wrapIndex(3, 3)).toBe(0);
     expect(wrapIndex(-1, 3)).toBe(2);
     expect(wrapIndex(4, 3)).toBe(1);
-  });
-
-  it("avanza y retrocede con wrap-around", () => {
     expect(stepIndex(0, 1, 2)).toBe(1);
     expect(stepIndex(1, 1, 2)).toBe(0);
     expect(stepIndex(0, -1, 2)).toBe(1);

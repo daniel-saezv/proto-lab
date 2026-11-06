@@ -62,8 +62,11 @@ describe("cabeceras de Pages", () => {
     expect(cacheOf("/protos/chispa/assets/index-Abcd1234.js")).toBe("public, max-age=31536000, immutable");
     expect(cacheOf("/protos/audio/luanda.m4a")).toBe("public, max-age=31536000, immutable");
     expect(cacheOf("/protos/audio/luanda.abc12345.m4a")).toBe("public, max-age=31536000, immutable");
+    expect(headersForPath(rules, "/protos/chispa/").get("access-control-allow-origin")?.value).toBe("*");
     expect(cacheOf("/api/proposals/status")).toBe("no-store");
     expect(source.match(/\/protos\/audio\/\*\.m4a/g)).toHaveLength(1);
+    const routes = JSON.parse(readFileSync(join(root, "apps/world/public/_routes.json"), "utf8"));
+    expect(routes.include).toEqual(["/api/*"]);
   });
 
   it("no deja que writeHead ni setHeader sustituyan la caché de Pages", async () => {

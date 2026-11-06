@@ -147,16 +147,4 @@ describe("service worker", () => {
     expect(source).toContain("if (mustBypass(url, event.request.method)) return;");
     expect(source).toContain('url.pathname.startsWith("/protos/")');
   });
-
-  it("revalida el HTML de los prototipos y deja immutable el JS con hash y el audio", () => {
-    const headers = readFileSync(join(root, "apps/world/public/_headers"), "utf8");
-    expect(headers).toMatch(/\/protos\/\*/);
-    expect(headers).toMatch(/\/protos\/:slug\/assets\/\*/);
-    expect(headers).toMatch(/no-cache/);
-    expect(headers).toMatch(/Access-Control-Allow-Origin: \*/);
-    expect(headers).toMatch(/\/protos\/audio\/\*\.m4a[\s\S]*! Cache-Control[\s\S]*max-age=31536000, immutable/);
-    expect(headers.match(/\/protos\/audio\/\*\.m4a/g)).toHaveLength(1);
-    const routes = JSON.parse(readFileSync(join(root, "apps/world/public/_routes.json"), "utf8"));
-    expect(routes.include).toEqual(["/api/*"]);
-  });
 });

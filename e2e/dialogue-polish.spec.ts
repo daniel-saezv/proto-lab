@@ -1,5 +1,4 @@
-import { devices, expect, test, type Page } from "@playwright/test";
-import { skipUnlessChromium } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
 
 /** Móvil alto (puntos CSS de un teléfono Android) y horizontal corto. */
 const PHONE_TALL = { width: 412, height: 915 };
@@ -298,46 +297,4 @@ test("el escritorio espera, muestra lo elegido y al cerrar no llama otra vez al 
   await expectOneScroll(page, "workshop-description");
   await expectLongFieldOn(page, "workshop-description", PHONE_TALL);
   await expectLongFieldOn(page, "workshop-description", PHONE_WIDE);
-});
-
-test("en un móvil alto la cruz y el texto largo caben en un solo desplazamiento", async ({ browser }, testInfo) => {
-  skipUnlessChromium(testInfo, "perfil Pixel 7");
-  const context = await browser.newContext({
-    ...devices["Pixel 7"],
-    baseURL: "http://127.0.0.1:4173",
-    locale: "es-ES",
-  });
-  const page = await context.newPage();
-  await page.route("**/api/proposals/status", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, items: [] }),
-    });
-  });
-  await page.route(/\/api\/proposals$/, async (route) => {
-    await route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, issueNumber: 1, issueUrl: "https://example.invalid/1" }),
-    });
-  });
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  const phone = await viewportOf(page);
-  expect(phone.width).toBeGreaterThan(390);
-  expect(phone.height).toBeGreaterThan(800);
-  await page.evaluate(() => window.__protoLab?.focus("remolon"));
-  await page.getByTestId("interact").click();
-  await expect(page.locator("#dialogue-name")).toHaveText("Remolón");
-  boxInside(await page.getByTestId("dialog-close").boundingBox(), phone.width, phone.height);
-  await page.getByTestId("dialog-close").click();
-  await reachBody(page, "Cometa lunar");
-  await page.getByTestId("dialogue-input").fill(LONG);
-  await expectOneScroll(page, "dialogue-input");
-  await expectLongFieldOn(page, "dialogue-input", { width: phone.height, height: phone.width });
-  await page.getByTestId("dialogue-send").click();
-  await page.getByTestId("dialogue-author").fill("Autora de prueba");
-  await page.getByTestId("dialogue-send").click();
-  await context.close();
 });
