@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://invitado.gd" id="1_invitado"]
+
+[node name="Invitado" type="CharacterBody3D"]
+script = ExtResource("1_invitado")

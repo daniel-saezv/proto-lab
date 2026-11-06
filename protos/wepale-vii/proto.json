@@ -1,0 +1,19 @@
+{
+  "slug": "wepale-vii",
+  "title": "Wepale VII",
+  "description": "Cuatro oficios y una plaza. Jarra, Naipe, Espuma y Comparsa pelean en la encrucijada de Tvresn y Ajgulzil, entre cartas, cerveza y una fiesta que se torció. El pulgar izquierdo mueve; el derecho golpea y lanza tres habilidades. Hay que aguantar tres rondas.",
+  "author": "Gamu",
+  "date": "2026-11-06",
+  "tags": ["godot", "accion", "fiesta"],
+  "cover": null,
+  "version": "0.1.0",
+  "capabilities": ["wasm"],
+  "readyMs": 20000,
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-06",
+      "note": "Primer corte jugable: cuatro oficios, plaza entre Tvresn y Ajgulzil y tres rondas."
+    }
+  ]
+}

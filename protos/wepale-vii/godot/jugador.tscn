@@ -1,0 +1,44 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://jugador.gd" id="1_jug"]
+
+[sub_resource type="CapsuleShape3D" id="capsula"]
+radius = 0.38
+height = 1.1
+
+[sub_resource type="CapsuleMesh" id="cuerpo"]
+radius = 0.38
+height = 1.1
+
+[sub_resource type="SphereMesh" id="cabeza"]
+radius = 0.22
+height = 0.44
+
+[sub_resource type="BoxMesh" id="arma"]
+size = Vector3(0.16, 0.16, 0.46)
+
+[node name="Jugador" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 1
+floor_snap_length = 0.2
+script = ExtResource("1_jug")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.56, 0)
+shape = SubResource("capsula")
+
+[node name="Bob" type="Node3D" parent="."]
+
+[node name="Cuerpo" type="MeshInstance3D" parent="Bob"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.56, 0)
+mesh = SubResource("cuerpo")
+
+[node name="Cabeza" type="MeshInstance3D" parent="Bob"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+mesh = SubResource("cabeza")
+
+[node name="Arma" type="MeshInstance3D" parent="Bob"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.46, 0.86, -0.2)
+mesh = SubResource("arma")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
