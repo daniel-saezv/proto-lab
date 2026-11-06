@@ -1,0 +1,48 @@
+name: Desplegar Worker de presencia
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workers/presence/**"
+      - ".github/workflows/deploy-presence-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: presence-worker-deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: wrangler deploy (proto-lab-presence)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: pnpm/action-setup@v6.1.1
+        with:
+          version: 12.17.0
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Publicar Worker de la sala
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKER_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::notice::Faltan CLOUDFLARE_WORKER_DEPLOY_TOKEN o CLOUDFLARE_ACCOUNT_ID. No se despliega el Worker (mismo patrón que otros jobs de Cloudflare que salen en verde si falta el token)."
+            exit 0
+          fi
+          pnpm exec wrangler deploy
+        working-directory: workers/presence
