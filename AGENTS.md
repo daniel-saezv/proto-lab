@@ -215,7 +215,7 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 
 - Rama de producción: `main` → `https://proto-lab-3k6.pages.dev`
 - Preview por pull request → `https://*.proto-lab-3k6.pages.dev`
-- Preset None, comando `pnpm build`, directorio `dist`. Node 26 sale de `.nvmrc` y `.node-version` (Pages v3; el default de la imagen es 22.23.4 y `engines` no elige la versión). Si el panel todavía tiene `NODE_VERSION`, esa variable también fija el runtime del build y hay que dejarla en `26` o quitarla.
+- Preset None, comando `pnpm build`, directorio `dist`. El pin de Node es `.nvmrc`: lo leen Pages v3 y `actions/setup-node` (`node-version-file`). El default de la imagen es 22.23.4. `engines` no elige la versión; `engines.node` es el mínimo (`>=` el major de `.nvmrc`) para `engine-strict`. Si el panel todavía tiene `NODE_VERSION`, hay que dejarla en el mismo valor que `.nvmrc` o quitarla.
 - Access con PIN de un solo uso en producción y en las previews
 - Secreto de Pages: `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en `daniel-saezv/proto-lab`). Sin valor en el repo.
 - Secreto de Pages: `GITHUB_STATUS_TOKEN` (fine-grained **aparte**, solo lectura: Issues, Pull requests, Actions y Contents en este repo). Alimenta `GET /api/proposals/status`. Contents hace falta para el campo GraphQL `files`. No reutilices `GITHUB_TOKEN`.
@@ -256,7 +256,7 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: valida el JWT `Cf-
 
 ## Cursor Cloud specific instructions
 
-El `install` de `.cursor/environment.json` asume el Node de `.nvmrc` (26). Node 26 no trae Corepack: el comando lo instala con npm, prepara pnpm 12.17.0 y luego las dependencias y los navegadores de Playwright del entorno local (`pnpm previews` y depuración puntual de e2e). En GitHub Actions los e2e usan la imagen Docker oficial, no `playwright install`. Es idempotente.
+El `install` de `.cursor/environment.json` asume el Node de `.nvmrc`. Node 26 no trae Corepack: el comando lo instala con npm, prepara pnpm 12.17.0 y luego las dependencias y los navegadores de Playwright del entorno local (`pnpm previews` y depuración puntual de e2e). En GitHub Actions los e2e usan la imagen Docker oficial, no `playwright install`. Es idempotente.
 
 El entorno de los agentes solo admite el MCP de documentación de Cloudflare (`https://docs.mcp.cloudflare.com/mcp`), registrado en `.cursor/mcp.json` y en `mcpServerAllowlist`. No se añade el MCP de la API (`https://mcp.cloudflare.com/mcp`) ni ningún token. Godot no se instala en la imagen: el export lo hace el workflow y el agente commitea el artefacto.
 

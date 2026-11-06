@@ -272,7 +272,7 @@ describe("workflow de tablas D1", () => {
     expect(source).toContain("cancel-in-progress: false");
     expect(source).toContain("timeout-minutes: 10");
     expect(source).toContain("fetch-depth: 0");
-    expect(source).toContain("node-version: 26");
+    expect(source).toContain('node-version-file: ".nvmrc"');
     expect(source).toContain("node scripts/d1-app-tables.mjs");
     expect(source).toContain(`secrets.${D1_TOKEN_SECRET}`);
     expect(source).toContain(`secrets.${ACCOUNT_SECRET}`);
