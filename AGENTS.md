@@ -76,9 +76,9 @@ El catálogo no se edita a mano. `apps/world/src/generated/catalog.json` y `func
 
 ## Comandos
 
-Comandos comprobados en este repositorio (Node 22.23, pnpm 12.17.0):
+Comandos comprobados en este repositorio (Node 26.13, pnpm 12.17.0). Node 26 no trae Corepack; el primer comando lo instala y deja pnpm 12.17.0:
 
-- Instalación: `corepack enable && corepack prepare pnpm@12.17.0 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit`
+- Instalación: `npm install -g corepack && corepack enable && corepack prepare pnpm@12.17.0 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit`
 - Build: `pnpm build` → sitio estático en `dist/` (`/` el laboratorio, `/protos/chispa/` el ejemplo)
 - Vistas previas de prototipos: `pnpm previews` (construye el sitio, arranca `pnpm preview` si hace falta, captura con Playwright y escribe `protos/<slug>/preview.webp`; declara `"preview": "preview.webp"` en `proto.json` si no existía). Sirve para cualquier aplicación: si hay canvas, recorta el más grande; si no, fotografía la ventana. Luego normaliza la foto a 640×360 (16:9): la captura entra entera y centrada, y las bandas usan el color de las esquinas. Opcional: `window.__protoLabPreview` (función o promesa) se llama antes de la foto fija, no antes del clip. Al crear o modificar una aplicación hay que ejecutarlo y commitear en el mismo PR `preview.webp`, `preview.mp4` y `preview-src.sha256`. La CI solo comprueba el clip (MP4 H.264 Baseline, sin audio, faststart, 3 s a 12 fps, dentro de 320×180, tope 160 KiB) y que el sello coincide con las fuentes; no lo graba. El encuadre de la foto está en **Encuadre de la vista previa**.
 - Pasada visual del lobby: con `pnpm dev` o `pnpm preview` en marcha, `pnpm shots -- --out shots --prefix antes` (y el mismo comando con `--prefix despues`). Usa los encuadres fijos de `apps/world/src/viewpoints.ts` (aparición, Inventor, arcade, cuatro rincones y cenital) en escritorio 1280×800, dos teléfonos en vertical (390×844 y 412×915) y uno en horizontal (844×390). No se añade otro horizontal: el alto corto ya está en la hoja. Abre el selector en la arcade y compone una sola hoja de contacto. `--debug` añade una cenital con anillos en Inventor, arcade y pizarra. `SHOTS_URL` fuerza la base; si no hay servidor, arranca `pnpm dev`. La carpeta `shots/` no se versiona.
@@ -215,7 +215,7 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 
 - Rama de producción: `main` → `https://proto-lab-3k6.pages.dev`
 - Preview por pull request → `https://*.proto-lab-3k6.pages.dev`
-- Preset None, comando `pnpm build`, directorio `dist`, `NODE_VERSION=22`
+- Preset None, comando `pnpm build`, directorio `dist`. El pin de Node es `.nvmrc`: lo leen Pages v3 y `actions/setup-node` (`node-version-file`). El default de la imagen es 22.23.4. `engines` no elige la versión; `engines.node` es el mínimo (`>=` el major de `.nvmrc`) para `engine-strict`. Si el panel todavía tiene `NODE_VERSION`, hay que dejarla en el mismo valor que `.nvmrc` o quitarla.
 - Access con PIN de un solo uso en producción y en las previews
 - Secreto de Pages: `GITHUB_TOKEN` (fine-grained, solo Issues de lectura y escritura en `daniel-saezv/proto-lab`). Sin valor en el repo.
 - Secreto de Pages: `GITHUB_STATUS_TOKEN` (fine-grained **aparte**, solo lectura: Issues, Pull requests, Actions y Contents en este repo). Alimenta `GET /api/proposals/status`. Contents hace falta para el campo GraphQL `files`. No reutilices `GITHUB_TOKEN`.
@@ -256,7 +256,7 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: valida el JWT `Cf-
 
 ## Cursor Cloud specific instructions
 
-El `install` de `.cursor/environment.json` instala dependencias con pnpm y los navegadores de Playwright que pide el entorno local (`pnpm previews` y depuración puntual de e2e). En GitHub Actions los e2e usan la imagen Docker oficial, no `playwright install`. Es idempotente.
+El `install` de `.cursor/environment.json` asume el Node de `.nvmrc`. Node 26 no trae Corepack: el comando lo instala con npm, prepara pnpm 12.17.0 y luego las dependencias y los navegadores de Playwright del entorno local (`pnpm previews` y depuración puntual de e2e). En GitHub Actions los e2e usan la imagen Docker oficial, no `playwright install`. Es idempotente.
 
 El entorno de los agentes solo admite el MCP de documentación de Cloudflare (`https://docs.mcp.cloudflare.com/mcp`), registrado en `.cursor/mcp.json` y en `mcpServerAllowlist`. No se añade el MCP de la API (`https://mcp.cloudflare.com/mcp`) ni ningún token. Godot no se instala en la imagen: el export lo hace el workflow y el agente commitea el artefacto.
 

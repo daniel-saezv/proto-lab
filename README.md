@@ -12,9 +12,10 @@ El Inventor pregunta, resume y pide confirmación. Al confirmar, una Pages Funct
 
 ## Desarrollo
 
-Hace falta Node 22 y pnpm 12.17.0 (`packageManager` en `package.json`).
+Hace falta el Node de `.nvmrc` (ahora 26) y pnpm 12.17.0 (`packageManager` en `package.json`). `engines.node` es `>=` ese major: pnpm no lee `.nvmrc`. Los workflows usan `node-version-file` y no repiten el número. Node 26 no trae Corepack.
 
 ```sh
+npm install -g corepack
 corepack enable
 corepack prepare pnpm@12.17.0 --activate
 pnpm install --frozen-lockfile
@@ -65,7 +66,9 @@ El proyecto ya está conectado al repositorio. No hace falta cambiar el build:
 | Preset | None |
 | Comando de build | `pnpm build` |
 | Directorio de salida | `dist` |
-| `NODE_VERSION` | `22` |
+| Node.js | el contenido de `.nvmrc` (ahora `26`) |
+
+Pages v3 instala esa versión (cualquier versión, también posterior al default 22.23.4 de la imagen). No usa `engines`. Si el panel todavía tiene `NODE_VERSION`, hay que dejarla en el mismo valor que `.nvmrc` o quitarla: esa variable también fija el Node del build.
 
 `pnpm build` genera el catálogo, construye el laboratorio y los prototipos, y deja el sitio estático en `dist`. Pages instala las dependencias antes, a partir de `pnpm-lock.yaml`. Las Functions no van dentro de `dist`: Pages las toma de `functions/` en la raíz del repositorio (`/api/proposals` y `/api/proposals/status`).
 

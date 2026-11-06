@@ -1,5 +1,5 @@
 import { devices, expect, test } from "@playwright/test";
-import { expandPrototypeHud, skipUnlessChromium, skipUnlessTouchMobile, TOUCH_MOBILE_TAG } from "./helpers";
+import { expandPrototypeHud, pressPrototypeHud, skipUnlessChromium, skipUnlessTouchMobile, TOUCH_MOBILE_TAG } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/proposals/status", async (route) => {
@@ -1245,10 +1245,7 @@ test("el hash #p= abre un prototipo y un slug desconocido se ignora", async ({ p
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
   await expect(page.locator("iframe")).toHaveCount(1);
   expect(page.url()).toContain("#p=chispa");
-  await expandPrototypeHud(page, isMobile ? "tap" : "click");
-  const back = page.getByTestId("close-prototype");
-  if (isMobile) await back.tap();
-  else await back.click();
+  await pressPrototypeHud(page, "close-prototype", isMobile ? "tap" : "click");
   await expect(page.getByTestId("prototype-player")).toBeHidden();
   expect(page.url()).not.toContain("#p=");
 
@@ -1261,10 +1258,7 @@ test("Sugerir mejora abre una iteración del prototipo abierto", async ({ page, 
   skipUnlessChromium(testInfo, "propuesta de iteración desde el overlay");
   await page.goto("/?e2e=1#p=chispa");
   await expect(page.getByTestId("prototype-chrome")).toBeVisible();
-  await expandPrototypeHud(page, isMobile ? "tap" : "click");
-  const suggest = page.getByTestId("suggest-improvement");
-  if (isMobile) await suggest.tap();
-  else await suggest.click();
+  await pressPrototypeHud(page, "suggest-improvement", isMobile ? "tap" : "click");
   await expect(page.getByTestId("dialogue")).toBeVisible();
   await expect(page.getByTestId("prototype-player")).toBeHidden();
   await page.getByTestId("dialogue-input").fill("Más contraste");

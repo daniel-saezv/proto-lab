@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -68,6 +68,32 @@ describe("workflow de CI", () => {
     const helpers = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "e2e", "helpers.ts"), "utf8");
     expect(helpers).toContain('export const TOUCH_MOBILE_TAG = "@movil"');
     expect(helpers).not.toContain("skipUnlessWebKitIphone");
+  });
+
+  it("el pin de Node es .nvmrc y setup-node lo lee sin repetir el número", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const pin = readFileSync(join(root, ".nvmrc"), "utf8").trim();
+    expect(pin).toMatch(/^\d+$/);
+    expect(existsSync(join(root, ".node-version"))).toBe(false);
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    expect(pkg.engines.node).toBe(`>=${pin}`);
+    expect(pkg.devDependencies["@types/node"].startsWith(`^${pin}.`)).toBe(true);
+    expect(pkg.packageManager).toBe("pnpm@12.17.0");
+    const files = [
+      ".github/workflows/ci.yml",
+      ".github/actions/playwright/action.yml",
+      ".github/workflows/d1-app-tables.yml",
+      ".github/workflows/exportar-godot.yml",
+      ".github/workflows/medir-godot.yml",
+    ];
+    for (const file of files) {
+      const source = readFileSync(join(root, file), "utf8");
+      expect(source).toContain("actions/setup-node@v7.1.0");
+      expect(source).toContain('node-version-file: ".nvmrc"');
+      expect(source).not.toMatch(/node-version:\s*['"]?\d/);
+    }
+    expect(jobBlock("verificar")).toContain('node-version-file: ".nvmrc"');
+    expect(jobBlock("main-push")).toContain('node-version-file: ".nvmrc"');
   });
 
   it("el atajo de una aplicación no lanza el build del laboratorio", () => {

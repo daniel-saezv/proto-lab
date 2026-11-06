@@ -26,7 +26,7 @@ jobs:
       - name: Node
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: 22
+          node-version-file: ".nvmrc"
 
       - name: Aplicar migraciones del lab y de las apps
         env:

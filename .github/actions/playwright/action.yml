@@ -28,7 +28,7 @@ runs:
         version: 12.17.0
     - uses: actions/setup-node@v7.1.0
       with:
-        node-version: 22
+        node-version-file: ".nvmrc"
         cache: pnpm
     - name: Comprobar ruta de navegadores (imagen)
       shell: bash
