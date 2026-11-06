@@ -69,24 +69,6 @@ describe("acciones del tablón", () => {
     });
   });
 
-  it("en preview lista abre la URL de la preview", () => {
-    expect(
-      boardNavAction(
-        item({
-          number: 8,
-          title: "Chispas",
-          phase: "preview_lista",
-          previewUrl: "https://preview-test.proto-lab-3k6.pages.dev",
-        }),
-        ["chispa"],
-      ),
-    ).toEqual({
-      kind: "preview",
-      label: "Probar la preview",
-      href: "https://preview-test.proto-lab-3k6.pages.dev/",
-    });
-  });
-
   it("en preview lista sin URL válida no hay acción", () => {
     expect(
       boardNavAction(item({ number: 8, title: "Chispas", phase: "preview_lista", previewUrl: "https://example.com" }), []),

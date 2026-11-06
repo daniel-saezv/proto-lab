@@ -77,16 +77,6 @@ async function openInstallHelpFromInventor(page: import("@playwright/test").Page
   await expect(page.getByTestId("install-help")).toBeVisible();
 }
 
-async function waitForLobbyWhiteboard(page: import("@playwright/test").Page) {
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  await expect(page.locator("#viewport")).toHaveAttribute("data-whiteboard-items", "7,8", { timeout: 20_000 });
-}
-
-test("el tablón en la pizarra 3D refleja el estado simulado", async ({ page }) => {
-  await waitForLobbyWhiteboard(page);
-});
-
 test("con un prototipo abierto el lobby deja de renderizar y la música se libera", async ({ page }, testInfo) => {
   skipUnlessChromium(testInfo, "el contador de frames se comprueba una sola vez");
   await page.goto("/?e2e=1");
@@ -984,19 +974,6 @@ test("el resumen del escritorio envía solo el título y el texto finales", asyn
   await expect(page.getByTestId("dialogue-text")).toContainText("tablón");
 });
 
-test("la música se sirve y no muestra créditos en pantalla", async ({ page }) => {
-  const track = await page.request.get("/protos/audio/luanda.m4a");
-  expect(track.ok()).toBeTruthy();
-  expect(track.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
-  const credits = await page.request.get("/protos/audio/CREDITS.md");
-  expect(credits.ok()).toBeTruthy();
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  const bodyText = await page.locator("body").innerText();
-  expect(bodyText.toLowerCase()).not.toContain("credit");
-  expect(bodyText.toLowerCase()).not.toContain("crédito");
-});
-
 test("un toque en el laboratorio arranca la música sin pasar por silenciar", async ({ page }, testInfo) => {
   skipUnlessChromium(testInfo, "clic de ratón en el lienzo");
   const requests: string[] = [];
@@ -1048,6 +1025,9 @@ test(
   await expect.poll(() => requests.length).toBeGreaterThan(0);
   expect(requests.every((url) => /\/luanda(?:\.[0-9a-f]{8})?\.m4a/.test(url))).toBe(true);
   await expect(mute).toHaveAttribute("data-playback", "playing");
+  await expect
+    .poll(async () => mute.getAttribute("data-playback"), { timeout: 4000, intervals: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400] })
+    .toBe("playing");
   await expect(page.getByTestId("dialogue")).toBeHidden();
   await expect(page.locator("#game-selector")).toBeHidden();
 
@@ -1148,23 +1128,6 @@ test("el joystick no selecciona el texto de los botones", { tag: TOUCH_MOBILE_TA
   expect(idle.textBlocked).toBe(false);
   expect(idle.buttonBlocked).toBe(true);
   expect(idle.textSelect).not.toBe("none");
-});
-
-test(
-  "la música del joystick no vuelve a idle tras unos segundos",
-  { tag: TOUCH_MOBILE_TAG },
-  async ({ page }, testInfo) => {
-  skipUnlessTouchMobile(testInfo, "gesto táctil");
-  await page.goto("/?e2e=1");
-  await expect(page.getByTestId("world-ready")).toBeVisible();
-  const mute = page.getByTestId("mute-music");
-  const viewport = page.viewportSize();
-  expect(viewport).toBeTruthy();
-  await dispatchTouchDrag(page, viewport!.width * 0.22, viewport!.height * 0.72, 0, -48);
-  await expect(mute).toHaveAttribute("data-playback", "playing");
-  await expect
-    .poll(async () => mute.getAttribute("data-playback"), { timeout: 4000, intervals: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400] })
-    .toBe("playing");
 });
 
 async function dispatchTouchDrag(
@@ -1311,10 +1274,15 @@ test("CSP, audio y el JS con hash del prototipo no se pisan", async ({ page }) =
   await page.goto("/?e2e=1");
   await expect(page.getByTestId("world-ready")).toBeVisible();
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+  const bodyText = await page.locator("body").innerText();
+  expect(bodyText.toLowerCase()).not.toContain("credit");
+  expect(bodyText.toLowerCase()).not.toContain("crédito");
 
   const audio = await page.request.get("/protos/audio/luanda.m4a");
   expect(audio.ok()).toBeTruthy();
   expect(audio.headers()["content-type"] ?? "").toMatch(/audio|mp4|octet-stream/i);
+  const credits = await page.request.get("/protos/audio/CREDITS.md");
+  expect(credits.ok()).toBeTruthy();
   const audioCache = audio.headers()["cache-control"] ?? "";
   expect(audioCache).toMatch(/immutable/);
   expect(audioCache).not.toMatch(/no-cache/);

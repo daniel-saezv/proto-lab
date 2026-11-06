@@ -108,7 +108,7 @@ describe("createPrototypeAssetHost", () => {
     expect(postMessage.mock.calls[1]?.[0].error).toBe("fetch-failed");
   });
 
-  it("rechaza rutas fuera de la lista", async () => {
+  it("rechaza rutas fuera de la lista y un mensaje que no viene del iframe", async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
     const host = createPrototypeAssetHost({
       slug: "asset-lab",
@@ -129,6 +129,17 @@ describe("createPrototypeAssetHost", () => {
     const payload = postMessage.mock.calls[0]?.[0];
     expect(payload.ok).toBe(false);
     expect(payload.error).toBe("not-allowed");
+
+    postMessage.mockClear();
+    await host.onMessage(
+      {
+        source: {},
+        data: { source: "proto-lab", type: "asset-request", id: 9, path: "media/pixel.png" },
+      } as MessageEvent,
+      frame,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(postMessage).not.toHaveBeenCalled();
   });
 
   it("aplica límite de peticiones", async () => {
