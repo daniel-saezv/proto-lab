@@ -1,6 +1,6 @@
 {
   "name": "proto-lab",
-  "install": "corepack enable && corepack prepare pnpm@12.17.0 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit",
+  "install": "npm install -g corepack && corepack enable && corepack prepare pnpm@12.17.0 --activate && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium webkit",
   "mcpServerAllowlist": [
     {
       "name": "cloudflare-docs",

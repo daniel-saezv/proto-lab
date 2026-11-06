@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 22
+          node-version: 26
 
       - name: Herramientas de medición
         run: |

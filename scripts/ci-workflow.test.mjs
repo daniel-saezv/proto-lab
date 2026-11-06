@@ -70,6 +70,33 @@ describe("workflow de CI", () => {
     expect(helpers).not.toContain("skipUnlessWebKitIphone");
   });
 
+  it("pide Node 26 en Actions, en los archivos que lee Pages y en engines", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    expect(readFileSync(join(root, ".nvmrc"), "utf8").trim()).toBe("26");
+    expect(readFileSync(join(root, ".node-version"), "utf8").trim()).toBe("26");
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    expect(pkg.engines.node).toBe(">=26");
+    expect(pkg.devDependencies["@types/node"].startsWith("^26.")).toBe(true);
+    expect(pkg.packageManager).toBe("pnpm@12.17.0");
+    for (const id of ["verificar", "main-push"]) {
+      const job = jobBlock(id);
+      expect(job).toContain("node-version: 26");
+      expect(job).not.toContain("node-version: 22");
+      expect(job).toContain("actions/setup-node@v7.1.0");
+    }
+    for (const file of [
+      ".github/actions/playwright/action.yml",
+      ".github/workflows/d1-app-tables.yml",
+      ".github/workflows/exportar-godot.yml",
+      ".github/workflows/medir-godot.yml",
+    ]) {
+      const source = readFileSync(join(root, file), "utf8");
+      expect(source).toContain("actions/setup-node@v7.1.0");
+      expect(source).toContain("node-version: 26");
+      expect(source).not.toContain("node-version: 22");
+    }
+  });
+
   it("el atajo de una aplicación no lanza el build del laboratorio", () => {
     const verificar = jobBlock("verificar");
     expect(verificar).toContain("node scripts/ci-paths.mjs");

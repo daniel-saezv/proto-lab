@@ -37,7 +37,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 22
+          node-version: 26
       - name: Listar proyectos Godot
         id: lista
         env:
@@ -61,7 +61,7 @@ jobs:
 
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 22
+          node-version: 26
 
       - name: Librerías del editor
         run: |
