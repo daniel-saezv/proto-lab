@@ -1,0 +1,25 @@
+{
+  "slug": "edad-media",
+  "title": "Medieval Age",
+  "description": "Acción en perspectiva con oficios de la Edad Media: caballero, ballestero, fraile y astrólogo. Golpea en el llano, recoge oro, madera y piedra, y levanta muralla, torre, granero, capilla y observatorio. La magia sigue las siete esferas de la astrología medieval. Cada campaña trae una guerra con nombre histórico y, entre oleada y oleada, una visita de la mitología.",
+  "author": "daniel-saezv",
+  "date": "2026-11-06",
+  "tags": [
+    "medieval",
+    "accion",
+    "castillo"
+  ],
+  "cover": null,
+  "version": "0.1.0",
+  "capabilities": [
+    "save"
+  ],
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-06",
+      "note": "Campo en perspectiva, oficios, castillo, esferas, guerras históricas y mitos."
+    }
+  ],
+  "preview": "preview.webp"
+}
