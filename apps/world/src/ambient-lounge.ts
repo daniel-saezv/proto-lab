@@ -12,7 +12,7 @@ import {
 import { createTvScreen } from "./tv-screen";
 import { TV_SCREEN_HEIGHT, TV_SCREEN_WIDTH } from "./tv-preview";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
-import { createNameplateElement } from "./nameplates";
+import { createNameplateElement, nameplateMark } from "./nameplates";
 import type { AmbientCollider, AmbientFactories } from "./ambient";
 import { blinkOpen, breathScale, idlePhase } from "./graphics-idle";
 import { fuseMeshes } from "./mesh-fuse";
@@ -666,7 +666,9 @@ function collectFaceIdles(root: Group): Array<(time: number) => void> {
 }
 
 function addNameplate(body: Group, npc: LoungeNpc): { id: string; element: HTMLElement; anchor: CSS2DObject } {
-  const { anchor, plate } = createNameplateElement(npc.name);
+  const mark = nameplateMark(npc.id);
+  if (!mark) throw new Error(`El NPC ${npc.id} no tiene icono de indicador`);
+  const { anchor, plate } = createNameplateElement(npc.name, mark);
   const label = new CSS2DObject(anchor);
   label.center.set(0, 0);
   label.position.set(0, 0.96, 0);

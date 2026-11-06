@@ -344,7 +344,21 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   opacity: 1;
   transform: translate(-50%, calc(-100% - 8px)) scale(1);
 }
-.nameplate-pip--note {
+/* Glifo suelto (lejos) y el mismo glifo dentro de la pastilla (foco).
+   El nombre va en .sr-only. --nameplate-glyph lo pone el ancla. */
+.nameplate-anchor[data-kind] .nameplate {
+  line-height: 1;
+  text-align: center;
+  font-variant-emoji: text;
+}
+.nameplate-anchor[data-kind] .nameplate::before {
+  content: var(--nameplate-glyph);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-emoji: text;
+}
+.nameplate-pip--mark {
   width: auto;
   height: auto;
   border-radius: 0;
@@ -355,9 +369,12 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   font-weight: 800;
   line-height: 1;
   text-shadow: 0 0 6px rgba(255, 183, 3, 0.65);
+  font-variant-emoji: text;
 }
-.nameplate-pip--note::before { content: "♪"; }
-.nameplate-anchor[data-kind="radio"][data-mode="name"] .nameplate::before { content: "♪ "; }
+.nameplate-pip--mark::before {
+  content: var(--nameplate-glyph);
+  font-variant-emoji: text;
+}
 .nameplate--proto-update {
   box-shadow: 0 0 0 2px rgba(255, 183, 3, 0.55), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
