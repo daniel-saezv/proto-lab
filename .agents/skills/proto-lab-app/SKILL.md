@@ -28,7 +28,7 @@ Lo publicado (build): 64 archivos, 12 MiB por archivo, 32 MiB en total. JS: avis
 
 El puente `window.__protoLabData` es otro cupo: 64 rutas, 4 MiB por archivo, 16 MiB en total, 128 peticiones. Guardado y dato compartido: 32 claves, clave de hasta 64 caracteres, 32 KiB por valor, 256 KiB por slug.
 
-`capabilities` es lista cerrada: `save`, `wasm`, `shared`, `tables`, `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope`, `magnetometer`. No inventes `ai`. Workers AI lo usa solo el taller del laboratorio; una aplicación no lo llama. R2, Durable Objects e Images no están activos; el detalle está en `docs/tecnologias-bajo-demanda.md`.
+`capabilities` es lista cerrada: `save`, `wasm`, `shared`, `tables`, `camera`, `microphone`, `geolocation`, `accelerometer`, `gyroscope`, `magnetometer`. No inventes `ai`. Workers AI lo usa solo el taller del laboratorio; una aplicación no lo llama. El Durable Object de presencia es solo de la sala del laboratorio; una aplicación no lo declara ni lo llama. R2 e Images no están activos; el detalle está en `docs/tecnologias-bajo-demanda.md`.
 
 ## Arranque y cierre
 

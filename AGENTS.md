@@ -37,6 +37,8 @@ TypeScript, Vite 8 y pnpm 12 (workspaces). El laboratorio usa Three.js 0.187 (ge
 - `templates/aplicacion/`: plantilla de código (Vite + TypeScript). No entra en el catálogo ni en el sitio.
 - `templates/export-estatico/`: shell HTML para un build ya hecho (sin Vite). Tampoco se publica.
 - `functions/api/proposals.ts`: Pages Function. La validación vive en `functions/_lib` para poder probarla sin desplegar.
+- `functions/api/presence.ts`: upgrade WebSocket de la sala en vivo. Reenvía al Durable Object si el binding `PRESENCE` existe; si no, responde 503.
+- `workers/presence`: clase `LabPresence` (SQLite, WebSocket con hibernación). Pages no puede publicarla; se despliega con wrangler, aparte de la integración Git.
 - `functions/api/proposals/status.ts`: Function **GET** de solo lectura que agrega el estado real de las propuestas (issues, PR, CI, preview). Lógica en `functions/_lib/status/` y `functions/_lib/status-handler.ts`.
 - `scripts/generate-catalog.mjs`: lee los manifiestos y escribe el catálogo que consume el mundo, y la lista de slugs que valida la Function.
 - `scripts/assemble.mjs`: junta el laboratorio y los prototipos en `dist/` y genera `sw.js`.
@@ -119,7 +121,7 @@ En local la Function responde 401 salvo que el proceso tenga `ALLOW_DEV_AUTH=tru
 - El guardado de una persona pasa por `__protoLabData` si `capabilities` incluye `save`. El laboratorio lo escribe en `localStorage` bajo `proto-lab:app:<slug>`. La aplicación deja `localStorage` y `sessionStorage` sin tocar.
 - Las pistas del lobby (`/protos/audio/*.m4a`) se sirven con caché larga e inmutable. `pnpm build` copia cada archivo a un nombre con hash de contenido y reescribe el bundle para que un cambio de pista cambie la URL. El service worker sigue sin interceptar `/protos/`.
 - Al implementar una iteración, el manifiesto y su historial forman parte del cambio, no un extra opcional.
-- Cada aplicación es móvil primero: viewport `width=device-width`, `touch-action: none`, imágenes y audio ligeros (el build falla a 1,5 MiB). Un proyecto Godot usa el preset de teléfono descrito en el contrato. Workers AI lo usa solo el taller del Inventor (`POST /api/workshop`); una aplicación no declara `ai`. R2, Durable Objects e Images no están activos. El detalle está en [`docs/tecnologias-bajo-demanda.md`](docs/tecnologias-bajo-demanda.md).
+- Cada aplicación es móvil primero: viewport `width=device-width`, `touch-action: none`, imágenes y audio ligeros (el build falla a 1,5 MiB). Un proyecto Godot usa el preset de teléfono descrito en el contrato. Workers AI lo usa solo el taller del Inventor (`POST /api/workshop`); una aplicación no declara `ai`. El Durable Object de la sala en vivo es solo del laboratorio (`workers/presence`); una aplicación no lo llama. R2 e Images no están activos. El detalle está en [`docs/tecnologias-bajo-demanda.md`](docs/tecnologias-bajo-demanda.md).
 
 ## Aplicaciones (`protos/<slug>/`)
 
@@ -238,6 +240,8 @@ No se despliega desde Actions ni con tokens de Cloudflare. El despliegue es la i
 - Binding opcional: KV `PROPOSALS`. Sin él no hay límite diario al crear propuestas ni caché del tablón; la Function de estado sigue respondiendo.
 - No definir `ALLOW_DEV_AUTH` en Pages.
 
+**Sala en vivo.** Las personas conectadas comparten la pose por `/api/presence` (mismo origen; la CSP ya permite `connect-src 'self'`). La clase vive en `workers/presence` porque Pages no puede definir un Durable Object. El binding está comentado en `wrangler.toml`: descomentarlo antes de que el script `proto-lab-presence` exista hace fallar el despliegue de Pages. Orden: desde `workers/presence`, `npx wrangler deploy` (token de la cuenta con permiso Workers Scripts; no es un secreto del repo ni de Actions) y después quitar los comentarios de producción y de preview. Sin binding, la Function responde 503 y cada persona sigue sola. El Worker no tiene URL pública. No se lee el correo ni el JWT de Access: la sesión es un id efímero del navegador. En `pnpm dev` la misma sala corre dentro de Vite, sin Cloudflare. El cupo y por qué no D1, KV, Queues ni PartyKit están en [`docs/tecnologias-bajo-demanda.md`](docs/tecnologias-bajo-demanda.md). `?e2e=1` no abre el socket.
+
 **Datos en D1.** El binding se llama `DB` (`env.DB`). Si un despliegue no lo trae, la API responde 503 `config`. Los datos de una persona siguen en `localStorage`. D1 guarda lo que ven todas las sesiones de un slug: la tabla del laboratorio `lab_shared_entries` (capacidad `shared`) y, si la app declara `tables`, las tablas con el prefijo de su slug. La lista de slugs con `shared` la genera `pnpm generate` en `functions/_lib/shared-slugs.json`. Las consultas declaradas van a `functions/_lib/table-queries.json`. Ninguno de los dos se versiona.
 
 Las bases ya existen, vacías hasta que corra el workflow, y los ids están en `wrangler.toml`. Producción: `[[d1_databases]]`, base `proto-lab-shared`, id `7f6608b2-bb75-44ba-b240-60d6cff51794`. Previews: `[[env.preview.d1_databases]]`, base `proto-lab-shared-preview`, id `797b147d-e5c7-4198-a20e-fe378758217a`. El bloque de preview repite el KV `PROPOSALS` (`80ac94ce81e8459fb3882e9fe2a68330`): al declarar un binding que no se hereda hay que repetir los demás. El nombre del binding es `DB` en los dos entornos.
@@ -284,3 +288,4 @@ Secretos en Cursor, sin valores:
 - `CF_ACCESS_AUD` solo si quieres probar las Functions con un JWT real de Access. No pongas el valor en el repo.
 - No añadas `ALLOW_DEV_AUTH` como secreto de Cursor ni de Pages. En local se exporta en la shell únicamente para esa prueba. La API de datos compartidos no lo acepta: solo el JWT de Access.
 - La D1 no es un secreto de Cursor. Los tests usan un mock en memoria. El binding `DB` ya está en `wrangler.toml`. El token que aplica las migraciones es el secreto de Actions `CLOUDFLARE_D1_TOKEN` (solo Account → D1 → Edit); no hace falta en Cursor para typecheck, tests ni build.
+- Un token de API con permiso Workers Scripts (Edit) solo si quieres desplegar `workers/presence` desde la nube. No hace falta para typecheck, tests ni build. No pongas el valor en el repo. El token de Pages Edit que limpia previews no sirve para este deploy.

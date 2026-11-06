@@ -117,6 +117,48 @@ function serveProtos(): Plugin {
   };
 }
 
+function devPresence(): Plugin {
+  return {
+    name: "proto-lab-dev-presence",
+    apply: "serve",
+    async configureServer(server) {
+      const [{ createMemoryPresence }, { WebSocketServer }] = await Promise.all([
+        import("../../functions/_lib/presence-room.ts"),
+        import("ws"),
+      ]);
+      const room = createMemoryPresence();
+      const wss = new WebSocketServer({ noServer: true });
+      server.httpServer?.on("upgrade", (req, socket, head) => {
+        const path = (req.url ?? "").split("?")[0];
+        if (path !== "/api/presence") return;
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          const session = room.connect({
+            send(data: string) {
+              if (ws.readyState === ws.OPEN) ws.send(data);
+            },
+            close(code: number, reason: string) {
+              try {
+                ws.close(code, reason);
+              } catch {
+                // El navegador ya colgó.
+              }
+            },
+          });
+          ws.on("message", (data: unknown) => {
+            const text = typeof data === "string" ? data : String(data);
+            session.message(text);
+          });
+          ws.on("close", () => session.close());
+          ws.on("error", () => session.close());
+        });
+      });
+      server.httpServer?.on("close", () => {
+        wss.close();
+      });
+    },
+  };
+}
+
 function devApi(): Plugin {
   return {
     name: "proto-lab-dev-api",
@@ -145,29 +187,39 @@ function devApi(): Plugin {
           CF_ACCESS_AUD: process.env.CF_ACCESS_AUD,
         };
         let response: Response;
-        if (url === "/api/proposals/status") {
-          const handlerUrl = pathToFileURL(`${repoRoot}/functions/_lib/status-handler.ts`).href;
-          const { handleProposalStatus } = (await import(handlerUrl)) as typeof import("../../functions/_lib/status-handler.ts");
-          response = await handleProposalStatus(
-            new Request("http://127.0.0.1/api/proposals/status", {
-              method: req.method,
-              headers,
-            }),
-            env,
-          );
-        } else {
-          const handlerUrl = pathToFileURL(`${repoRoot}/functions/_lib/handler.ts`).href;
-          const { handleProposal } = (await import(handlerUrl)) as typeof import("../../functions/_lib/handler.ts");
-          const slugs = JSON.parse(readFileSync(`${repoRoot}/functions/_lib/slugs.json`, "utf8")) as string[];
-          response = await handleProposal(
-            new Request("http://127.0.0.1/api/proposals", {
-              method: req.method,
-              headers,
-              body: req.method === "GET" || req.method === "HEAD" ? undefined : body,
-            }),
-            env,
-            { knownSlugs: slugs },
-          );
+        try {
+          if (url === "/api/proposals/status") {
+            const handlerUrl = pathToFileURL(`${repoRoot}/functions/_lib/status-handler.ts`).href;
+            const { handleProposalStatus } = (await import(handlerUrl)) as typeof import("../../functions/_lib/status-handler.ts");
+            response = await handleProposalStatus(
+              new Request("http://127.0.0.1/api/proposals/status", {
+                method: req.method,
+                headers,
+              }),
+              env,
+            );
+          } else {
+            const handlerUrl = pathToFileURL(`${repoRoot}/functions/_lib/handler.ts`).href;
+            const { handleProposal } = (await import(handlerUrl)) as typeof import("../../functions/_lib/handler.ts");
+            const slugs = JSON.parse(readFileSync(`${repoRoot}/functions/_lib/slugs.json`, "utf8")) as string[];
+            response = await handleProposal(
+              new Request("http://127.0.0.1/api/proposals", {
+                method: req.method,
+                headers,
+                body: req.method === "GET" || req.method === "HEAD" ? undefined : body,
+              }),
+              env,
+              { knownSlugs: slugs },
+            );
+          }
+        } catch (error) {
+          // Node con --experimental-strip-types no resuelve imports sin extensión.
+          // Un fallo del tablón no puede tumbar el WebSocket de presencia del mismo proceso.
+          console.error(error);
+          res.statusCode = 500;
+          res.setHeader("content-type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ ok: false, error: "dev", message: "La API local no pudo cargar el handler." }));
+          return;
         }
         res.statusCode = response.status;
         response.headers.forEach((value, key) => res.setHeader(key, value));
@@ -223,5 +275,5 @@ export default defineConfig({
   server: {
     fs: { allow: [repoRoot] },
   },
-  plugins: [devApi(), serveProtos(), allowPrototypeCors(), applyPagesHeaders(), preloadWorldChunk()],
+  plugins: [devPresence(), devApi(), serveProtos(), allowPrototypeCors(), applyPagesHeaders(), preloadWorldChunk()],
 });
