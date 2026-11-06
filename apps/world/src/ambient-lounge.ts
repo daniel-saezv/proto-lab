@@ -212,7 +212,7 @@ function addCouch(parent: Group, x: number, z: number, yaw: number, interactId: 
   f.box(couch, 0.16, 0.42, 0.7, 0.78, 0.48, 0.02, PALETTE.couchDark);
 }
 
-function addTable(parent: Group, f: AmbientFactories) {
+export function addTable(parent: Group, f: AmbientFactories) {
   const x = LOUNGE_TABLE.x;
   const z = LOUNGE_TABLE.z;
   f.box(parent, 0.98, 0.08, 0.64, x, 0.28, z, PALETTE.couchDark);
@@ -238,8 +238,6 @@ function addTable(parent: Group, f: AmbientFactories) {
   f.box(parent, 0.11, 0.04, 0.08, x + 0.06, 0.355, z + 0.14, PALETTE.cardTeal, false);
   f.box(parent, 0.1, 0.035, 0.07, x + 0.06, 0.39, z + 0.14, PALETTE.cardGold, false);
   f.box(parent, 0.09, 0.03, 0.06, x + 0.07, 0.42, z + 0.14, PALETTE.cardPink, false);
-  const poster = f.box(parent, 0.22, 0.14, 0.012, x, 0.52, z + 0.33, PALETTE.cardPink, false);
-  poster.rotation.x = -0.12;
 }
 
 function addTelevision(parent: Group, f: AmbientFactories): {
