@@ -53,7 +53,7 @@ export type WorkshopTrailMark = {
 
 export type WorkshopScreen =
   | { kind: "intro" }
-  | { kind: "loading"; purpose: "model" | "summary" }
+  | { kind: "loading"; purpose: "model" | "summary"; between?: boolean }
   | { kind: "pick"; speech: string; options: string[]; round: number; maxRounds: number; trail: WorkshopTrailMark[] }
   | { kind: "failed"; message: string }
   | { kind: "summary"; speech: string; round: number; maxRounds: number };

@@ -150,6 +150,7 @@ import {
   layoutCloudSlots,
   loadIdeaFont,
   CLOUD_LABEL,
+  cloudArrival,
   inkInsideCotton,
   paintIdeaCanvas,
   type CloudSlot,
@@ -213,6 +214,8 @@ export type WorldHandle = {
   setWorkshopBeat: (beat: DeskBeat) => void;
   /** Nubes de la ronda. `null` las quita. */
   setWorkshopIdeas: (ideas: WorkshopIdeaMesh[] | null) => void;
+  /** Entre rondas, las nubes laten en vez de desaparecer. */
+  holdWorkshopClouds: () => void;
   dispose: () => void;
 };
 
@@ -685,9 +688,14 @@ export function startWorld(options: {
     canvas: HTMLCanvasElement;
     texture: CanvasTexture;
     born: number;
+    popSeconds: number;
+    /** Cuando llega la ronda siguiente: instante en el que esta nube empieza a formarse. */
+    arriveAt: number | null;
+    arrived: boolean;
     glowKick: number;
   };
   let cloudEntries: CloudEntry[] = [];
+  let cloudHolding = false;
   let cloudLabelsSettled = false;
   let cloudPaintGen = 0;
   let cloudBodyGeometry: BufferGeometry | null = null;
@@ -1426,7 +1434,7 @@ export function startWorld(options: {
     const armL = inventor.userData.armL as Object3D | undefined;
     const head = inventor.userData.head as Object3D | undefined;
     const talking = workshopBeat === "talk";
-    const ponder = still ? 0 : Math.sin(frame * 1.15);
+    const ponder = still ? 0 : Math.sin(frame * (cloudHolding ? 1.8 : 1.15));
     if (talking) {
       if (arm) arm.rotation.set(-0.55, 0.1, -0.35);
       if (armL) armL.rotation.set(-0.2, 0, 0.15);
@@ -1523,6 +1531,51 @@ export function startWorld(options: {
     if (entry.glow) entry.glow.visible = entry.idea.picked;
   }
 
+  function setTextOpacity(entry: CloudEntry, opacity: number) {
+    const material = entry.text.material;
+    if (material instanceof MeshBasicMaterial && Math.abs(material.opacity - opacity) > 0.02) material.opacity = opacity;
+  }
+
+  function holdWorkshopClouds() {
+    if (cloudEntries.length === 0) return;
+    cloudHolding = true;
+    for (const entry of cloudEntries) {
+      entry.arriveAt = null;
+      entry.arrived = false;
+      if (entry.glow) entry.glow.visible = false;
+    }
+  }
+
+  /** La ronda siguiente reutiliza las mallas y entra de una en una. */
+  function reformClouds(next: WorkshopIdeaMesh[]) {
+    const quiet = reduced || e2eRender;
+    next.forEach((idea, index) => {
+      const entry = cloudEntries[index];
+      if (!entry) return;
+      entry.idea = idea;
+      entry.glowKick = 0;
+      if (entry.glow) entry.glow.visible = false;
+      if (quiet) {
+        const arrival = cloudArrival(0, true);
+        entry.arriveAt = null;
+        entry.arrived = true;
+        entry.born = frame;
+        entry.popSeconds = arrival.seconds;
+        paintCloud(entry);
+        setTextOpacity(entry, 1);
+        return;
+      }
+      const arrival = cloudArrival(index, false);
+      entry.arriveAt = frame + arrival.delay;
+      entry.arrived = false;
+      entry.popSeconds = arrival.seconds;
+    });
+    // La espera termina al llegar el texto. Si siguiera activa, marcar una
+    // nube volvería a disparar la entrada escalonada.
+    cloudHolding = false;
+    placeWorkshopClouds(frame, quiet);
+  }
+
   function setWorkshopIdeas(ideas: WorkshopIdeaMesh[] | null) {
     const next = ideas ?? [];
     const same =
@@ -1533,17 +1586,23 @@ export function startWorld(options: {
           idea.text === cloudEntries[index]?.idea.text &&
           idea.role === cloudEntries[index]?.idea.role,
       );
+    if (cloudHolding && next.length > 0 && next.length === cloudEntries.length) {
+      reformClouds(next);
+      return;
+    }
     if (same) {
       next.forEach((idea, index) => {
         const entry = cloudEntries[index];
         if (!entry || entry.idea.picked === idea.picked) return;
         entry.idea = idea;
+        if (!entry.arrived) return;
         if (idea.picked) entry.glowKick = 1;
         paintCloud(entry);
       });
       return;
     }
     disposeWorkshopClouds();
+    cloudHolding = false;
     cloudLabelsSettled = false;
     if (next.length === 0) return;
     const laid = layoutCloudSlots(next.length, camera.aspect, camera.fov);
@@ -1585,7 +1644,21 @@ export function startWorld(options: {
       glow.position.set(0, 0, -0.03);
       glow.visible = idea.picked;
       mesh.add(glow);
-      const entry = { mesh, text, glow, slot, idea, canvas, texture, born: frame, glowKick: idea.picked ? 1 : 0 };
+      const arrival = cloudArrival(index, true);
+      const entry = {
+        mesh,
+        text,
+        glow,
+        slot,
+        idea,
+        canvas,
+        texture,
+        born: frame + arrival.delay,
+        popSeconds: arrival.seconds,
+        arriveAt: null,
+        arrived: true,
+        glowKick: idea.picked ? 1 : 0,
+      };
       paintCloud(entry);
       scene.add(mesh);
       cloudEntries.push(entry);
@@ -1655,18 +1728,28 @@ export function startWorld(options: {
       entry.slot = slot;
       const anchor = cloudAnchor(camera, slot, cloudScratch);
       entry.mesh.position.copy(anchor);
-      const age = still ? 1 : Math.min(1, Math.max(0, (time - entry.born) / 0.46));
-      const pop = still ? 1 : cloudPop(age);
-      const bob = still ? 0 : Math.sin(time * 0.95 + index * 1.4) * 0.016;
-      const rise = still ? 0 : (1 - Math.min(1, age)) * 0.05;
+      const due = entry.arriveAt != null && time >= entry.arriveAt;
+      if (!still && due && !entry.arrived) {
+        entry.arrived = true;
+        entry.born = time;
+        paintCloud(entry);
+        setTextOpacity(entry, 0);
+      }
+      const forming = !still && !entry.arrived && (entry.arriveAt == null || time < entry.arriveAt);
+      const age = still ? 1 : Math.min(1, Math.max(0, (time - entry.born) / entry.popSeconds));
+      const pop = still ? 1 : forming ? 0.9 + Math.sin(time * 2.3 + index * 0.8) * 0.035 : cloudPop(age);
+      const bob = still || forming ? 0 : Math.sin(time * 0.95 + index * 1.4) * 0.016;
+      const rise = still || forming ? 0 : (1 - Math.min(1, age)) * 0.05;
       entry.mesh.position.y += bob + rise;
-      const breathe = still ? 1 : 1 + Math.sin(time * 1.5 + index) * 0.012;
+      const breathe = still || forming ? 1 : 1 + Math.sin(time * 1.5 + index) * 0.012;
       entry.mesh.scale.setScalar(slot.scale * pop * breathe);
+      if (!still && forming) setTextOpacity(entry, 0.22);
+      else if (!still && entry.arriveAt != null) setTextOpacity(entry, age);
       if (entry.glow) {
         const kick = still ? 0 : entry.glowKick;
         entry.glowKick = Math.max(0, entry.glowKick - (still ? 1 : 0.02));
         const selected = entry.idea.picked ? 1 : 0;
-        entry.glow.visible = selected > 0 && pop > 0.2;
+        entry.glow.visible = !forming && selected > 0 && pop > 0.2;
         entry.glow.scale.setScalar(CLOUD_AURA_SCALE * (1 + kick * 0.08));
       }
       cloudFacing.copy(camera.position).sub(entry.mesh.position);
@@ -1743,7 +1826,8 @@ export function startWorld(options: {
       const x = Math.min(maxX, Math.max(minX, entry.mesh.position.x));
       const z = Math.min(maxZ, Math.max(minZ, entry.mesh.position.z));
       shadowDummy.position.set(x, WORKSHOP_TABLE_TOP_Y + 0.02, z);
-      const span = Math.min(0.46, Math.max(0.16, entry.slot.scale * 1.15));
+      const shown = entry.slot.scale > 0 ? entry.mesh.scale.x / entry.slot.scale : 1;
+      const span = Math.min(0.46, Math.max(0.02, entry.slot.scale * 1.15 * shown));
       shadowDummy.scale.set(span, 1, span * 0.72);
       shadowDummy.rotation.set(0, 0, 0);
       shadowDummy.updateMatrix();
@@ -2248,6 +2332,7 @@ export function startWorld(options: {
     ensureInventorHome,
     setWorkshopBeat,
     setWorkshopIdeas,
+    holdWorkshopClouds,
     dispose() {
       disposeWorkshopClouds();
       running = false;

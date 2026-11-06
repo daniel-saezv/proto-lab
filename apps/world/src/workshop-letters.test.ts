@@ -12,6 +12,8 @@ import {
   IDEA_TRIANGLE_CAP,
   buildIdeaGeometry,
   cloudAnchor,
+  CLOUD_POP_FIRST,
+  cloudArrival,
   cloudPop,
   createCloudAuraMaterial,
   createCloudCottonMaterial,
@@ -55,6 +57,12 @@ describe("letras del taller", () => {
     expect(cloudPop(0)).toBeCloseTo(0, 5);
     expect(cloudPop(1)).toBeCloseTo(1, 5);
     expect(cloudPop(0.7)).toBeGreaterThan(1);
+    expect(cloudArrival(0, true)).toEqual({ delay: 0, seconds: CLOUD_POP_FIRST });
+    expect(cloudArrival(3, true).delay).toBe(0);
+    const nextFirst = cloudArrival(0, false);
+    const nextLast = cloudArrival(3, false);
+    expect(nextLast.delay).toBeGreaterThan(nextFirst.delay + 0.4);
+    expect(nextLast.seconds).toBeGreaterThan(CLOUD_POP_FIRST);
     cloud.dispose();
   });
 

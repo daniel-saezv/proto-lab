@@ -660,6 +660,12 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   flex-direction: column;
   align-items: center;
 }
+#dialogue.is-workshop[data-workshop-wait="1"] .workshop-counter {
+  animation: workshop-wait 1.4s ease-in-out infinite;
+}
+@keyframes workshop-wait {
+  50% { opacity: 0.55; }
+}
 #dialogue.is-workshop[data-workshop="pick"] .workshop-counter {
   width: fit-content;
   margin: 0 auto 10px;
@@ -747,7 +753,8 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
 }
 @media (prefers-reduced-motion: reduce) {
   .workshop-option,
-  .workshop-trail-mark { animation: none; }
+  .workshop-trail-mark,
+  #dialogue.is-workshop[data-workshop-wait="1"] .workshop-counter { animation: none; }
 }
 .workshop-actions {
   display: grid;

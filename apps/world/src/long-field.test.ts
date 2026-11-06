@@ -26,7 +26,8 @@ describe("campo largo", () => {
     const dvh = dialogue.indexOf("78dvh");
     expect(svh).toBeGreaterThan(-1);
     expect(dvh).toBeGreaterThan(svh);
-    const sheet = css.slice(css.indexOf(".dialogue-sheet {"), css.indexOf(".dialogue-sheet.is-overflowing"));
+    const overflowing = css.indexOf(".dialogue-sheet.is-overflowing");
+    const sheet = css.slice(css.lastIndexOf("\n.dialogue-sheet {", overflowing), overflowing);
     expect(sheet).toContain("scrollbar-width: thin");
     expect(sheet).toContain("scrollbar-color:");
     expect(sheet).not.toContain("-webkit-");

@@ -301,6 +301,49 @@ test("las nubes no se pisan y el texto cabe en el contorno", async ({ page }, te
   }
 });
 
+test("entre rondas las nubes siguen mientras la respuesta tarda", async ({ page }, testInfo) => {
+  skipUnlessChromium(testInfo, "escritorio");
+  test.setTimeout(20_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  let round = 1;
+  const rounds = [roundOne, roundTwo, roundThree];
+  await page.route("**/api/proposals/status", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, items: [] }) });
+  });
+  await page.route("**/api/workshop", async (route) => {
+    const body = route.request().postDataJSON() as { op?: string; decision?: string };
+    if (body.decision === "next") {
+      round = Math.min(3, round + 1);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    const options = rounds[round - 1] ?? roundOne;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        phase: "pick",
+        sessionId: "a".repeat(32),
+        speech: `Ronda ${round} de 3.`,
+        options,
+        round,
+        maxRounds: 3,
+        draft: original,
+        original,
+      }),
+    });
+  });
+  await openRound(page);
+  const before = await page.evaluate(() => window.__protoLab?.workshopClouds?.()?.count ?? 0);
+  expect(before).toBe(4);
+  await page.getByTestId("choice-workshop-next").click();
+  await expect(page.getByTestId("workshop-waiting")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.count ?? 0)).toBe(4);
+  await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 2 de 3");
+  await expect(page.getByTestId("workshop-waiting")).toHaveCount(0);
+  await expectTextInside(page);
+});
+
 test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) => {
   skipUnlessProject("webkit-iphone", testInfo, "proyecto webkit-iphone");
   await mockWorkshop(page);

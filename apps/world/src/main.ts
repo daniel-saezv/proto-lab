@@ -140,6 +140,9 @@ const dialogue = createDialogue({
   onWorkshopIdeas: (ideas) => {
     world?.setWorkshopIdeas(ideas);
   },
+  onWorkshopHold: () => {
+    world?.holdWorkshopClouds();
+  },
 });
 
 workshopSkip.addEventListener("click", () => {

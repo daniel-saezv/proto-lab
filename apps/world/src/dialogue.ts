@@ -79,6 +79,8 @@ export function createDialogue(options: {
   onWorkshopBeat?: (beat: "off" | "talk" | "work") => void;
   /** Ideas de la ronda en la escena. `null` las quita. */
   onWorkshopIdeas?: (ideas: WorkshopIdeaMesh[] | null) => void;
+  /** Entre rondas: las nubes siguen, latiendo, mientras llega la respuesta. */
+  onWorkshopHold?: () => void;
 }) {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let phase: Phase = { name: "greet" };
@@ -277,8 +279,9 @@ export function createDialogue(options: {
   }
 
   function beginModelTurn(body: WorkshopRequest) {
+    const between = workshopScreen?.kind === "pick" && !turnIsClosing(body);
     workshopClosing = turnIsClosing(body);
-    workshopScreen = { kind: "loading", purpose: workshopClosing ? "summary" : "model" };
+    workshopScreen = { kind: "loading", purpose: workshopClosing ? "summary" : "model", between };
     options.onWorkshopBeat?.(workshopClosing ? "talk" : "work");
     render();
     askWorkshop(body);
@@ -427,11 +430,15 @@ export function createDialogue(options: {
     options.root.dataset.phase = phase.name;
     options.root.dataset.outcome = phase.name === "done" ? phase.outcome : "";
     options.root.classList.toggle("is-workshop", phase.name === "workshop");
-    if (!(phase.name === "workshop" && workshopScreen?.kind === "pick")) options.onWorkshopIdeas?.(null);
+    const betweenWait = phase.name === "workshop" && workshopScreen?.kind === "loading" && workshopScreen.between === true;
+    if (betweenWait) options.onWorkshopHold?.();
+    else if (!(phase.name === "workshop" && workshopScreen?.kind === "pick")) options.onWorkshopIdeas?.(null);
     releaseSheet();
     options.root.append(createDialogCloseButton(() => close()));
-    if (phase.name === "workshop" && workshopScreen) options.root.dataset.workshop = workshopScreen.kind;
+    if (phase.name === "workshop" && workshopScreen) options.root.dataset.workshop = betweenWait ? "pick" : workshopScreen.kind;
     else delete options.root.dataset.workshop;
+    if (betweenWait) options.root.dataset.workshopWait = "1";
+    else delete options.root.dataset.workshopWait;
     liftKeyboard();
     const pending = nextNotice;
     nextNotice = undefined;
@@ -495,7 +502,7 @@ export function createDialogue(options: {
       return crossed;
     };
 
-    if (calm) {
+    if (calm || betweenWait) {
       reveal(plain.length, 0);
       for (const view of line.views) {
         if (view.run.kind) view.el.classList.add("is-on");
@@ -666,6 +673,16 @@ export function createDialogue(options: {
       return;
     }
     if (screen.kind === "loading") {
+      if (screen.between) {
+        const note = document.createElement("p");
+        note.className = "workshop-counter";
+        note.dataset.testid = "workshop-waiting";
+        note.setAttribute("role", "status");
+        note.textContent = "Pensando…";
+        content().append(note);
+        focusWorkshop(options.root.querySelector("[data-testid='dialog-close']"));
+        return;
+      }
       addChoice(actionRow(), "choice-workshop-back", "Volver a mi nota", () => leaveDesk());
       focusWorkshop(options.root.querySelector(".dialogue-choice"));
       return;

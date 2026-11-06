@@ -82,6 +82,22 @@ export function ideaPalette(picked: boolean): { ink: string; cloud: string; glow
   };
 }
 
+/** La primera aparición, la que acompaña a la llegada a la mesa. */
+export const CLOUD_POP_FIRST = 0.46;
+/** La ronda siguiente tarda más, para que no sea un corte. */
+export const CLOUD_POP_NEXT = 0.95;
+/** Cada nube de la ronda siguiente espera a la anterior. */
+export const CLOUD_STAGGER = 0.2;
+
+/**
+ * La primera ronda sale junta. Las siguientes se escalonan: la espera de la
+ * respuesta no debe acabar en cuatro nubes a la vez.
+ */
+export function cloudArrival(index: number, fresh: boolean): { delay: number; seconds: number } {
+  if (fresh) return { delay: 0, seconds: CLOUD_POP_FIRST };
+  return { delay: index * CLOUD_STAGGER, seconds: CLOUD_POP_NEXT };
+}
+
 /** Aparición: de cero a uno, con un pequeño rebote. */
 export function cloudPop(t: number): number {
   const u = Math.min(1, Math.max(0, t));
