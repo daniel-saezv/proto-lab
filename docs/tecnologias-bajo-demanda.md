@@ -1,6 +1,6 @@
 # Tecnologías que no están activas
 
-Decisión del 3 de noviembre de 2026, actualizada cuando el taller del Inventor pasó a usar Workers AI. R2, Durable Objects e Images siguen apagados. La cuenta sigue en Workers Free. Una aplicación no declara ni llama a ninguno de estos productos.
+Decisión del 3 de noviembre de 2026, actualizada cuando el taller del Inventor pasó a usar Workers AI y, el 6 de noviembre de 2026, cuando la sala en vivo pasó a un Durable Object. R2 e Images siguen apagados. La cuenta sigue en Workers Free. Una aplicación no declara ni llama a ninguno de estos productos: el Durable Object es solo del laboratorio.
 
 Un agente que implementa una aplicación no edita `functions/` ni `wrangler.toml`. El taller es parte del laboratorio, no de un `protos/<slug>/`.
 
@@ -26,7 +26,22 @@ Si se activa: dos buckets (producción y preview), un token que el agente no ve,
 
 ## Durable Objects
 
-No hay Durable Objects. El plan Free da 100 000 peticiones al día y 13 000 GB-s al día, solo con backend SQLite. La hibernación no factura la duración, pero `setTimeout` y `setInterval` impiden hibernar ([precios](https://developers.cloudflare.com/durable-objects/platform/pricing/), 18 de octubre de 2026; [hibernación de WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)). Entrarían para un estado en vivo entre sesiones que D1 no cubre. Hasta entonces, el dato compartido sigue en D1.
+Activo solo para la sala del laboratorio (`workers/presence`, clase `LabPresence`, backend SQLite). Las personas conectadas a la vez comparten pose por WebSocket con hibernación; el alias opcional va solo en el adjunto del WebSocket y en los mensajes `hello` / `welcome` / `join` / `rename`, no en D1 ni KV. El dato de una aplicación sigue en D1. Una aplicación no declara ni llama a este producto.
+
+Pages no puede publicar la clase ([bindings de Pages](https://developers.cloudflare.com/pages/functions/bindings/), 2026). La Function `GET /api/presence` reenvía el upgrade al binding `PRESENCE` si existe. Sin ese binding responde 503 y el laboratorio sigue en solitario. El binding está comentado en `wrangler.toml` hasta que el Worker exista en la cuenta: si el script no está, el despliegue de Pages falla. El script `proto-lab-presence` puede publicarse desde GitHub Actions (`.github/workflows/deploy-presence-worker.yml`, secretos `CLOUDFLARE_WORKER_DEPLOY_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`; ver `AGENTS.md`). El Worker no tiene URL pública (`workers_dev = false`).
+
+El plan Free da 100 000 peticiones al día y 13 000 GB-s al día, solo con backend SQLite. Al pasarse, falla y no cobra. La hibernación no factura la duración; `setTimeout` y `setInterval` impiden hibernar ([precios](https://developers.cloudflare.com/durable-objects/platform/pricing/), 18 de octubre de 2026; [hibernación](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)). Cada conexión cuenta una petición. Los mensajes entrantes se facturan 20 a 1; los salientes no. El tope de conexiones hibernables por objeto es 32 768. La sala admite 24 y manda la pose como mucho a 5 Hz, solo mientras alguien se mueve.
+
+Por qué no los otros caminos del plan Free, con una quedada realista (12 personas, 3 horas, la mitad del tiempo en movimiento):
+
+- WebSocket en un Worker sin Durable Object: no hay un punto único para repartir la pose ([WebSockets](https://developers.cloudflare.com/workers/runtime-apis/websockets/)).
+- Sondeo o SSE contra D1: 12 × 5 Hz × 3 h son unas 648 000 peticiones de Worker y otras tantas filas escritas. El Free son 100 000 peticiones al día (toda la cuenta) y 100 000 filas escritas al día. Se sale en minutos y, al fallar, también caen propuestas, taller y datos compartidos.
+- KV: 1 000 escrituras al día ([precios](https://developers.cloudflare.com/kv/platform/pricing/), 30 de octubre de 2026). No da para poses.
+- Queues: 10 000 operaciones al día y hacen falta tres por mensaje ([precios](https://developers.cloudflare.com/queues/platform/pricing/), 30 de octubre de 2026). No entrega al navegador.
+- PartyKit alojado se apagó el 23 de octubre de 2026. PartyServer es este mismo Durable Object más una dependencia.
+- R2, Images, Workers AI y Realtime no reparten poses. R2 e Images no se activan.
+
+La misma quedada en el Durable Object, a 5 Hz y con hibernación, son unas 16 000 peticiones facturadas (324 000 mensajes ÷ 20) y unas 1 400 GB-s (3 h × 128 MB). Cabe en 100 000 y en 13 000. Una pestaña quieta no suma duración. El upgrade sí gasta una petición de Worker, no cada pose.
 
 ## Images
 

@@ -11,7 +11,7 @@
     "dev": "pnpm generate && pnpm --filter \"./protos/**\" build && pnpm --filter @proto-lab/world dev",
     "build": "pnpm generate && pnpm --filter @proto-lab/world --filter \"./protos/**\" build && node scripts/assemble.mjs && node scripts/revision-audio.mjs",
     "preview": "pnpm --filter @proto-lab/world preview",
-    "typecheck": "pnpm generate && pnpm --filter @proto-lab/world --filter \"./protos/**\" --filter \"./templates/**\" typecheck && tsc -p functions/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm generate && pnpm --filter @proto-lab/world --filter \"./protos/**\" --filter \"./templates/**\" typecheck && tsc -p functions/tsconfig.json --noEmit && tsc -p workers/presence/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
     "test:unit": "pnpm generate && vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm test:unit && pnpm test:e2e",
@@ -25,6 +25,7 @@
     "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.6",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "wrangler": "^4.53.0"
   }
 }

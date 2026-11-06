@@ -38,3 +38,17 @@ binding = "AI"
 
 [env.preview.ai]
 binding = "AI"
+
+# Presencia en vivo (Durable Object en workers/presence). Pages no publica la
+# clase: hay que desplegar ese Worker antes de quitar los comentarios. Si el
+# script aún no existe, el despliegue de Pages falla. Sin el binding, /api/presence
+# responde 503 y cada persona sigue sola.
+# [[durable_objects.bindings]]
+# name = "PRESENCE"
+# class_name = "LabPresence"
+# script_name = "proto-lab-presence"
+#
+# [[env.preview.durable_objects.bindings]]
+# name = "PRESENCE"
+# class_name = "LabPresence"
+# script_name = "proto-lab-presence"

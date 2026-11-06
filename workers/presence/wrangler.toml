@@ -1,0 +1,16 @@
+# Worker de la sala en vivo. Pages no puede publicar la clase del Durable Object:
+# este script se despliega aparte (`npx wrangler deploy` desde esta carpeta) y el
+# laboratorio lo enlaza con el binding PRESENCE. Sin ruta pública: el navegador
+# entra por el mismo origen, /api/presence, detrás de Access.
+name = "proto-lab-presence"
+main = "src/index.ts"
+compatibility_date = "2026-10-30"
+workers_dev = false
+
+[[durable_objects.bindings]]
+name = "PRESENCE"
+class_name = "LabPresence"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LabPresence"]

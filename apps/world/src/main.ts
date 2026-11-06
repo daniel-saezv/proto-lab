@@ -49,6 +49,9 @@ const selectorRoot = must("#game-selector");
 const installHelpRoot = must("#install-help");
 const stage = must("#stage");
 const fallback = must("#fallback");
+const presenceAliasBar = document.querySelector("#presence-alias-bar");
+const presenceAliasInput = e2e ? null : must<HTMLInputElement>("#presence-alias");
+if (e2e && presenceAliasBar instanceof HTMLElement) presenceAliasBar.hidden = true;
 
 const touch = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 // En táctil el cartel tapa el cielo y los joysticks se descubren al tocar.
@@ -434,6 +437,7 @@ async function bootWorld() {
         ? { zoneMove: touchZoneMove, zoneLook: touchZoneLook, activeMarker: joystickMarker }
         : undefined,
       e2e,
+      presenceAliasInput,
       perf,
       batch,
       isPrototypeUnseen: (slug) => {

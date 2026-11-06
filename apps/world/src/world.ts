@@ -86,6 +86,11 @@ import {
   smoothLookInput,
   softenTowardLimit,
 } from "./locomotion";
+import { bindPresenceAlias, loadPresenceAlias } from "./presence-alias";
+import { sanitizePresenceNameInput } from "./presence-alias-shared";
+import { createPresenceFigures, type PresenceFigures } from "./presence-figures";
+import { connectLabPresence, type PresenceLink } from "./presence-link";
+import type { PresencePeer } from "./presence-state";
 import {
   CAMERA_NEAR,
   CEILING_UNDERSIDE,
@@ -245,6 +250,8 @@ export function startWorld(options: {
     activeMarker: HTMLElement;
   };
   e2e: boolean;
+  /** Campo de alias en la sala; omitir en e2e. */
+  presenceAliasInput?: HTMLInputElement | null;
   onReady: () => void;
   onE2eReady?: () => void;
   onTalk: () => void;
@@ -563,6 +570,23 @@ export function startWorld(options: {
   const player = buildPlayer();
   player.position.set(0, 0, 1.7);
   scene.add(player);
+
+  let remotePeers: PresencePeer[] = [];
+  const presenceFigures: PresenceFigures | null = options.e2e ? null : createPresenceFigures(scene);
+  const presence: PresenceLink | null = options.e2e
+    ? null
+    : connectLabPresence({
+        getName: () => sanitizePresenceNameInput(loadPresenceAlias()),
+        pose: () => ({ x: player.position.x, z: player.position.z, yaw: player.rotation.y }),
+        onChange(peers) {
+          remotePeers = peers;
+          options.viewport.dataset.presence = String(peers.length);
+        },
+      });
+  if (presence) options.viewport.dataset.presence = "0";
+  if (presence && options.presenceAliasInput) {
+    bindPresenceAlias(options.presenceAliasInput, () => presence.setName());
+  }
 
   const spots: Spot[] = [
     { id: "inventor", kind: "npc", x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, radius: 2.25, collider: LAYOUT.inventor.collider, label: "Hablar con el Inventor" },
@@ -1056,6 +1080,8 @@ export function startWorld(options: {
     }
     if (cloudEntries.length > 0) placeWorkshopClouds(frame, reduced || e2eRender);
     placeThoughtMotes(frame, reduced || e2eRender);
+    presence?.sample(player.position.x, player.position.z, player.rotation.y);
+    presenceFigures?.sync(remotePeers, dt, reduced || e2eRender);
     renderer.render(scene, activeCamera);
     labelRenderer.render(scene, activeCamera);
     if (options.perf) perfWorkMs = performance.now() - now;
@@ -2400,6 +2426,8 @@ export function startWorld(options: {
     holdWorkshopClouds,
     showOpeningClouds,
     dispose() {
+      presence?.stop();
+      presenceFigures?.dispose();
       disposeWorkshopClouds();
       running = false;
       ambient.dispose();
