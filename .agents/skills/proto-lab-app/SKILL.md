@@ -45,7 +45,7 @@ La foto fija queda en **640×360 (16:9)**, como mucho 150 KB. `pnpm previews` me
 
 ## Juegos aprobados: Godot
 
-Si la propuesta **aprobada** es un **juego**, impleméntalo **en Godot** y usa el motor de forma real (escenas, física, animación, mapas de teselas, etc.), no solo como envoltorio del export. El código del juego vive en **`protos/<slug>/godot/`**. Respeta lo que ya exigen el build y esta skill: preset de móvil en `project.godot`, un solo hilo, sin hilos ni `SharedArrayBuffer` en el sitio, cupos de archivos y tamaño, y **`wasm`** en `capabilities` cuando toque WebAssembly.
+Si la propuesta **aprobada** es un **juego**, impleméntalo **en Godot** y usa el motor de forma real (escenas, física, animación, etc.), no solo como envoltorio del export. El código del juego vive en **`protos/<slug>/godot/`**. La dimensión y las fuentes de arte están en `.agents/skills/godot-juego/SKILL.md`. Respeta lo que ya exigen el build y esta skill: preset de móvil en `project.godot`, un solo hilo, sin hilos ni `SharedArrayBuffer` en el sitio, cupos de archivos y tamaño, y **`wasm`** en `capabilities` cuando toque WebAssembly.
 
 Si la issue pide **explícitamente** otra tecnología, obedece eso. Herramientas, utilidades y visualizaciones que no sean un juego pueden seguir en la pila web (Vite, Phaser, etc.) como hasta ahora. No reescribas protos ya existentes solo por esta regla.
 

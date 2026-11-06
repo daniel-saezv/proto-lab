@@ -131,6 +131,8 @@ Hay dos plantillas. Cópialas, no las importes. No hay una plantilla por motor.
 
 Si una propuesta **aprobada** describe un **juego**, el agente que la implemente debe hacerlo **en Godot** y usar las capacidades del motor (escenas, física, animación, mapas de teselas, etc.) dentro de los límites ya documentados en este repositorio: preset de móvil en `godot/project.godot`, un solo hilo, sin `SharedArrayBuffer`, cupos de tamaño del sitio y, para WebAssembly, declarar **`wasm`** en `capabilities`.
 
+La dimensión la marca la issue. Si pide 3D, perspectiva, modelos o una cámara en el espacio, la escena de juego es `Node3D` con `Camera3D`. Cenital describe la cámara: en 3D se hace con `Camera3D`, en perspectiva u ortográfica, mirando hacia abajo. `TileMapLayer` solo entra si la issue pide 2D o teselas. El viewport 390×844, `canvas_items` y `expand` son la ventana que exige el validador; no se cambian para hacer el juego 2D ni 3D. En la web el renderer sigue en `gl_compatibility`, que sí pinta 3D. El detalle de escena, luces y assets está en [`.agents/skills/godot-juego/SKILL.md`](.agents/skills/godot-juego/SKILL.md).
+
 Godot no es solo un enganche de export: el proyecto vive en **`protos/<slug>/godot/`**. El procedimiento de export y el workflow que genera el artefacto están descritos en `templates/export-estatico/LEEME.md` y en la sección **Proyecto** de este archivo (workflow `exportar-godot.yml`); aquí no se reescriben.
 
 Si el texto de la issue pide **explícitamente** otra tecnología para ese juego, se sigue la issue.
