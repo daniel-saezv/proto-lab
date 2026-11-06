@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { LOUNGE_NPCS } from "./lounge-layout";
 import {
+  NAMEPLATE_GLYPH,
+  NAMEPLATE_MARK_BY_ID,
   NAMEPLATE_METRICS as M,
   NAMEPLATE_UPDATE_SUFFIX,
+  estimateMarkWidth,
   estimateNameWidth,
+  nameplateMark,
   planarGaze,
   projectToScreen,
   resolveNameplates,
@@ -161,6 +167,35 @@ describe("etiquetas del lobby", () => {
     expect(plain).toBeGreaterThan(estimateNameWidth("Naipe"));
     expect(updated - plain).toBeGreaterThanOrEqual(Math.floor(NAMEPLATE_UPDATE_SUFFIX.length * M.charPx));
     expect(updated - plain).toBeLessThanOrEqual(Math.ceil(NAMEPLATE_UPDATE_SUFFIX.length * M.charPx));
+  });
+
+  it("da a cada interactuable un glifo y reserva el ancho del icono", () => {
+    expect(nameplateMark("radio")).toBe("note");
+    expect(NAMEPLATE_GLYPH.note).toBe("\u266A");
+    expect(nameplateMark("chalkboard")).toBe("look");
+    expect(NAMEPLATE_GLYPH.look).toBe("\u270E");
+    expect(nameplateMark("arcade")).toBe("play");
+    expect(NAMEPLATE_GLYPH.play).toBe("\u{1F680}\uFE0E");
+    expect(nameplateMark("inventor")).toBe("talk");
+    for (const npc of LOUNGE_NPCS) expect(nameplateMark(npc.id), npc.id).toBe("talk");
+    expect(NAMEPLATE_GLYPH.talk).toBe("\u{1F5E8}");
+    expect(nameplateMark("bench")).toBeNull();
+    expect(Object.keys(NAMEPLATE_MARK_BY_ID).sort()).toEqual(
+      ["arcade", "brasa", "chalkboard", "croquis", "inventor", "naipe", "radio", "remolon"].sort(),
+    );
+
+    expect(estimateMarkWidth()).toBe(M.markWidth);
+    expect(estimateMarkWidth(true) - estimateMarkWidth()).toBe(
+      Math.ceil(NAMEPLATE_UPDATE_SUFFIX.length * M.charPx),
+    );
+  });
+
+  it("pinta el glifo en la pastilla y en el punto, sin el texto del nombre", () => {
+    const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
+    expect(css).toContain("content: var(--nameplate-glyph)");
+    expect(css).not.toContain('content: "♪ "');
+    expect(css).toContain(".nameplate-pip--mark");
+    expect(css).not.toContain(".nameplate-pip--note");
   });
 });
 

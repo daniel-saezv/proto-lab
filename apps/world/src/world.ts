@@ -42,7 +42,8 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { blinkOpen, breathScale, rigSway } from "./graphics-idle";
 import {
   createNameplateElement,
-  estimateNameWidth,
+  estimateMarkWidth,
+  nameplateMark,
   planarGaze,
   projectToScreen,
   resolveNameplates,
@@ -405,7 +406,6 @@ export function startWorld(options: {
     anchorEl: HTMLElement;
     plate: HTMLElement;
     object: CSS2DObject;
-    label: string;
     update: boolean;
     mode: string;
     near: boolean;
@@ -610,14 +610,14 @@ export function startWorld(options: {
   const loungeIds = new Set(ambient.npcs.map((npc) => npc.id));
   const remolonTalk = talkHome("remolon");
   const naipeTalk = talkHome("naipe");
-  for (const plate of ambient.nameplates) trackPlate(plate.id, plate.element, plate.anchor, plate.element.textContent ?? "");
+  for (const plate of ambient.nameplates) trackPlate(plate.id, plate.element, plate.anchor);
 
   addRangeRing("inventor", LAYOUT.inventor.x, LAYOUT.inventor.z, PALETTE.amber);
   addRangeRing("arcade", arcadeSpot.x, arcadeSpot.z, 0xff6b9d);
   addRangeRing("chalkboard", LAYOUT.chalkboard.x, LAYOUT.chalkboard.z, 0x8fd8ff);
   addRangeRing("radio", LAYOUT.radio.x, LAYOUT.radio.z, PALETTE.amber);
   const radioSet = scene.getObjectByName("radio");
-  if (radioSet) tag(radioSet, "Radio", 1.05, "radio", "note");
+  if (radioSet) tag(radioSet, "Radio", 1.05, "radio");
   for (const npc of ambient.npcs) addRangeRing(npc.id, npc.x, npc.z, npc.color);
 
   const pantryGaze = { cx: 0, cz: 0, fx: 0, fz: -1, hold: false };
@@ -1081,12 +1081,11 @@ export function startWorld(options: {
     syncNameplates();
   }
 
-  function trackPlate(id: string, plate: HTMLElement, object: CSS2DObject, label: string) {
+  function trackPlate(id: string, plate: HTMLElement, object: CSS2DObject) {
     plateById.set(id, {
       anchorEl: object.element,
       plate,
       object,
-      label,
       update: plate.classList.contains("nameplate--proto-update"),
       mode: "",
       near: false,
@@ -1117,7 +1116,7 @@ export function startWorld(options: {
         distance,
         inRange: !!spot && spot.radius > 0 && distance <= spot.radius,
         gaze: planarGaze(player.position.x, player.position.z, forwardX, forwardZ, targetX, targetZ),
-        nameWidth: estimateNameWidth(plate.label, plate.update),
+        nameWidth: estimateMarkWidth(plate.update),
       });
     }
     const layout = resolveNameplates(candidates, nameFocusId);
@@ -3002,17 +3001,15 @@ export function startWorld(options: {
     parent.add(art);
   }
 
-  function tag(parent: Object3D, text: string, y: number, id?: string, pip?: "note") {
-    const { anchor, plate } = createNameplateElement(text);
-    if (pip === "note") {
-      anchor.dataset.kind = "radio";
-      anchor.querySelector(".nameplate-pip")?.classList.add("nameplate-pip--note");
-    }
+  function tag(parent: Object3D, text: string, y: number, id: string) {
+    const mark = nameplateMark(id);
+    if (!mark) return;
+    const { anchor, plate } = createNameplateElement(text, mark);
     const object = new CSS2DObject(anchor);
     object.center.set(0, 0);
     object.position.set(0, y, 0);
     parent.add(object);
-    if (id) trackPlate(id, plate, object, text);
+    trackPlate(id, plate, object);
   }
 }
 

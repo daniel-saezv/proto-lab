@@ -1,7 +1,7 @@
 /**
- * Etiquetas del lobby: un solo nombre visible y, como mucho, puntos
- * para el resto de interactuables cercanos. La colisión es en pantalla.
- * El módulo no toca el DOM ni Three: el mundo proyecta y aplica el resultado.
+ * Indicadores del lobby: un solo icono en pastilla (el foco) y, como mucho,
+ * el mismo glifo suelto para el resto de interactuables cercanos.
+ * La colisión es en pantalla. El mundo proyecta y aplica el resultado.
  */
 
 export const NAMEPLATE_UPDATE_SUFFIX = " · nuevo";
@@ -29,7 +29,45 @@ export const NAMEPLATE_METRICS = {
   gazeDistanceStick: 1,
   charPx: 8.4,
   padPx: 28,
+  /**
+   * Ancho de la pastilla cuando solo lleva el glifo (padding + borde + 18px).
+   * El aviso de prototipo nuevo se suma aparte.
+   */
+  markWidth: 48,
 } as const;
+
+/**
+ * Glifos de texto, la misma línea que la corchea de la radio: heredan el
+ * color de la pastilla y no salen como emoji a color.
+ * El cohete lleva el selector de presentación de texto (U+FE0E).
+ */
+export const NAMEPLATE_GLYPH = {
+  note: "\u266A",
+  talk: "\u{1F5E8}",
+  look: "\u270E",
+  play: "\u{1F680}\uFE0E",
+} as const;
+
+export type NameplateMark = keyof typeof NAMEPLATE_GLYPH;
+
+/** Cada interactuable con indicador. Quien no está aquí no lleva pastilla. */
+export const NAMEPLATE_MARK_BY_ID = {
+  radio: "note",
+  inventor: "talk",
+  remolon: "talk",
+  brasa: "talk",
+  naipe: "talk",
+  croquis: "talk",
+  chalkboard: "look",
+  arcade: "play",
+} as const satisfies Record<string, NameplateMark>;
+
+export function nameplateMark(id: string): NameplateMark | null {
+  if (Object.prototype.hasOwnProperty.call(NAMEPLATE_MARK_BY_ID, id)) {
+    return NAMEPLATE_MARK_BY_ID[id as keyof typeof NAMEPLATE_MARK_BY_ID];
+  }
+  return null;
+}
 
 export type NameplateMode = "name" | "pip" | "hidden";
 
@@ -58,6 +96,12 @@ export type NameplateDecision = {
 export function estimateNameWidth(text: string, withUpdate = false): number {
   const extra = withUpdate ? NAMEPLATE_UPDATE_SUFFIX.length : 0;
   return Math.ceil((text.length + extra) * NAMEPLATE_METRICS.charPx + NAMEPLATE_METRICS.padPx);
+}
+
+/** Caja de la pastilla de icono. Con aviso de prototipo nuevo, suma el sufijo. */
+export function estimateMarkWidth(withUpdate = false): number {
+  if (!withUpdate) return NAMEPLATE_METRICS.markWidth;
+  return NAMEPLATE_METRICS.markWidth + Math.ceil(NAMEPLATE_UPDATE_SUFFIX.length * NAMEPLATE_METRICS.charPx);
 }
 
 /** Mirada horizontal del jugador. `forward` no tiene que estar normalizado. */
@@ -145,17 +189,28 @@ export function resolveNameplates(
   };
 }
 
-/** Ancla de una pastilla. El CSS2DObject centra un elemento de tamaño cero en el punto 3D. */
-export function createNameplateElement(text: string): { anchor: HTMLDivElement; plate: HTMLSpanElement } {
+/**
+ * Ancla de un indicador. El CSS2DObject centra un elemento de tamaño cero
+ * en el punto 3D. El nombre queda solo para el lector: en pantalla manda el glifo.
+ */
+export function createNameplateElement(
+  text: string,
+  mark: NameplateMark,
+): { anchor: HTMLDivElement; plate: HTMLSpanElement } {
   const anchor = document.createElement("div");
   anchor.className = "nameplate-anchor";
   anchor.dataset.mode = "hidden";
+  anchor.dataset.kind = mark;
+  anchor.style.setProperty("--nameplate-glyph", `"${NAMEPLATE_GLYPH[mark]}"`);
   const plate = document.createElement("span");
   plate.className = "nameplate";
-  plate.textContent = text;
+  const label = document.createElement("span");
+  label.className = "sr-only";
+  label.textContent = text;
+  plate.append(label);
   plate.setAttribute("aria-hidden", "true");
   const pip = document.createElement("span");
-  pip.className = "nameplate-pip";
+  pip.className = "nameplate-pip nameplate-pip--mark";
   pip.setAttribute("aria-hidden", "true");
   anchor.append(plate, pip);
   return { anchor, plate };
