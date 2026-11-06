@@ -4,10 +4,17 @@
   "description": "Asedio en vista cenital. Elige caballero, ballestero, fraile o astrólogo, golpea en el campo y recoge oro, madera y piedra para alzar muralla, torre, granero, capilla y observatorio. Las siete esferas de la astrología medieval dan los hechizos. La campaña cruza Hastings, Las Navas, Crécy y Constantinopla, y entre oleada y oleada puede cruzar un mito.",
   "author": "proto-lab",
   "date": "2026-11-06",
-  "tags": ["medieval", "accion", "castillo"],
+  "tags": [
+    "medieval",
+    "accion",
+    "castillo"
+  ],
   "cover": null,
   "version": "0.1.0",
-  "capabilities": ["wasm", "save"],
+  "capabilities": [
+    "wasm",
+    "save"
+  ],
   "readyMs": 20000,
   "history": [
     {
@@ -15,5 +22,6 @@
       "date": "2026-11-06",
       "note": "Campo de teselas, oficios, castillo, esferas, guerras históricas y mitos."
     }
-  ]
+  ],
+  "preview": "preview.webp"
 }
