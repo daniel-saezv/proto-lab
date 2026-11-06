@@ -235,6 +235,10 @@ test("en el móvil táctil cada idea es un objetivo de 44 px", async ({ browser 
   await context.close();
 });
 
+async function expectTextInside(page: Page) {
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopTextInside?.() ?? "missing")).toBe("ok");
+}
+
 async function expectCloudsApart(page: Page) {
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -260,7 +264,7 @@ async function expectCloudsApart(page: Page) {
   ).toBe("ok");
 }
 
-test("las nubes no se pisan en las tres rondas", async ({ page }, testInfo) => {
+test("las nubes no se pisan y el texto cabe en el contorno", async ({ page }, testInfo) => {
   skipUnlessChromium(testInfo, "escritorio");
   test.setTimeout(30_000);
   const views = [
@@ -278,6 +282,7 @@ test("las nubes no se pisan en las tres rondas", async ({ page }, testInfo) => {
     for (const [width, height] of views) {
       await page.setViewportSize({ width, height });
       await expectCloudsApart(page);
+      await expectTextInside(page);
     }
     if (round < 3) {
       await page.setViewportSize({ width: 390, height: 844 });
@@ -296,6 +301,7 @@ test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) =>
   await expectSeguirCentered(page, viewport!.width, viewport!.height);
   await page.getByTestId("workshop-option").nth(2).click();
   await expect(page.getByRole("button", { name: roundOne[2] })).toHaveAttribute("aria-pressed", "true");
+  await expectTextInside(page);
   await expectSeguirAfterArrive(page, viewport!.width, viewport!.height);
   await page.getByTestId("choice-workshop-next").click();
   await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 2 de 3");

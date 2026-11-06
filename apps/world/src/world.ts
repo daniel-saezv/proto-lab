@@ -150,6 +150,7 @@ import {
   layoutCloudSlots,
   loadIdeaFont,
   CLOUD_LABEL,
+  inkInsideCotton,
   paintIdeaCanvas,
   type CloudSlot,
   type WorkshopIdeaMesh,
@@ -687,6 +688,8 @@ export function startWorld(options: {
     glowKick: number;
   };
   let cloudEntries: CloudEntry[] = [];
+  let cloudLabelsSettled = false;
+  let cloudPaintGen = 0;
   let cloudBodyGeometry: BufferGeometry | null = null;
   let cloudBodyMaterial: ShaderMaterial | null = null;
   let cloudTextGeometry: BufferGeometry | null = null;
@@ -1541,6 +1544,7 @@ export function startWorld(options: {
       return;
     }
     disposeWorkshopClouds();
+    cloudLabelsSettled = false;
     if (next.length === 0) return;
     const laid = layoutCloudSlots(next.length, camera.aspect, camera.fov);
     const shared = ensureCloudParts();
@@ -1586,9 +1590,11 @@ export function startWorld(options: {
       scene.add(mesh);
       cloudEntries.push(entry);
     });
-    void loadIdeaFont().then((ready) => {
-      if (!ready) return;
+    const paintGen = ++cloudPaintGen;
+    void loadIdeaFont().then(() => {
+      if (paintGen !== cloudPaintGen) return;
       for (const entry of cloudEntries) paintCloud(entry);
+      cloudLabelsSettled = true;
     });
     placeWorkshopClouds(frame, reduced || e2eRender);
   }
@@ -1875,6 +1881,24 @@ export function startWorld(options: {
     };
   }
 
+  function workshopTextInside(): string {
+    if (!cloudLabelsSettled) return "font";
+    if (cloudEntries.length === 0) return "count 0";
+    for (const entry of cloudEntries) {
+      const geometry = entry.text.geometry;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      const bounds = geometry.boundingBox;
+      if (!bounds) return `${entry.idea.text} empty`;
+      const result = inkInsideCotton(entry.canvas, {
+        width: (bounds.max.x - bounds.min.x) * entry.text.scale.x,
+        height: (bounds.max.y - bounds.min.y) * entry.text.scale.y,
+        y: entry.text.position.y,
+      });
+      if (result !== "ok") return `${entry.idea.text} ${result}`;
+    }
+    return "ok";
+  }
+
   function workshopCloudBoxes() {
     const rect = renderer.domElement.getBoundingClientRect();
     return cloudEntries.map((entry) => {
@@ -2135,6 +2159,7 @@ export function startWorld(options: {
       workshopView,
       workshopClouds: workshopCloudStats,
       workshopCloudBoxes,
+      workshopTextInside,
       probeWalkable: () => {
         const bounds = playerLobbyBounds();
         const start = { x: 0, z: 1.7 };
@@ -2163,6 +2188,7 @@ export function startWorld(options: {
       workshopView,
       workshopClouds: workshopCloudStats,
       workshopCloudBoxes,
+      workshopTextInside,
       frameWorkMs: () => Number(perfWorkMs.toFixed(2)),
       setViewpoint: applyViewpoint,
       frameAt(x: number, z: number, lookYaw: number, lookPitch: number, distance?: number) {
@@ -3005,6 +3031,7 @@ declare global {
       };
       workshopClouds?: () => { count: number; past: number; now: number; triangles: number };
       workshopCloudBoxes?: () => Array<{ id: string; x: number; y: number; width: number; height: number }>;
+      workshopTextInside?: () => string;
     };
   }
 }

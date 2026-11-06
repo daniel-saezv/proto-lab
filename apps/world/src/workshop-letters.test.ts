@@ -17,6 +17,7 @@ import {
   createCloudCottonMaterial,
   ideaPalette,
   ideaTriangleCount,
+  insideCotton,
   layoutCloudSlots,
   slotNdcHalf,
   workshopIdeaMeshes,
@@ -76,18 +77,17 @@ describe("letras del taller", () => {
     cotton.dispose();
   });
 
-  it("el rótulo grande cabe en la nube", () => {
-    const cloud = buildIdeaGeometry();
-    cloud.computeBoundingBox();
-    const box = cloud.boundingBox!;
+  it("el rótulo queda dentro del contorno con margen", () => {
     const halfW = CLOUD_LABEL.width / 2;
     const halfH = CLOUD_LABEL.height / 2;
-    expect(CLOUD_LABEL.minPx).toBeGreaterThanOrEqual(80);
-    expect(-halfW).toBeGreaterThan(box.min.x);
-    expect(halfW).toBeLessThan(box.max.x);
-    expect(CLOUD_LABEL.y - halfH).toBeGreaterThan(box.min.y);
-    expect(CLOUD_LABEL.y + halfH).toBeLessThan(box.max.y);
-    cloud.dispose();
+    expect(CLOUD_LABEL.minPx).toBeGreaterThanOrEqual(48);
+    for (let i = 0; i <= 12; i += 1) {
+      for (let j = 0; j <= 10; j += 1) {
+        const x = -halfW + (CLOUD_LABEL.width * i) / 12;
+        const y = CLOUD_LABEL.y - halfH + (CLOUD_LABEL.height * j) / 10;
+        expect(insideCotton(x, y, 0.03)).toBe(true);
+      }
+    }
   });
 
   it("escribe en negro sobre nube clara y marca la elegida con amarillo", () => {

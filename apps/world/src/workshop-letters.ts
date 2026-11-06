@@ -52,8 +52,15 @@ const IDEA_INK = "#100c08";
 const IDEA_CLOUD = "#fffaf6";
 const IDEA_HALO = "#fffdf8";
 
-/** Plano del rótulo, dentro de la caja de la nube, para que la letra sea grande. */
-export const CLOUD_LABEL = { width: 0.94, height: 0.78, y: 0.02, minPx: 88 } as const;
+/**
+ * Plano del rótulo. Cabe en la panza de la nube, no en la caja: los lóbulos
+ * se estrechan y una letra en la esquina se saldría. El margen lo mide
+ * `LABEL_PAD`.
+ */
+export const CLOUD_LABEL = { width: 0.6, height: 0.62, y: -0.02, minPx: 64 } as const;
+
+/** Holgura, en unidades de la malla, entre la tinta y el contorno. */
+export const LABEL_PAD = 0.03;
 
 export function workshopIdeaMeshes(
   options: readonly string[],
@@ -115,7 +122,35 @@ export function paintIdeaCanvas(canvas: HTMLCanvasElement, text: string, picked:
   if (!context) return;
   context.clearRect(0, 0, width, height);
   const palette = ideaPalette(picked);
-  drawLabel(context, text, width, height, palette.ink, 0.9, 0.92, CLOUD_LABEL.minPx);
+  drawLabel(context, text, width, height, palette.ink);
+}
+
+/**
+ * La tinta del lienzo, halo incluido, cae dentro del contorno con margen.
+ * `out` nombra el primer punto que se sale.
+ */
+export function inkInsideCotton(
+  canvas: HTMLCanvasElement,
+  plane: { width: number; height: number; y: number } = CLOUD_LABEL,
+  pad = LABEL_PAD,
+): string {
+  const context = canvas.getContext("2d");
+  if (!context || canvas.width < 2 || canvas.height < 2) return "empty";
+  const { width, height } = canvas;
+  const pixels = context.getImageData(0, 0, width, height).data;
+  let seen = 0;
+  const step = 2;
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const alpha = pixels[(y * width + x) * 4 + 3] ?? 0;
+      if (alpha < 24) continue;
+      seen += 1;
+      const localX = (x / width - 0.5) * plane.width;
+      const localY = plane.y + (0.5 - y / height) * plane.height;
+      if (!insideCotton(localX, localY, pad)) return `out ${localX.toFixed(3)},${localY.toFixed(3)}`;
+    }
+  }
+  return seen >= 8 ? "ok" : "blank";
 }
 
 function drawLabel(
@@ -124,35 +159,32 @@ function drawLabel(
   width: number,
   height: number,
   ink: string,
-  widthFrac: number,
-  heightFrac: number,
-  minSize: number,
 ) {
-  const maxWidth = width * widthFrac;
-  const maxHeight = height * heightFrac;
-  let size = Math.floor(height * 0.4);
+  const maxWidth = width * 0.98;
+  const maxHeight = height * 0.96;
+  let size = Math.max(CLOUD_LABEL.minPx, Math.floor(height * 0.34));
   let lines = wrapLines(context, text, maxWidth, size);
-  while (size > minSize) {
-    const block = lines.length * size * 1.08;
-    const fits = block <= maxHeight && lines.every((line) => measure(context, line, size) <= maxWidth);
-    if (fits) break;
+  while (size > 28 && !labelFits(context, lines, size, maxWidth, maxHeight)) {
     size -= 2;
     lines = wrapLines(context, text, maxWidth, size);
   }
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.lineJoin = "round";
-  context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
-  const lineHeight = size * 1.02;
-  const block = lines.length * lineHeight;
-  let y = height / 2 - block / 2 + lineHeight / 2;
+  const spans = lines.map((line) => glyphSpan(context, line, size));
+  const step = size * 1.02;
+  const first = spans[0];
+  const last = spans[spans.length - 1];
+  const block = (first?.ascent ?? 0) + (last?.descent ?? 0) + Math.max(0, lines.length - 1) * step;
+  let baseline = height / 2 - block / 2 + (first?.ascent ?? step / 2);
   const linesAt = lines.map((line) => {
-    const at = y;
-    y += lineHeight;
+    const at = baseline;
+    baseline += step;
     return { line, at };
   });
+  context.textAlign = "center";
+  context.textBaseline = "alphabetic";
+  context.lineJoin = "round";
+  context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
   context.strokeStyle = IDEA_HALO;
-  context.lineWidth = Math.max(10, size * 0.2);
+  context.lineWidth = haloWidth(size);
   for (const { line, at } of linesAt) context.strokeText(line, width / 2, at);
   context.fillStyle = ink;
   context.strokeStyle = ink;
@@ -163,20 +195,51 @@ function drawLabel(
   }
 }
 
-function measure(context: CanvasRenderingContext2D, line: string, size: number): number {
+function haloWidth(size: number): number {
+  return Math.max(10, size * 0.2);
+}
+
+/** Ancho y alto de la tinta, con el halo. Así el ¿ y el ? cuentan. */
+function glyphSpan(
+  context: CanvasRenderingContext2D,
+  line: string,
+  size: number,
+): { width: number; ascent: number; descent: number } {
   context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
-  return context.measureText(line).width;
+  const measured = context.measureText(line);
+  const stroke = haloWidth(size);
+  const left = measured.actualBoundingBoxLeft;
+  const right = measured.actualBoundingBoxRight;
+  const ink = left + right > 1 ? left + right : measured.width;
+  return {
+    width: ink + stroke,
+    ascent: (measured.actualBoundingBoxAscent || size * 0.82) + stroke / 2,
+    descent: (measured.actualBoundingBoxDescent || size * 0.24) + stroke / 2,
+  };
+}
+
+function labelFits(
+  context: CanvasRenderingContext2D,
+  lines: readonly string[],
+  size: number,
+  maxWidth: number,
+  maxHeight: number,
+): boolean {
+  const spans = lines.map((line) => glyphSpan(context, line, size));
+  const step = size * 1.02;
+  const block =
+    (spans[0]?.ascent ?? 0) + (spans[spans.length - 1]?.descent ?? 0) + Math.max(0, lines.length - 1) * step;
+  return block <= maxHeight && spans.every((span) => span.width <= maxWidth);
 }
 
 function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: number, size: number): string[] {
-  context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
   const lines: string[] = [];
   let current = "";
   for (const word of words) {
     const next = current ? `${current} ${word}` : word;
-    if (context.measureText(next).width <= maxWidth || !current) current = next;
+    if (glyphSpan(context, next, size).width <= maxWidth || !current) current = next;
     else {
       lines.push(current);
       current = word;
@@ -205,6 +268,36 @@ const CLOUD_LOBES: ReadonlyArray<readonly [number, number, number, number]> = [
 
 const CLOUD_ISO = 0.36;
 const CLOUD_DEPTH = 0.46;
+
+/** Encaje de la malla: el campo pasa a ancho 1 y queda centrado. */
+let cloudFrame: { fit: number; midX: number; midY: number } | null = null;
+
+/**
+ * El punto, en el plano de la malla, cae dentro del algodón con `pad` de
+ * margen. El rótulo se comprueba con esto, no con la caja del lóbulo.
+ */
+export function insideCotton(localX: number, localY: number, pad = 0): boolean {
+  if (!cloudFrame) buildIdeaGeometry().dispose();
+  const frame = cloudFrame;
+  if (!frame) return false;
+  const diagonal = pad * 0.7071;
+  const offsets = [
+    [0, 0],
+    [pad, 0],
+    [-pad, 0],
+    [0, pad],
+    [0, -pad],
+    [diagonal, diagonal],
+    [diagonal, -diagonal],
+    [-diagonal, diagonal],
+    [-diagonal, -diagonal],
+  ];
+  return offsets.every(([dx, dy]) => {
+    const x = frame.midX + (localX + (dx ?? 0)) / frame.fit;
+    const y = frame.midY + (localY + (dy ?? 0)) / frame.fit;
+    return cloudField(x, y, 0) >= CLOUD_ISO;
+  });
+}
 
 function cloudField(x: number, y: number, z: number): number {
   let field = 0;
@@ -426,6 +519,7 @@ export function buildIdeaGeometry(): BufferGeometry {
   const midX = (minX + maxX) / 2;
   const midY = (minY + maxY) / 2;
   const fit = 1 / width;
+  cloudFrame = { fit, midX, midY };
   let faceZ = 0;
   for (let i = 0; i < position.count; i += 1) {
     const x = (position.getX(i) - midX) * fit;
