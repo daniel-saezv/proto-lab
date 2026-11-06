@@ -1,10 +1,18 @@
 import {
   BufferAttribute,
   BufferGeometry,
+  CustomBlending,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  MeshBasicMaterial,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
   ShaderMaterial,
+  SRGBColorSpace,
   SphereGeometry,
   Vector3,
   type PerspectiveCamera,
+  type Texture,
 } from "three";
 
 export type WorkshopIdeaRole = "now";
@@ -25,8 +33,11 @@ export type CloudSlot = {
   aspect: number;
 };
 
-/** Lienzo del rótulo, solo la letra. La nube se ilumina aparte. */
-export const IDEA_CANVAS = { width: 768, height: 512 } as const;
+/**
+ * Lienzo del rótulo, solo la letra. Cuadrado y potencia de dos: el plano
+ * es casi cuadrado, y un mipmap de este tamaño no estira la letra.
+ */
+export const IDEA_CANVAS = { width: 512, height: 512 } as const;
 
 /**
  * Una superficie suave compartida. Cuatro nubes, el rótulo y el halo
@@ -34,11 +45,11 @@ export const IDEA_CANVAS = { width: 768, height: 512 } as const;
  */
 export const IDEA_TRIANGLE_CAP = 8_000;
 
-/** Familia incluida en el repo (Fredoka, SIL OFL). Redonda, de juego. */
+/** Fredoka en peso 600, incluida en el repo (SIL OFL). Redonda, de juego. */
 export const IDEA_FONT_FAMILY = "ProtoFredoka";
-export const IDEA_FONT_URL = "/fonts/fredoka-latin-700.woff2";
-export const IDEA_FONT_WEIGHT = "700";
-export const IDEA_FONT = `"${IDEA_FONT_FAMILY}", "Trebuchet MS", "Segoe UI", sans-serif`;
+export const IDEA_FONT_URL = "/fonts/fredoka-latin-600.woff2";
+export const IDEA_FONT_WEIGHT = "600";
+export const IDEA_FONT = `"${IDEA_FONT_FAMILY}", sans-serif`;
 
 /**
  * El resplandor es otra copia de la nube, un poco más grande y opaca.
@@ -48,10 +59,27 @@ export const IDEA_FONT = `"${IDEA_FONT_FAMILY}", "Trebuchet MS", "Segoe UI", san
  */
 export const CLOUD_AURA_SCALE = 1.09;
 
-const IDEA_INK = "#0c0907";
+/**
+ * Tinta cálida. Un negro puro, encima del trazo, tapaba los ojos de la
+ * letra y se leía como una mancha. Este tono sigue oscuro sobre el algodón.
+ */
+const IDEA_INK = "#342c26";
 const IDEA_CLOUD = "#fffefc";
-/** El trazo es de la misma tinta: un halo claro adelgazaba la letra sobre el algodón. */
-const IDEA_HALO = IDEA_INK;
+
+/**
+ * El rótulo no lleva trazo. En esta fuente un `strokeText` va centrado en
+ * el contorno: uno claro se come el relleno y uno oscuro cierra a, e, o, d.
+ */
+export const LABEL_OUTLINE = 0;
+
+/** Holgura del bloque dentro del lienzo. El plano ya entra en el algodón. */
+const LABEL_FIT = 0.9;
+
+/** Avance de línea, en em. El cuerpo medido ya ocupa casi uno. */
+const LABEL_LEADING = 1.08;
+
+/** Reserva del borde suavizado, en em. No se pinta: solo entra en la medida. */
+const LABEL_INK_PAD = 0.04;
 
 /**
  * Plano del rótulo. Cabe en la panza de la nube, no en la caja: los lóbulos
@@ -81,6 +109,47 @@ export function ideaPalette(picked: boolean): { ink: string; cloud: string; glow
     cloud: IDEA_CLOUD,
     glow: picked ? "#ffc430" : "transparent",
   };
+}
+
+/**
+ * La letra es un plano transparente delante del algodón. El mipmap baja
+ * el lienzo al tamaño de la pantalla sin saltarse texels. El alfa se
+ * premultiplica al subir la textura: si no, ese filtro mezcla la tinta
+ * con el negro de los píxeles transparentes y el borde engorda.
+ */
+export function prepareIdeaTexture(texture: Texture, maxAnisotropy: number): void {
+  texture.colorSpace = SRGBColorSpace;
+  texture.generateMipmaps = true;
+  texture.minFilter = LinearMipmapLinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.premultiplyAlpha = true;
+  texture.anisotropy = Math.min(4, Math.max(1, maxAnisotropy));
+}
+
+/**
+ * Mezcla la textura ya premultiplicada. La opacidad del fundido tiene que
+ * escalar el color: si no, un rótulo con opacidad 0 seguiría sumando tinta.
+ */
+export function createIdeaTextMaterial(map: Texture): MeshBasicMaterial {
+  const material = new MeshBasicMaterial({
+    map,
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+    blending: CustomBlending,
+    blendSrc: OneFactor,
+    blendDst: OneMinusSrcAlphaFactor,
+    blendSrcAlpha: OneFactor,
+    blendDstAlpha: OneMinusSrcAlphaFactor,
+  });
+  material.customProgramCacheKey = () => "idea-text";
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <opaque_fragment>",
+      "outgoingLight *= opacity;\n#include <opaque_fragment>",
+    );
+  };
+  return material;
 }
 
 /** La primera aparición, la que acompaña a la llegada a la mesa. */
@@ -145,7 +214,7 @@ export function paintIdeaCanvas(canvas: HTMLCanvasElement, text: string, picked:
 }
 
 /**
- * La tinta del lienzo, halo incluido, cae dentro del contorno con margen.
+ * La tinta del lienzo cae dentro del contorno con margen.
  * `out` nombra el primer punto que se sale.
  */
 export function inkInsideCotton(
@@ -179,16 +248,16 @@ function drawLabel(
   height: number,
   ink: string,
 ) {
-  const maxWidth = width * 0.98;
-  const maxHeight = height * 0.96;
-  let size = Math.max(CLOUD_LABEL.minPx, Math.floor(height * 0.4));
+  const maxWidth = width * LABEL_FIT;
+  const maxHeight = height * LABEL_FIT;
+  let size = Math.max(CLOUD_LABEL.minPx, Math.floor(height * 0.34));
   let lines = wrapLines(context, text, maxWidth, size);
   while (size > 28 && !labelFits(context, lines, size, maxWidth, maxHeight)) {
     size -= 2;
     lines = wrapLines(context, text, maxWidth, size);
   }
   const spans = lines.map((line) => glyphSpan(context, line, size));
-  const step = size * 1.02;
+  const step = size * LABEL_LEADING;
   const first = spans[0];
   const last = spans[spans.length - 1];
   const block = (first?.ascent ?? 0) + (last?.descent ?? 0) + Math.max(0, lines.length - 1) * step;
@@ -200,25 +269,12 @@ function drawLabel(
   });
   context.textAlign = "center";
   context.textBaseline = "alphabetic";
-  context.lineJoin = "round";
   context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
-  context.strokeStyle = IDEA_HALO;
-  context.lineWidth = haloWidth(size);
-  for (const { line, at } of linesAt) context.strokeText(line, width / 2, at);
   context.fillStyle = ink;
-  context.strokeStyle = ink;
-  context.lineWidth = Math.max(3, size * 0.09);
-  for (const { line, at } of linesAt) {
-    context.strokeText(line, width / 2, at);
-    context.fillText(line, width / 2, at);
-  }
+  for (const { line, at } of linesAt) context.fillText(line, width / 2, at);
 }
 
-function haloWidth(size: number): number {
-  return Math.max(5, size * 0.12);
-}
-
-/** Ancho y alto de la tinta, con el halo. Así el ¿ y el ? cuentan. */
+/** Ancho y alto de la tinta. Así el ¿ y el ? cuentan, y el borde suavizado también. */
 function glyphSpan(
   context: CanvasRenderingContext2D,
   line: string,
@@ -226,14 +282,14 @@ function glyphSpan(
 ): { width: number; ascent: number; descent: number } {
   context.font = `${IDEA_FONT_WEIGHT} ${size}px ${IDEA_FONT}`;
   const measured = context.measureText(line);
-  const stroke = haloWidth(size);
+  const pad = size * LABEL_INK_PAD + LABEL_OUTLINE;
   const left = measured.actualBoundingBoxLeft;
   const right = measured.actualBoundingBoxRight;
   const ink = left + right > 1 ? left + right : measured.width;
   return {
-    width: ink + stroke,
-    ascent: (measured.actualBoundingBoxAscent || size * 0.82) + stroke / 2,
-    descent: (measured.actualBoundingBoxDescent || size * 0.24) + stroke / 2,
+    width: ink + pad,
+    ascent: (measured.actualBoundingBoxAscent || size * 0.8) + pad / 2,
+    descent: (measured.actualBoundingBoxDescent || size * 0.22) + pad / 2,
   };
 }
 
@@ -245,7 +301,7 @@ function labelFits(
   maxHeight: number,
 ): boolean {
   const spans = lines.map((line) => glyphSpan(context, line, size));
-  const step = size * 1.02;
+  const step = size * LABEL_LEADING;
   const block =
     (spans[0]?.ascent ?? 0) + (spans[spans.length - 1]?.descent ?? 0) + Math.max(0, lines.length - 1) * step;
   return block <= maxHeight && spans.every((span) => span.width <= maxWidth);

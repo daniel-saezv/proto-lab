@@ -1,15 +1,28 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PerspectiveCamera, Vector3 } from "three";
+import {
+  CustomBlending,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
+  PerspectiveCamera,
+  SRGBColorSpace,
+  Vector3,
+  type Texture,
+} from "three";
 import { describe, expect, it } from "vitest";
 import { WORKSHOP_SEAT, workshopThinkCamera } from "./workshop-cinematic";
 import {
   CLOUD_AURA_SCALE,
   CLOUD_LABEL,
+  IDEA_CANVAS,
   IDEA_FONT_FAMILY,
   IDEA_FONT_URL,
+  IDEA_FONT_WEIGHT,
   IDEA_TRIANGLE_CAP,
+  LABEL_OUTLINE,
   buildIdeaGeometry,
   cloudAnchor,
   CLOUD_POP_FIRST,
@@ -17,10 +30,12 @@ import {
   cloudPop,
   createCloudAuraMaterial,
   createCloudCottonMaterial,
+  createIdeaTextMaterial,
   ideaPalette,
   ideaTriangleCount,
   insideCotton,
   layoutCloudSlots,
+  prepareIdeaTexture,
   slotNdcHalf,
   workshopIdeaMeshes,
 } from "./workshop-letters";
@@ -98,11 +113,16 @@ describe("letras del taller", () => {
     }
   });
 
-  it("escribe en negro sobre nube clara y marca la elegida con amarillo", () => {
+  it("la tinta se lee sobre el algodón sin ser un sello negro", () => {
     const idle = ideaPalette(false);
     const picked = ideaPalette(true);
-    expect(luminance(idle.ink)).toBeLessThan(0.15);
+    const paper = "#f4f0ea";
+    expect(relativeLuminance(idle.ink)).toBeGreaterThan(0.015);
+    expect(relativeLuminance(idle.ink)).toBeLessThan(0.08);
+    expect(contrast(idle.ink, paper)).toBeGreaterThan(8);
     expect(luminance(idle.cloud)).toBeGreaterThan(0.9);
+    expect(LABEL_OUTLINE).toBe(0);
+    expect(IDEA_FONT_WEIGHT).toBe("600");
     expect(picked.ink).toBe(idle.ink);
     expect(picked.glow).not.toBe(idle.glow);
     const value = Number.parseInt(picked.glow.slice(1), 16);
@@ -113,15 +133,54 @@ describe("letras del taller", () => {
     expect(green).toBeGreaterThan(blue + 40);
   });
 
+  it("el lienzo coincide con el plano y el mipmap no estira la letra", () => {
+    const canvasAspect = IDEA_CANVAS.width / IDEA_CANVAS.height;
+    const planeAspect = CLOUD_LABEL.width / CLOUD_LABEL.height;
+    expect(canvasAspect / planeAspect).toBeGreaterThan(0.92);
+    expect(canvasAspect / planeAspect).toBeLessThan(1.08);
+    expect(Math.log2(IDEA_CANVAS.width) % 1).toBe(0);
+    expect(Math.log2(IDEA_CANVAS.height) % 1).toBe(0);
+    const texture = {
+      colorSpace: "",
+      generateMipmaps: false,
+      minFilter: 0,
+      magFilter: 0,
+      premultiplyAlpha: false,
+      anisotropy: 1,
+    } as Texture;
+    prepareIdeaTexture(texture, 16);
+    expect(texture.colorSpace).toBe(SRGBColorSpace);
+    expect(texture.generateMipmaps).toBe(true);
+    expect(texture.minFilter).toBe(LinearMipmapLinearFilter);
+    expect(texture.magFilter).toBe(LinearFilter);
+    expect(texture.premultiplyAlpha).toBe(true);
+    expect(texture.anisotropy).toBe(4);
+    const material = createIdeaTextMaterial(texture);
+    expect(material.transparent).toBe(true);
+    expect(material.depthWrite).toBe(false);
+    expect(material.toneMapped).toBe(false);
+    expect(material.premultipliedAlpha).toBe(false);
+    expect(material.blending).toBe(CustomBlending);
+    expect(material.blendSrc).toBe(OneFactor);
+    expect(material.blendDst).toBe(OneMinusSrcAlphaFactor);
+    const shader = { fragmentShader: "void main() {\n#include <opaque_fragment>\n}", uniforms: {}, vertexShader: "" };
+    material.onBeforeCompile(shader, material as never);
+    expect(shader.fragmentShader).toContain("outgoingLight *= opacity;");
+    expect(shader.fragmentShader).toContain("#include <opaque_fragment>");
+    expect(material.customProgramCacheKey()).toBe("idea-text");
+    material.dispose();
+  });
+
   it("la letra es la Fredoka redondeada incluida en el repo", () => {
-    const font = readFileSync(join(here, "../public/fonts/fredoka-latin-700.woff2"));
+    const font = readFileSync(join(here, "../public/fonts/fredoka-latin-600.woff2"));
     const license = readFileSync(join(here, "../public/fonts/OFL-fredoka.txt"), "utf8");
     expect(font.subarray(0, 4).toString("ascii")).toBe("wOF2");
     expect(font.byteLength).toBeLessThan(40_000);
     expect(license).toContain("SIL OPEN FONT LICENSE");
     expect(license).toContain("Fredoka");
     expect(IDEA_FONT_FAMILY).toBe("ProtoFredoka");
-    expect(IDEA_FONT_URL).toBe("/fonts/fredoka-latin-700.woff2");
+    expect(IDEA_FONT_URL).toBe("/fonts/fredoka-latin-600.woff2");
+    expect(IDEA_FONT_WEIGHT).toBe("600");
   });
 
   it("rodea al Inventor y deja las nubes dentro del encuadre", () => {
@@ -214,6 +273,25 @@ function luminance(hex: string): number {
   const green = (value >> 8) & 255;
   const blue = value & 255;
   return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+}
+
+function relativeLuminance(hex: string): number {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const channel = (component: number) => {
+    const s = component / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const red = channel((value >> 16) & 255);
+  const green = channel((value >> 8) & 255);
+  const blue = channel(value & 255);
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrast(ink: string, paper: string): number {
+  const a = relativeLuminance(ink);
+  const b = relativeLuminance(paper);
+  const [hi, lo] = a > b ? [a, b] : [b, a];
+  return (hi + 0.05) / (lo + 0.05);
 }
 
 function lobePeaks(geometry: ReturnType<typeof buildIdeaGeometry>): number {

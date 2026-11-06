@@ -151,8 +151,10 @@ import {
   loadIdeaFont,
   CLOUD_LABEL,
   cloudArrival,
+  createIdeaTextMaterial,
   inkInsideCotton,
   paintIdeaCanvas,
+  prepareIdeaTexture,
   type CloudSlot,
   type WorkshopIdeaMesh,
 } from "./workshop-letters";
@@ -1680,22 +1682,14 @@ export function startWorld(options: {
       if (!slot) return;
       const canvas = document.createElement("canvas");
       const texture = new CanvasTexture(canvas);
-      texture.colorSpace = SRGBColorSpace;
-      texture.generateMipmaps = false;
-      texture.minFilter = LinearFilter;
-      texture.magFilter = LinearFilter;
+      prepareIdeaTexture(texture, renderer.capabilities.getMaxAnisotropy());
       const mesh = new Mesh(shared.bodyGeometry, shared.bodyMaterial);
       mesh.name = `idea-${idea.id}`;
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.renderOrder = 1;
       mesh.userData.noBatch = true;
-      const textMaterial = new MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-      });
+      const textMaterial = createIdeaTextMaterial(texture);
       const text = new Mesh(shared.textGeometry, textMaterial);
       text.name = `idea-text-${idea.id}`;
       text.position.set(0, CLOUD_LABEL.y, faceZ + 0.03);
