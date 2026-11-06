@@ -85,16 +85,34 @@ test("el menú y el overlay dejan el juego a la vista", async ({ page, isMobile 
   await expect(handle).toHaveAttribute("aria-controls", "prototype-hud");
   await expect(page.getByTestId("close-prototype")).toBeHidden();
   await expect(page.getByTestId("fullscreen")).toBeHidden();
+  const cue = page.getByTestId("hud-cue");
+  await expect(cue).toBeVisible();
+  await expect(cue).toHaveText("Abrir controles");
+  const cueEvents = await cue.evaluate((element) => getComputedStyle(element).pointerEvents);
+  expect(cueEvents).toBe("none");
   const handleBox = await handle.boundingBox();
+  const cueBox = await cue.boundingBox();
   const grip = await page.locator(".hud-handle-grip").boundingBox();
   const frame = await page.locator(".prototype-frame").boundingBox();
   expect(handleBox).toBeTruthy();
+  expect(cueBox).toBeTruthy();
   expect(grip).toBeTruthy();
   expect(frame).toBeTruthy();
   expect(handleBox!.width).toBeGreaterThanOrEqual(43.5);
   expect(handleBox!.height).toBeGreaterThanOrEqual(43.5);
-  expect(grip!.width).toBeLessThanOrEqual(22);
-  expect(grip!.height).toBeLessThanOrEqual(22);
+  expect(cueBox!.x + cueBox!.width).toBeLessThanOrEqual(handleBox!.x + 2);
+  expect(cueBox!.y).toBeLessThan(handleBox!.y + handleBox!.height);
+  expect(cueBox!.y + cueBox!.height).toBeGreaterThan(handleBox!.y);
+  const finePointer = await page.evaluate(() => window.matchMedia("(hover: hover) and (pointer: fine)").matches);
+  if (finePointer) {
+    expect(grip!.width).toBeGreaterThanOrEqual(32);
+    expect(grip!.height).toBeGreaterThanOrEqual(32);
+    expect(grip!.width).toBeLessThanOrEqual(40);
+    expect(handleBox!.width).toBeLessThanOrEqual(60);
+  } else {
+    expect(grip!.width).toBeLessThanOrEqual(22);
+    expect(grip!.height).toBeLessThanOrEqual(22);
+  }
   expect((viewport?.width ?? 0) - (handleBox!.x + handleBox!.width)).toBeLessThanOrEqual(64);
   expect((viewport?.height ?? 0) - (handleBox!.y + handleBox!.height)).toBeLessThanOrEqual(64);
   const opacity = await page.locator(".hud-handle-grip").evaluate((element) => Number(getComputedStyle(element).opacity));
@@ -114,6 +132,16 @@ test("el menú y el overlay dejan el juego a la vista", async ({ page, isMobile 
     return hit === element || element.contains(hit);
   });
   expect(clear).toBe(true);
+  const handleHit = await handle.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return hit === element || element.contains(hit);
+  });
+  expect(handleHit).toBe(true);
+
+  await expect.poll(async () => cue.isHidden(), { timeout: 5000 }).toBe(true);
+  await expect(handle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("close-prototype")).toBeHidden();
 
   await armGameHits(page);
   await pokeCenter(page, isMobile);

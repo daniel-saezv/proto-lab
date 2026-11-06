@@ -5,6 +5,7 @@ import { assertPrototypePage } from "./prototype-document";
 import { createSaveBridge } from "./app-save";
 import { createPrototypeAssetHost } from "./prototype-assets-host";
 import { NATIVE_FULLSCREEN_TIMEOUT_MS, occupiesScreen, planFullscreen, type FullscreenFacts, type FullscreenPlan } from "./fullscreen";
+import { HUD_CUE_LABEL, HUD_CUE_MS, nextHudCue, type HudCueEvent, type HudCuePhase } from "./hud-cue";
 import type { CatalogEntry } from "./types";
 
 type FullscreenHost = HTMLElement & { webkitRequestFullscreen?: () => void };
@@ -41,6 +42,9 @@ export function createOverlay(
   let saveBridge: ReturnType<typeof createSaveBridge> | null = null;
   let hudTimer = 0;
   let hudExpanded = false;
+  let cuePhase: HudCuePhase = "pending";
+  let cueTimer = 0;
+  let cueToken = 0;
   const HUD_IDLE_MS = 4000;
 
   function setPseudo(on: boolean) {
@@ -220,6 +224,38 @@ export function createOverlay(
     hudTimer = 0;
   }
 
+  function invalidateCueTimer() {
+    cueToken += 1;
+    window.clearTimeout(cueTimer);
+    cueTimer = 0;
+  }
+
+  function renderCue() {
+    const header = root.querySelector<HTMLElement>(".prototype-chrome");
+    const cue = root.querySelector<HTMLElement>("[data-testid=hud-cue]");
+    const showing = cuePhase === "showing";
+    if (header) header.dataset.cue = showing ? "on" : "off";
+    if (cue) cue.hidden = !showing;
+  }
+
+  function armCueTimer() {
+    invalidateCueTimer();
+    const token = cueToken;
+    cueTimer = window.setTimeout(() => {
+      if (token !== cueToken) return;
+      applyCue("tick");
+    }, HUD_CUE_MS);
+  }
+
+  function applyCue(event: HudCueEvent) {
+    const next = nextHudCue(cuePhase, event);
+    const start = next === "showing" && cuePhase !== "showing";
+    cuePhase = next;
+    if (start) armCueTimer();
+    else if (next !== "showing") invalidateCueTimer();
+    renderCue();
+  }
+
   function errorPinned(): boolean {
     const banner = root.querySelector<HTMLElement>(".prototype-banner");
     return Boolean(banner && !banner.hidden);
@@ -241,6 +277,7 @@ export function createOverlay(
     }
     if (panel) panel.hidden = !expanded;
     if (catcher) catcher.hidden = !expanded || errorPinned();
+    if (expanded) applyCue("expand");
     if (expanded && !errorPinned()) {
       hudTimer = window.setTimeout(() => setHud(false), HUD_IDLE_MS);
     }
@@ -272,6 +309,8 @@ export function createOverlay(
     if (!opened) return;
     opened = false;
     clearHudTimer();
+    invalidateCueTimer();
+    cuePhase = "pending";
     hudExpanded = false;
     const mine = ++generation;
     window.clearTimeout(readyTimer);
@@ -307,6 +346,8 @@ export function createOverlay(
     boot = "ready";
     root.dataset.prototypeReady = "1";
     status?.remove();
+    // El aviso espera a que el prototipo se vea: durante la carga no se gasta.
+    applyCue("ready");
   }
 
   function attachFrameGuards(next: HTMLIFrameElement) {
@@ -398,6 +439,8 @@ export function createOverlay(
     const mine = generation;
     opened = true;
     clearHudTimer();
+    invalidateCueTimer();
+    cuePhase = "pending";
     hudExpanded = false;
     frame = null;
     assetHost = null;
@@ -510,7 +553,8 @@ export function createOverlay(
     });
 
     header.dataset.expanded = "false";
-    header.append(catcher, panel, handle);
+    header.dataset.cue = "off";
+    header.append(catcher, panel, hudCue(), handle);
     const slot = document.createElement("div");
     slot.className = "prototype-frame";
     slot.append(createBootScreen());
@@ -561,6 +605,16 @@ export function createOverlay(
     close,
     isOpen: () => opened,
   };
+}
+
+function hudCue(): HTMLParagraphElement {
+  const cue = document.createElement("p");
+  cue.className = "hud-cue";
+  cue.dataset.testid = "hud-cue";
+  cue.hidden = true;
+  cue.setAttribute("aria-hidden", "true");
+  cue.textContent = HUD_CUE_LABEL;
+  return cue;
 }
 
 function hudGrip(): HTMLSpanElement {
