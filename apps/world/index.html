@@ -32,6 +32,20 @@
       <div id="viewport"></div>
       <div id="labels"></div>
       <p id="hint" data-testid="hint"></p>
+      <div id="presence-alias-bar" class="presence-alias-bar" data-testid="presence-alias-bar">
+        <label class="presence-alias-bar__label" for="presence-alias">Alias en la sala</label>
+        <input
+          id="presence-alias"
+          class="presence-alias-bar__input"
+          type="text"
+          maxlength="32"
+          autocomplete="nickname"
+          data-testid="presence-alias-input"
+          placeholder="Opcional"
+          aria-describedby="presence-alias-hint"
+        />
+        <p id="presence-alias-hint" class="presence-alias-bar__hint">Solo en este navegador. No uses tu correo.</p>
+      </div>
       <button id="mute-music" type="button" data-testid="mute-music" aria-pressed="false" aria-label="Silenciar música">
         <svg class="mute-icon mute-icon--on" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" d="M4 9.5h3.2L12 5.8v12.4l-4.8-3.7H4z" />

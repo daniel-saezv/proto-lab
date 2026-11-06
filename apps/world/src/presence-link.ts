@@ -1,10 +1,12 @@
-import { applyPresenceMessage, planPresenceSend, type PoseClock, type PresencePeer } from "./presence-state";
+import { applyPresenceMessage, planPresenceRename, planPresenceSend, type PoseClock, type PresencePeer, type RenameClock } from "./presence-state";
 
 const PATH = "/api/presence";
 const MAX_ATTEMPTS = 5;
 
 export type PresenceLink = {
   sample(x: number, z: number, yaw: number): void;
+  /** Pide un rename con el alias que devuelve getName. */
+  setName(): void;
   peers(): PresencePeer[];
   stop(): void;
 };
@@ -15,14 +17,19 @@ export type PresenceLink = {
  */
 export function connectLabPresence(options: {
   pose: () => { x: number; z: number; yaw: number };
+  /** Nombre ya saneado; vacío = sin alias. */
+  getName: () => string;
   onChange?: (peers: PresencePeer[]) => void;
 }): PresenceLink {
   if (typeof WebSocket !== "function" || typeof crypto.randomUUID !== "function") {
-    return { sample() {}, peers: () => [], stop() {} };
+    return { sample() {}, setName() {}, peers: () => [], stop() {} };
   }
   const selfId = crypto.randomUUID();
   let peers = new Map<string, PresencePeer>();
   let clock: PoseClock | null = null;
+  let renameClock: RenameClock | null = null;
+  let lastSentName: string | undefined = undefined;
+  let pendingRename = false;
   let socket: WebSocket | null = null;
   let attempt = 0;
   let stopped = false;
@@ -39,6 +46,20 @@ export function connectLabPresence(options: {
     if (socket?.readyState === WebSocket.OPEN) socket.send(text);
   }
 
+  function sendRenameIfDue(force: boolean) {
+    if (stopped || socket?.readyState !== WebSocket.OPEN || renameClock === null) return;
+    const sanitized = options.getName();
+    const now = Date.now();
+    if (!force && !pendingRename) return;
+    const planned = planPresenceRename(lastSentName, sanitized, renameClock, now);
+    if (!planned.send) return;
+    renameClock = planned.clock;
+    if (force || pendingRename) pendingRename = false;
+    lastSentName = sanitized === "" ? undefined : sanitized;
+    if (sanitized === "") send(JSON.stringify({ type: "rename" }));
+    else send(JSON.stringify({ type: "rename", name: sanitized }));
+  }
+
   function open() {
     if (stopped) return;
     const url = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}${PATH}`;
@@ -49,7 +70,18 @@ export function connectLabPresence(options: {
       const pose = options.pose();
       const stamp = Date.now();
       clock = { ...pose, at: stamp, hereAt: stamp };
-      send(JSON.stringify({ type: "hello", id: selfId, x: pose.x, z: pose.z, yaw: pose.yaw }));
+      renameClock = { lastSent: 0 };
+      const name = options.getName();
+      lastSentName = name === "" ? undefined : name;
+      const hello: Record<string, unknown> = {
+        type: "hello",
+        id: selfId,
+        x: pose.x,
+        z: pose.z,
+        yaw: pose.yaw,
+      };
+      if (name !== "") hello.name = name;
+      send(JSON.stringify(hello));
     });
     ws.addEventListener("message", (event) => {
       if (typeof event.data !== "string") return;
@@ -64,6 +96,8 @@ export function connectLabPresence(options: {
     ws.addEventListener("close", () => {
       if (socket !== ws) return;
       socket = null;
+      renameClock = null;
+      lastSentName = undefined;
       publish(new Map());
       if (stopped) return;
       attempt += 1;
@@ -88,9 +122,14 @@ export function connectLabPresence(options: {
     if (stopped || socket?.readyState !== WebSocket.OPEN) return;
     const pose = options.pose();
     const planned = planPresenceSend(clock, pose, Date.now());
-    if (planned.kind !== "here") return;
+    if (!planned.kind) {
+      sendRenameIfDue(false);
+      return;
+    }
     clock = planned.last;
-    send(JSON.stringify({ type: "here" }));
+    if (planned.kind === "move") send(JSON.stringify({ type: "move", x: pose.x, z: pose.z, yaw: pose.yaw }));
+    else send(JSON.stringify({ type: "here" }));
+    sendRenameIfDue(false);
   }, 5_000);
 
   window.addEventListener("pagehide", stop);
@@ -100,10 +139,18 @@ export function connectLabPresence(options: {
     sample(x, z, yaw) {
       if (stopped || socket?.readyState !== WebSocket.OPEN) return;
       const planned = planPresenceSend(clock, { x, z, yaw }, Date.now());
-      if (!planned.kind) return;
+      if (!planned.kind) {
+        sendRenameIfDue(false);
+        return;
+      }
       clock = planned.last;
       if (planned.kind === "move") send(JSON.stringify({ type: "move", x, z, yaw }));
       else send(JSON.stringify({ type: "here" }));
+      sendRenameIfDue(false);
+    },
+    setName() {
+      pendingRename = true;
+      sendRenameIfDue(true);
     },
     peers: () => [...peers.values()],
     stop,

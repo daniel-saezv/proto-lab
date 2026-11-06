@@ -1,11 +1,12 @@
 import { BoxGeometry, CylinderGeometry, Group, Mesh, MeshLambertMaterial, Scene, SphereGeometry, type BufferGeometry } from "three";
+import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { dampAngle } from "./locomotion";
 import type { PresencePeer } from "./presence-state";
 
 /** Distintos del teal del jugador, para reconocer a otra persona sin ponerle nombre. */
 const COLORS = [0xff5d73, 0xffb703, 0x3ec6ff, 0xb388ff, 0x7dff6b, 0xff8c42, 0xf2a2ff, 0x9ad1ff] as const;
 
-type Figure = { group: Group; materials: MeshLambertMaterial[] };
+type Figure = { group: Group; materials: MeshLambertMaterial[]; label: CSS2DObject | null };
 
 export function createPresenceFigures(scene: Scene) {
   const geometries: BufferGeometry[] = [
@@ -14,6 +15,18 @@ export function createPresenceFigures(scene: Scene) {
     new BoxGeometry(0.08, 0.08, 0.12),
   ];
   const figures = new Map<string, Figure>();
+
+  function makeLabel(name: string) {
+    const wrap = document.createElement("div");
+    wrap.className = "presence-peer-label";
+    const span = document.createElement("span");
+    span.className = "presence-peer-label__text";
+    span.textContent = name;
+    wrap.append(span);
+    const label = new CSS2DObject(wrap);
+    label.position.set(0, 1.35, 0);
+    return label;
+  }
 
   function spawn(id: string, peer: PresencePeer): Figure {
     const color = COLORS[colorIndex(id)] ?? COLORS[0];
@@ -32,8 +45,13 @@ export function createPresenceFigures(scene: Scene) {
       mesh.receiveShadow = false;
     }
     group.add(body, head, nose);
+    let label: CSS2DObject | null = null;
+    if (peer.name) {
+      label = makeLabel(peer.name);
+      group.add(label);
+    }
     scene.add(group);
-    const figure = { group, materials };
+    const figure = { group, materials, label };
     figures.set(id, figure);
     return figure;
   }
@@ -48,6 +66,17 @@ export function createPresenceFigures(scene: Scene) {
         figure.group.position.x += (peer.x - figure.group.position.x) * follow;
         figure.group.position.z += (peer.z - figure.group.position.z) * follow;
         figure.group.rotation.y = dampAngle(figure.group.rotation.y, peer.yaw, snap ? 1 : dt, snap ? 40 : 8);
+        const want = peer.name ?? "";
+        const el = figure.label?.element.querySelector(".presence-peer-label__text");
+        if (want) {
+          if (!figure.label) {
+            figure.label = makeLabel(want);
+            figure.group.add(figure.label);
+          } else if (el) el.textContent = want;
+        } else if (figure.label) {
+          figure.group.remove(figure.label);
+          figure.label = null;
+        }
       }
       for (const [id, figure] of figures) {
         if (seen.has(id)) continue;

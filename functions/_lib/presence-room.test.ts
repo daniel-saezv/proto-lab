@@ -4,6 +4,7 @@ import {
   createMemoryPresence,
   isSessionId,
   nextAlarmAt,
+  parseNameField,
   presenceRoomName,
   type MemoryLink,
 } from "./presence-room";
@@ -26,8 +27,15 @@ function pipe() {
   return { link, inbox, closed };
 }
 
-function hello(id: string, x = 0, z = 1.7, yaw = 0) {
-  return JSON.stringify({ type: "hello", id, x, z, yaw });
+function hello(id: string, x = 0, z = 1.7, yaw = 0, name?: string) {
+  const payload: Record<string, unknown> = { type: "hello", id, x, z, yaw };
+  if (name !== undefined) payload.name = name;
+  return JSON.stringify(payload);
+}
+
+function rename(name?: string) {
+  if (name === undefined) return JSON.stringify({ type: "rename" });
+  return JSON.stringify({ type: "rename", name });
 }
 
 function move(x: number, z: number, yaw = 0) {
@@ -97,6 +105,65 @@ describe("sala de presencia", () => {
       { type: "move", peer: { id: ANA, x: PRESENCE_LIMITS.coordLimit, z: -PRESENCE_LIMITS.coordLimit, yaw: 0 } },
       { type: "move", peer: { id: ANA, x: 4, z: 5, yaw: 0.5 } },
     ]);
+  });
+
+  it("hello y welcome llevan alias; move no", () => {
+    let now = 8_000;
+    const room = createMemoryPresence(() => now);
+    const ana = pipe();
+    const bo = pipe();
+    const a = room.connect(ana.link);
+    const b = room.connect(bo.link);
+    a.message(hello(ANA, 1, 2, 0.4, "Ana"));
+    b.message(hello(BO, 3, 4, -0.2, "  Bo "));
+    expect(bo.inbox[0]).toEqual({
+      type: "welcome",
+      self: BO,
+      peers: [{ id: ANA, x: 1, z: 2, yaw: 0.4, name: "Ana" }],
+    });
+    expect(ana.inbox.at(-1)).toEqual({
+      type: "join",
+      peer: { id: BO, x: 3, z: 4, yaw: -0.2, name: "Bo" },
+    });
+    now = 8_200;
+    bo.inbox.length = 0;
+    a.message(move(2, 2, 0));
+    expect(bo.inbox).toEqual([{ type: "move", peer: { id: ANA, x: 2, z: 2, yaw: 0 } }]);
+  });
+
+  it("rename actualiza el nombre con el mismo tope que here", () => {
+    let now = 20_000;
+    const room = createMemoryPresence(() => now);
+    const ana = pipe();
+    const bo = pipe();
+    const a = room.connect(ana.link);
+    const b = room.connect(bo.link);
+    a.message(hello(ANA, 0, 0, 0, "Viejo"));
+    b.message(hello(BO));
+    bo.inbox.length = 0;
+    now = 20_100;
+    a.message(rename("Nuevo"));
+    expect(bo.inbox).toEqual([{ type: "rename", id: ANA, name: "Nuevo" }]);
+    bo.inbox.length = 0;
+    now = 20_500;
+    a.message(rename("Otro"));
+    expect(bo.inbox).toEqual([]);
+    now = 20_100 + PRESENCE_LIMITS.hereMinMs;
+    a.message(rename("Otro"));
+    expect(bo.inbox).toEqual([{ type: "rename", id: ANA, name: "Otro" }]);
+    bo.inbox.length = 0;
+    now += PRESENCE_LIMITS.hereMinMs;
+    a.message(rename("ana@malo"));
+    expect(bo.inbox).toEqual([{ type: "rename", id: ANA, name: "" }]);
+  });
+
+  it("recorta el nombre y rechaza correo en parseNameField", () => {
+    expect(parseNameField("  x  ")).toEqual({ ok: true, value: "x" });
+    const long = "a".repeat(40);
+    expect((parseNameField(long) as { ok: true; value: string }).value.length).toBe(PRESENCE_LIMITS.nameMaxChars);
+    expect(parseNameField("no@correo")).toEqual({ ok: false });
+    expect(parseNameField("")).toEqual({ ok: true, value: "" });
+    expect(parseNameField(undefined)).toEqual({ ok: true, value: "" });
   });
 
   it("rechaza un id que no es una sesión efímera y no publica el texto", () => {

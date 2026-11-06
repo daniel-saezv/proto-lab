@@ -86,6 +86,8 @@ import {
   smoothLookInput,
   softenTowardLimit,
 } from "./locomotion";
+import { bindPresenceAlias, loadPresenceAlias } from "./presence-alias";
+import { sanitizePresenceNameInput } from "./presence-alias-shared";
 import { createPresenceFigures, type PresenceFigures } from "./presence-figures";
 import { connectLabPresence, type PresenceLink } from "./presence-link";
 import type { PresencePeer } from "./presence-state";
@@ -248,6 +250,8 @@ export function startWorld(options: {
     activeMarker: HTMLElement;
   };
   e2e: boolean;
+  /** Campo de alias en la sala; omitir en e2e. */
+  presenceAliasInput?: HTMLInputElement | null;
   onReady: () => void;
   onE2eReady?: () => void;
   onTalk: () => void;
@@ -572,6 +576,7 @@ export function startWorld(options: {
   const presence: PresenceLink | null = options.e2e
     ? null
     : connectLabPresence({
+        getName: () => sanitizePresenceNameInput(loadPresenceAlias()),
         pose: () => ({ x: player.position.x, z: player.position.z, yaw: player.rotation.y }),
         onChange(peers) {
           remotePeers = peers;
@@ -579,6 +584,9 @@ export function startWorld(options: {
         },
       });
   if (presence) options.viewport.dataset.presence = "0";
+  if (presence && options.presenceAliasInput) {
+    bindPresenceAlias(options.presenceAliasInput, () => presence.setName());
+  }
 
   const spots: Spot[] = [
     { id: "inventor", kind: "npc", x: LAYOUT.inventor.x, z: LAYOUT.inventor.z, radius: 2.25, collider: LAYOUT.inventor.collider, label: "Hablar con el Inventor" },

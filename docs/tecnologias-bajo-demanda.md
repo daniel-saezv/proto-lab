@@ -26,7 +26,7 @@ Si se activa: dos buckets (producción y preview), un token que el agente no ve,
 
 ## Durable Objects
 
-Activo solo para la sala del laboratorio (`workers/presence`, clase `LabPresence`, backend SQLite). Las personas conectadas a la vez comparten pose por WebSocket con hibernación. El dato de una aplicación sigue en D1. Una aplicación no declara ni llama a este producto.
+Activo solo para la sala del laboratorio (`workers/presence`, clase `LabPresence`, backend SQLite). Las personas conectadas a la vez comparten pose por WebSocket con hibernación; el alias opcional va solo en el adjunto del WebSocket y en los mensajes `hello` / `welcome` / `join` / `rename`, no en D1 ni KV. El dato de una aplicación sigue en D1. Una aplicación no declara ni llama a este producto.
 
 Pages no puede publicar la clase ([bindings de Pages](https://developers.cloudflare.com/pages/functions/bindings/), 2026). La Function `GET /api/presence` reenvía el upgrade al binding `PRESENCE` si existe. Sin ese binding responde 503 y el laboratorio sigue en solitario. El binding está comentado en `wrangler.toml` hasta que el Worker exista en la cuenta: si el script no está, el despliegue de Pages falla. El script `proto-lab-presence` puede publicarse desde GitHub Actions (`.github/workflows/deploy-presence-worker.yml`, secretos `CLOUDFLARE_WORKER_DEPLOY_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`; ver `AGENTS.md`). El Worker no tiene URL pública (`workers_dev = false`).
 

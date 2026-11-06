@@ -65,6 +65,76 @@ button, input, textarea { font: inherit; color: inherit; }
   text-align: center;
 }
 
+.presence-alias-bar {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(56px + env(safe-area-inset-right));
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: min(200px, calc(100vw - 120px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.presence-alias-bar__label {
+  margin: 0;
+  font-size: 0.72rem;
+  color: rgba(246, 241, 231, 0.72);
+  text-align: right;
+  line-height: 1.2;
+}
+
+.presence-alias-bar__input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(246, 241, 231, 0.28);
+  background: rgba(10, 12, 24, 0.72);
+  font-size: 0.85rem;
+  touch-action: manipulation;
+}
+
+.presence-alias-bar__input::placeholder {
+  color: rgba(246, 241, 231, 0.42);
+}
+
+.presence-alias-bar__input:focus {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+.presence-alias-bar__hint {
+  margin: 0;
+  font-size: 0.65rem;
+  color: rgba(246, 241, 231, 0.48);
+  text-align: right;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+.presence-peer-label {
+  pointer-events: none;
+}
+
+.presence-peer-label__text {
+  display: inline-block;
+  max-width: 26ch;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(10, 12, 24, 0.78);
+  border: 1px solid rgba(246, 241, 231, 0.22);
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 #mute-music {
   position: absolute;
   top: calc(12px + env(safe-area-inset-top));

@@ -11,6 +11,8 @@ export const PRESENCE_LIMITS = {
   /** Una quedada de amigos. Por encima se rechaza el upgrade. */
   maxSockets: 24,
   maxMessageChars: 480,
+  /** Alias mostrado en la sala; debe caber en el adjunto y en la UI. */
+  nameMaxChars: 24,
   /** 5 Hz. Con el ratio 20:1 de mensajes entrantes cabe en el cupo diario. */
   moveMinMs: 200,
   hereMinMs: 20_000,
@@ -28,9 +30,13 @@ export type Attachment = {
   x: number;
   z: number;
   yaw: number;
+  /** Vacío si no hay alias válido. */
+  name: string;
   seen: number;
   moveAt: number;
   hereAt: number;
+  /** Misma ventana que here; rechaza rename demasiado seguido. */
+  renameAt: number;
   opened: number;
 };
 
@@ -39,6 +45,8 @@ export type PeerPose = {
   x: number;
   z: number;
   yaw: number;
+  /** Solo en welcome, join, rename y move no lleva nombre. */
+  name?: string;
 };
 
 export type HostSocket = {
@@ -88,14 +96,19 @@ export function readAttachment(value: unknown): Attachment | null {
   if (typeof row.opened !== "number" || !Number.isFinite(row.opened)) return null;
   const id = typeof row.id === "string" ? row.id : "";
   if (id !== "" && !isSessionId(id)) return null;
+  const rawName = row.name;
+  const parsedName = parseNameField(rawName);
+  const nameStored = parsedName.ok ? parsedName.value : "";
   return {
     id,
     x: finite(row.x, 0),
     z: finite(row.z, 0),
     yaw: finite(row.yaw, 0),
+    name: nameStored,
     seen: row.seen,
     moveAt: finite(row.moveAt, 0),
     hereAt: finite(row.hereAt, 0),
+    renameAt: finite(row.renameAt, 0),
     opened: row.opened,
   };
 }
@@ -106,9 +119,11 @@ export function onConnected(socket: HostSocket, now: number): void {
     x: 0,
     z: 1.7,
     yaw: 0,
+    name: "",
     seen: now,
     moveAt: 0,
     hereAt: 0,
+    renameAt: 0,
     opened: now,
   });
 }
@@ -136,7 +151,8 @@ export function onMessage(all: readonly HostSocket[], current: HostSocket, raw: 
       current.close(1008, "id");
       return;
     }
-    const next: Attachment = { ...att, ...hello, seen: now };
+    const nameField = parseNameField((parsed as Record<string, unknown>).name);
+    const next: Attachment = { ...att, ...hello, name: nameField.ok ? nameField.value : "", seen: now };
     current.write(next);
     current.send(JSON.stringify({ type: "welcome", self: hello.id, peers: poses(all, current) }));
     sendOthers(all, current, { type: "join", peer: poseOf(next) });
@@ -144,6 +160,18 @@ export function onMessage(all: readonly HostSocket[], current: HostSocket, raw: 
   }
   if (!parsed || typeof parsed !== "object") return;
   const type = (parsed as { type?: unknown }).type;
+  if (type === "rename") {
+    const nameField = parseNameField((parsed as Record<string, unknown>).name);
+    if (!nameField.ok) {
+      current.write({ ...att, name: "", seen: now, renameAt: now });
+      sendOthers(all, current, { type: "rename", id: att.id, name: "" });
+      return;
+    }
+    if (att.renameAt !== 0 && now - att.renameAt < PRESENCE_LIMITS.hereMinMs) return;
+    current.write({ ...att, name: nameField.value, seen: now, renameAt: now });
+    sendOthers(all, current, { type: "rename", id: att.id, name: nameField.value });
+    return;
+  }
   if (type === "here") {
     if (att.hereAt !== 0 && now - att.hereAt < PRESENCE_LIMITS.hereMinMs) return;
     current.write({ ...att, seen: now, hereAt: now });
@@ -155,7 +183,7 @@ export function onMessage(all: readonly HostSocket[], current: HostSocket, raw: 
   if (att.moveAt !== 0 && now - att.moveAt < PRESENCE_LIMITS.moveMinMs) return;
   const next: Attachment = { ...att, ...move, seen: now, moveAt: now };
   current.write(next);
-  sendOthers(all, current, { type: "move", peer: poseOf(next) });
+  sendOthers(all, current, { type: "move", peer: peerMoveOnly(next) });
 }
 
 export function onLeft(others: readonly HostSocket[], attachment: Attachment | null): void {
@@ -267,7 +295,7 @@ function createMemorySocket(link: MemoryLink, announce: (socket: MemorySocket) =
 }
 
 function blank(now: number): Attachment {
-  return { id: "", x: 0, z: 1.7, yaw: 0, seen: now, moveAt: 0, hereAt: 0, opened: now };
+  return { id: "", x: 0, z: 1.7, yaw: 0, name: "", seen: now, moveAt: 0, hereAt: 0, renameAt: 0, opened: now };
 }
 
 function poses(all: readonly HostSocket[], except: HostSocket): PeerPose[] {
@@ -281,7 +309,11 @@ function poses(all: readonly HostSocket[], except: HostSocket): PeerPose[] {
   return peers;
 }
 
-function sendOthers(all: readonly HostSocket[], except: HostSocket, message: { type: "join" | "move"; peer: PeerPose }): void {
+function sendOthers(
+  all: readonly HostSocket[],
+  except: HostSocket,
+  message: { type: "join"; peer: PeerPose } | { type: "move"; peer: Pick<PeerPose, "id" | "x" | "z" | "yaw"> } | { type: "rename"; id: string; name: string },
+): void {
   const text = JSON.stringify(message);
   for (const socket of all) {
     if (socket.token === except.token) continue;
@@ -291,6 +323,12 @@ function sendOthers(all: readonly HostSocket[], except: HostSocket, message: { t
 }
 
 function poseOf(att: Attachment): PeerPose {
+  const p: PeerPose = { id: att.id, x: att.x, z: att.z, yaw: att.yaw };
+  if (att.name !== "") p.name = att.name;
+  return p;
+}
+
+function peerMoveOnly(att: Attachment): Pick<PeerPose, "id" | "x" | "z" | "yaw"> {
   return { id: att.id, x: att.x, z: att.z, yaw: att.yaw };
 }
 
@@ -332,4 +370,25 @@ function clampYaw(value: unknown): number | null {
 
 function finite(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Acepta undefined (sin nombre), cadena vacía o espacios (sin nombre),
+ * u otra cadena recortada y sin caracteres de control ni @ (no correos).
+ */
+export function parseNameField(value: unknown): { ok: true; value: string } | { ok: false } {
+  if (value === undefined || value === null) return { ok: true, value: "" };
+  if (typeof value !== "string") return { ok: false };
+  const trimmed = value.trim();
+  if (trimmed === "") return { ok: true, value: "" };
+  if (trimmed.includes("@")) return { ok: false };
+  let out = "";
+  for (const ch of trimmed) {
+    const code = ch.charCodeAt(0);
+    if (code < 32 || code === 127) continue;
+    out += ch;
+    if (out.length >= PRESENCE_LIMITS.nameMaxChars) break;
+  }
+  const finalName = out.trim();
+  return { ok: true, value: finalName };
 }
