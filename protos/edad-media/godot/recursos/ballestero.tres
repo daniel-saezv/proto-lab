@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Oficio" load_steps=2 format=3 uid="uid://cmediaofiball"]
+
+[ext_resource type="Script" uid="uid://bmediaoficio" path="res://recursos/oficio.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "ballestero"
+nombre = "Ballestero"
+planeta = "mercurio"
+vida = 96
+mana = 52
+dano = 11
+alcance = 210.0
+velocidad = 156.0
+cadencia = 0.62

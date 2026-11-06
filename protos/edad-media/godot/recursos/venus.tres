@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Hechizo" load_steps=2 format=3 uid="uid://cmediahechven"]
+
+[ext_resource type="Script" uid="uid://bmediahechizo" path="res://recursos/hechizo.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "venus"
+nombre = "Venus"
+coste = 18
+radio = 120.0
+dano = 0
+cura = 0
+duracion = 2.2
+efecto = "raiz"

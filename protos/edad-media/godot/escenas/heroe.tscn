@@ -1,0 +1,46 @@
+[gd_scene load_steps=4 format=3 uid="uid://cmediaheroe01"]
+
+[ext_resource type="Script" uid="uid://bmediaheroe01" path="res://escenas/heroe.gd" id="1_heroe"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_cuerpo"]
+radius = 14.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_golpe"]
+radius = 30.0
+
+[node name="Heroe" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 1
+motion_mode = 1
+script = ExtResource("1_heroe")
+
+[node name="Cuerpo" type="Node2D" parent="."]
+
+[node name="Torso" type="Polygon2D" parent="Cuerpo"]
+color = Color(0.62, 0.18, 0.16, 1)
+polygon = PackedVector2Array(-11, -6, 11, -6, 13, 16, -13, 16)
+
+[node name="Cabeza" type="Polygon2D" parent="Cuerpo"]
+color = Color(0.86, 0.72, 0.52, 1)
+polygon = PackedVector2Array(-6, -16, 6, -16, 5, -6, -5, -6)
+
+[node name="Escudo" type="Polygon2D" parent="Cuerpo"]
+color = Color(0.76, 0.78, 0.8, 1)
+polygon = PackedVector2Array(8, -4, 16, -2, 15, 12, 7, 10)
+
+[node name="Choque" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_cuerpo")
+
+[node name="Golpe" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitoring = true
+monitorable = false
+
+[node name="Alcance" type="CollisionShape2D" parent="Golpe"]
+shape = SubResource("CircleShape2D_golpe")
+
+[node name="Anim" type="AnimationPlayer" parent="."]
+
+[node name="Camara" type="Camera2D" parent="."]
+offset = Vector2(0, -140)

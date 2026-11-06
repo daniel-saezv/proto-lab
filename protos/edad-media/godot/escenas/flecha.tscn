@@ -1,0 +1,20 @@
+[gd_scene load_steps=3 format=3 uid="uid://cmediaflecha1"]
+
+[ext_resource type="Script" uid="uid://bmediaflecha1" path="res://escenas/flecha.gd" id="1_flecha"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_asta"]
+size = Vector2(16, 6)
+
+[node name="Flecha" type="Area2D"]
+collision_layer = 0
+collision_mask = 4
+monitoring = true
+monitorable = false
+script = ExtResource("1_flecha")
+
+[node name="Asta" type="Polygon2D" parent="."]
+color = Color(0.86, 0.78, 0.42, 1)
+polygon = PackedVector2Array(-8, -2, 8, 0, -8, 2)
+
+[node name="Choque" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_asta")

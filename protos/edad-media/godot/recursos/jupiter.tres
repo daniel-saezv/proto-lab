@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Hechizo" load_steps=2 format=3 uid="uid://cmediahechjup"]
+
+[ext_resource type="Script" uid="uid://bmediahechizo" path="res://recursos/hechizo.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "jupiter"
+nombre = "Júpiter"
+coste = 16
+radio = 0.0
+dano = 0
+cura = 0
+duracion = 8.0
+efecto = "oro"

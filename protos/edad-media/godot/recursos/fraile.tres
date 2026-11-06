@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Oficio" load_steps=2 format=3 uid="uid://cmediaofifra"]
+
+[ext_resource type="Script" uid="uid://bmediaoficio" path="res://recursos/oficio.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "fraile"
+nombre = "Fraile"
+planeta = "luna"
+vida = 110
+mana = 78
+dano = 9
+alcance = 46.0
+velocidad = 142.0
+cadencia = 0.58

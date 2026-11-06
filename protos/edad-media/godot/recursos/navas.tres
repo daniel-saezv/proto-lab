@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="Guerra" load_steps=2 format=3 uid="uid://cmediagnavas"]
+
+[ext_resource type="Script" uid="uid://bmediaguerra" path="res://recursos/guerra.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+anio = 1212
+nombre = "Las Navas"
+nota = "Tres huestes, un llano."
+oleadas_texto = "infante:2,arquero:1|jinete:2|ariete:1,infante:2"

@@ -1,0 +1,21 @@
+[gd_scene load_steps=3 format=3 uid="uid://cmediaenemy01"]
+
+[ext_resource type="Script" uid="uid://bmediaenemigo" path="res://escenas/enemigo.gd" id="1_enemigo"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_cuerpo"]
+radius = 14.0
+
+[node name="Enemigo" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 3
+motion_mode = 1
+script = ExtResource("1_enemigo")
+
+[node name="Cuerpo" type="Polygon2D" parent="."]
+color = Color(0.45, 0.32, 0.24, 1)
+polygon = PackedVector2Array(-12, -10, 12, -10, 10, 14, -10, 14)
+
+[node name="Choque" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_cuerpo")
+
+[node name="Anim" type="AnimationPlayer" parent="."]

@@ -1,0 +1,33 @@
+[gd_scene load_steps=4 format=3 uid="uid://cmediamain001"]
+
+[ext_resource type="Script" uid="uid://bmediamundo01" path="res://mundo.gd" id="1_mundo"]
+[ext_resource type="PackedScene" uid="uid://cmediaheroe01" path="res://escenas/heroe.tscn" id="2_heroe"]
+[ext_resource type="PackedScene" uid="uid://cmediahud0001" path="res://escenas/hud.tscn" id="3_hud"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_mundo")
+
+[node name="Suelo" type="TileMapLayer" parent="."]
+
+[node name="Decor" type="Node2D" parent="."]
+
+[node name="Castillo" type="Node2D" parent="Decor"]
+
+[node name="Anim" type="AnimationPlayer" parent="Decor/Castillo"]
+
+[node name="Cuerpos" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Muros" type="StaticBody2D" parent="Cuerpos"]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Heroe" parent="Cuerpos" instance=ExtResource("2_heroe")]
+position = Vector2(352, 560)
+
+[node name="Hud" parent="." instance=ExtResource("3_hud")]
+
+[node name="Torre" type="Timer" parent="."]
+wait_time = 1.25
+
+[node name="Sonido" type="AudioStreamPlayer" parent="."]

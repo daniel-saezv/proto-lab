@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Hechizo" load_steps=2 format=3 uid="uid://cmediahechmer"]
+
+[ext_resource type="Script" uid="uid://bmediahechizo" path="res://recursos/hechizo.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "mercurio"
+nombre = "Mercurio"
+coste = 12
+radio = 0.0
+dano = 0
+cura = 0
+duracion = 3.2
+efecto = "vel"

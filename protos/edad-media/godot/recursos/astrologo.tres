@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Oficio" load_steps=2 format=3 uid="uid://cmediaofiast"]
+
+[ext_resource type="Script" uid="uid://bmediaoficio" path="res://recursos/oficio.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "astrologo"
+nombre = "Astrólogo"
+planeta = "sol"
+vida = 84
+mana = 92
+dano = 8
+alcance = 64.0
+velocidad = 138.0
+cadencia = 0.6

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Hechizo" load_steps=2 format=3 uid="uid://cmediahechsol"]
+
+[ext_resource type="Script" uid="uid://bmediahechizo" path="res://recursos/hechizo.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "sol"
+nombre = "Sol"
+coste = 18
+radio = 92.0
+dano = 22
+cura = 10
+duracion = 0.0
+efecto = "dano"

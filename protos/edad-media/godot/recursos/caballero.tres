@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Oficio" load_steps=2 format=3 uid="uid://cmediaoficab"]
+
+[ext_resource type="Script" uid="uid://bmediaoficio" path="res://recursos/oficio.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "caballero"
+nombre = "Caballero"
+planeta = "marte"
+vida = 128
+mana = 46
+dano = 16
+alcance = 52.0
+velocidad = 150.0
+cadencia = 0.52

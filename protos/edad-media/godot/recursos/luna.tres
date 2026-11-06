@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Hechizo" load_steps=2 format=3 uid="uid://cmediahechlun"]
+
+[ext_resource type="Script" uid="uid://bmediahechizo" path="res://recursos/hechizo.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "luna"
+nombre = "Luna"
+coste = 16
+radio = 0.0
+dano = 0
+cura = 30
+duracion = 0.0
+efecto = "cura"
