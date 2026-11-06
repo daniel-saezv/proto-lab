@@ -9,6 +9,7 @@ import {
   workshopPickChoices,
   workshopSummaryChoices,
   workshopSummaryError,
+  workshopSummaryPicks,
   workshopTrailBefore,
   workshopTrailLine,
 } from "./workshop-view";
@@ -37,13 +38,21 @@ describe("vista del taller", () => {
     expect(workshopTrailBefore(both, 3)).toHaveLength(2);
     expect(workshopTrailLine(both[1]?.ideas ?? [])).toBe("Ninguna");
     expect(rememberWorkshopPick(both, 1, ["otra"])[0]?.ideas).toEqual(["otra"]);
+    expect(workshopSummaryPicks(both)).toEqual([
+      { round: 1, ideas: ["¿Y si dejara un rastro?"] },
+      { round: 2, ideas: [] },
+    ]);
   });
 
   it("deja marcar ideas y cerrar la ronda, o enviar el resumen", () => {
     expect(workshopPickChoices().map((choice) => choice.label)).toEqual([
-      "Siguiente",
+      "Seguir",
       "Así está bien",
       "Volver a mi nota",
+    ]);
+    expect(workshopPickChoices().filter((choice) => choice.quiet).map((choice) => choice.id)).toEqual([
+      "choice-workshop-stop",
+      "choice-workshop-back",
     ]);
     expect(workshopFailedChoices().map((choice) => choice.id)).toEqual(["choice-workshop-retry", "choice-workshop-back"]);
     expect(workshopSummaryChoices().map((choice) => choice.label)).toEqual(["Envíalo así", "Vuelve a mi nota"]);

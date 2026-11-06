@@ -433,6 +433,59 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   margin: 0 0 8px;
   flex-shrink: 0;
 }
+.workshop-summary-picks {
+  margin: 0 0 10px;
+  padding: 12px 12px 10px;
+  border: 2px solid rgba(255, 214, 140, 0.7);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(42, 28, 16, 0.55), rgba(18, 14, 28, 0.35));
+  flex-shrink: 0;
+}
+.workshop-summary-picks h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff6e8;
+}
+.workshop-summary-picks ol,
+.workshop-summary-picks ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.workshop-summary-picks > ol > li {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+.workshop-summary-picks > ol > li:last-child { margin-bottom: 0; }
+.workshop-summary-picks strong {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffd27a;
+}
+.workshop-summary-picks ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.workshop-summary-picks ul li,
+.workshop-summary-picks span {
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+.workshop-summary-picks ul li {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #fff6ea;
+  color: #1a1208;
+  font-weight: 700;
+}
+.workshop-summary-picks span {
+  color: #f3eadc;
+  opacity: 0.85;
+}
 .workshop-counter { font-size: 0.85rem; opacity: 0.8; }
 .workshop-kind { font-weight: 800; }
 .workshop-cards,
@@ -542,6 +595,154 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   font-size: 0.75rem;
   line-height: 1;
 }
+#dialogue.is-workshop[data-workshop="pick"] {
+  position: fixed;
+  left: env(safe-area-inset-left);
+  right: env(safe-area-inset-right);
+  width: auto;
+  max-width: none;
+  transform: none;
+  margin: 0;
+  bottom: calc(12px + env(safe-area-inset-bottom) + var(--workshop-kb, 0px));
+  max-height: none;
+  padding: 0 16px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  pointer-events: none;
+  align-items: center;
+  box-sizing: border-box;
+}
+#dialogue.is-workshop[data-workshop="pick"].dialogue-arrive,
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-choice {
+  animation: none;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialog-dismiss,
+#dialogue.is-workshop[data-workshop="pick"] .workshop-cloud-hit,
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-choice,
+#dialogue.is-workshop[data-workshop="pick"] .workshop-actions {
+  pointer-events: auto;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialog-dismiss {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top));
+  left: calc(8px + env(safe-area-inset-left));
+  right: auto;
+  z-index: 8;
+  color: #f6f1e7;
+  opacity: 1;
+  background: rgba(10, 12, 24, 0.55);
+  border-radius: 999px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.65));
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-choice::before {
+  content: none;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-head,
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-text,
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-more {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-sheet {
+  overflow: visible;
+  flex: 0 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+#dialogue.is-workshop[data-workshop-wait="1"] .workshop-counter {
+  animation: workshop-wait 1.4s ease-in-out infinite;
+}
+@keyframes workshop-wait {
+  50% { opacity: 0.55; }
+}
+#dialogue.is-workshop[data-workshop="pick"] .workshop-counter {
+  width: fit-content;
+  margin: 0 auto 10px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 214, 150, 0.55);
+  background: rgba(10, 12, 24, 0.62);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #fff6e8;
+  opacity: 1;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+#dialogue.is-workshop[data-workshop="pick"] .workshop-actions {
+  display: flex;
+  justify-content: center;
+  width: min(280px, 100%);
+  margin-inline: auto;
+  grid-template-columns: 1fr;
+}
+#dialogue.is-workshop[data-workshop="pick"] .dialogue-choice:not(.sr-only) {
+  width: min(280px, 100%);
+  margin: 0;
+  margin-inline: auto;
+  flex: 0 0 auto;
+  min-height: 52px;
+  border: 2px solid #e2b15a;
+  border-radius: 14px;
+  background: linear-gradient(#1a3d78, #0c234d);
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+.workshop-cloud-hits {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.workshop-cloud-hit {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  display: block;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  touch-action: manipulation;
+  cursor: pointer;
+  pointer-events: auto;
+  appearance: none;
+  outline: none;
+  /* El objetivo es un rectángulo sobre la nube. El resaltado de toque
+     del navegador lo pinta negro un instante. */
+  -webkit-tap-highlight-color: transparent;
+}
+.workshop-cloud-hit:focus-visible {
+  outline: 3px solid var(--amber);
+  outline-offset: 2px;
+}
+.workshop-cloud-hit,
+.workshop-cloud-hit:focus,
+.workshop-cloud-hit:active,
+.workshop-cloud-hit[aria-pressed="true"] {
+  border-color: transparent;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
 @keyframes workshop-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
@@ -552,7 +753,8 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
 }
 @media (prefers-reduced-motion: reduce) {
   .workshop-option,
-  .workshop-trail-mark { animation: none; }
+  .workshop-trail-mark,
+  #dialogue.is-workshop[data-workshop-wait="1"] .workshop-counter { animation: none; }
 }
 .workshop-actions {
   display: grid;

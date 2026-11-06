@@ -137,6 +137,15 @@ const dialogue = createDialogue({
   onWorkshopBeat: (beat) => {
     world?.setWorkshopBeat(beat);
   },
+  onWorkshopIdeas: (ideas) => {
+    world?.setWorkshopIdeas(ideas);
+  },
+  onWorkshopHold: () => {
+    world?.holdWorkshopClouds();
+  },
+  onWorkshopOpening: () => {
+    world?.showOpeningClouds();
+  },
 });
 
 workshopSkip.addEventListener("click", () => {
@@ -487,6 +496,32 @@ async function bootWorld() {
       onWhiteboardReady: (controller) => {
         lobbyWhiteboard = controller;
         flushProposalStatusToBoards();
+      },
+      onWorkshopHits: (hits) => {
+        const origin = dialogueRoot.getBoundingClientRect();
+        const limit = origin.top - 6;
+        const viewW = window.innerWidth;
+        const viewH = window.innerHeight;
+        for (const hit of hits) {
+          const button = dialogueRoot.querySelector(`[data-cloud-id="${CSS.escape(hit.id)}"]`);
+          if (!(button instanceof HTMLElement)) continue;
+          const width = Math.max(44, Math.min(hit.width, viewW));
+          const height = Math.max(44, Math.min(hit.height, Math.max(44, limit - 4)));
+          const halfW = width / 2;
+          const halfH = height / 2;
+          let x = hit.x;
+          let y = hit.y;
+          const topLimit = Math.max(halfH, limit - halfH);
+          if (y > topLimit) y = topLimit;
+          if (y < halfH) y = halfH;
+          if (x < halfW) x = halfW;
+          if (x > viewW - halfW) x = viewW - halfW;
+          if (y + halfH > viewH) y = viewH - halfH;
+          button.style.width = `${width}px`;
+          button.style.height = `${height}px`;
+          button.style.left = `${x - origin.left - dialogueRoot.clientLeft}px`;
+          button.style.top = `${y - origin.top - dialogueRoot.clientTop}px`;
+        }
       },
       onGesture: () => music.unlock(),
     });

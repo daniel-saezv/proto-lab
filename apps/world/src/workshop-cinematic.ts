@@ -90,6 +90,25 @@ export function workshopSeatCamera(aspect: number, fovDeg: number) {
   };
 }
 
+/**
+ * Plano cercano del busto mientras elige ideas. La silla mira a +Z,
+ * así que la cámara se pone delante de la mesa y mira a la cara.
+ */
+export function workshopThinkCamera(aspect: number, _fovDeg: number) {
+  const subject = workshopSeatSubject();
+  const wide = aspect > 1.7;
+  const desktop = aspect >= 1.15 && !wide;
+  const dist = wide ? 1.38 : desktop ? 1.62 : 1.5;
+  return {
+    x: subject.x,
+    y: wide ? 1.16 : desktop ? 1.14 : 1.12,
+    z: subject.z + dist,
+    lookX: subject.x,
+    lookY: wide ? 1.42 : desktop ? 1.38 : 1.34,
+    lookZ: subject.z,
+  };
+}
+
 export function workshopTablePoint(): { x: number; y: number; z: number } {
   return { x: LAYOUT.desk.x, y: WORKSHOP_TABLE_TOP_Y, z: LAYOUT.desk.z };
 }

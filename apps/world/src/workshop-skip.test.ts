@@ -36,4 +36,24 @@ describe("salto de la cinemática del escritorio", () => {
     expect(query).toContain(".workshop-options { grid-template-columns: 1fr 1fr; }");
     expect(query).toContain(".workshop-actions { grid-template-columns: 1fr 1fr 1fr; }");
   });
+
+  it("durante las rondas Seguir ocupa una sola columna centrada en el área segura", () => {
+    const css = readFileSync(join(here, "style.css"), "utf8");
+    const bar = css.slice(
+      css.indexOf('#dialogue.is-workshop[data-workshop="pick"] {'),
+      css.indexOf('#dialogue.is-workshop[data-workshop="pick"] .dialog-dismiss'),
+    );
+    expect(bar).toContain("position: fixed");
+    expect(bar).toContain("safe-area-inset-left");
+    expect(bar).toContain("safe-area-inset-right");
+    expect(bar).toContain("safe-area-inset-bottom");
+    expect(bar).toContain('#dialogue.is-workshop[data-workshop="pick"].dialogue-arrive');
+    expect(bar).toContain("animation: none");
+    const marker = '#dialogue.is-workshop[data-workshop="pick"] .workshop-actions {';
+    const start = css.indexOf(marker, css.indexOf(marker) + marker.length);
+    const actions = css.slice(start, css.indexOf("}", start));
+    expect(actions).toContain("display: flex");
+    expect(actions).toContain("justify-content: center");
+    expect(actions).toContain("grid-template-columns: 1fr");
+  });
 });
