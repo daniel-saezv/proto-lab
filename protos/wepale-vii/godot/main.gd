@@ -40,6 +40,7 @@ func _ready() -> void:
 	plaza = PlazaScript.new()
 	add_child(plaza)
 	plaza.construir()
+	plaza.rotulos(false)
 	_camara()
 	add_child(SonidoScript.new())
 	menu = MenuScript.new()
@@ -90,6 +91,7 @@ func _empezar(id: String) -> void:
 	estado = "juego"
 	menu.cerrar()
 	plaza.ocultar_muestras()
+	plaza.rotulos(true)
 	jugador = EscenaJugador.instantiate()
 	jugador.position = Vector3(0, 0, 1.2)
 	add_child(jugador)
@@ -125,11 +127,11 @@ func _soltar() -> void:
 	var rival = EscenaRival.instantiate()
 	var bando := "tvresn" if por_salir % 2 == 0 else "ajgulzil"
 	rival.configurar(int(datos["vida"]), float(datos["velocidad"]), int(datos["mordisco"]), bando)
-	var lateral := randf_range(-6.5, 6.5)
-	var fondo := randf_range(6.4, 8.8)
-	if bando == "ajgulzil":
-		fondo = -fondo
-	var pos := Vector3(lateral, 0.0, fondo)
+	var lateral := randf_range(-5.2, 5.2)
+	var fondo := randf_range(6.3, 8.6)
+	var pos := Vector3(fondo, 0.0, lateral)
+	if bando == "tvresn":
+		pos.x = -fondo
 	var plano := Vector2(pos.x, pos.z)
 	if plano.length() > 9.2:
 		plano = plano.normalized() * 9.2

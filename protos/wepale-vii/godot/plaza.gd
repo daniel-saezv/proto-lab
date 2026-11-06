@@ -13,10 +13,10 @@ var tiempo := 0.0
 func construir() -> void:
 	_suelo()
 	_muros()
-	_pueblo("Tvresn", Vector3(0, 0, 8.15), Color(0.95, 0.62, 0.22), true)
-	_pueblo("Ajgulzil", Vector3(0, 0, -8.15), Color(0.62, 0.42, 0.95), false)
-	_faro(Vector3(0, 2.8, 7.2), Color(1.0, 0.72, 0.35))
-	_faro(Vector3(0, 2.8, -7.2), Color(0.65, 0.45, 1.0))
+	_pueblo("Tvresn", Vector3(-7.7, 0, 0), Color(0.95, 0.62, 0.22), true)
+	_pueblo("Ajgulzil", Vector3(7.7, 0, 0), Color(0.62, 0.42, 0.95), false)
+	_faro(Vector3(-6.4, 2.8, 0), Color(1.0, 0.72, 0.35))
+	_faro(Vector3(6.4, 2.8, 0), Color(0.65, 0.45, 1.0))
 	_muestras()
 	_cartas()
 
@@ -24,6 +24,12 @@ func construir() -> void:
 func ocultar_muestras() -> void:
 	for nodo in muestras:
 		nodo.visible = false
+
+
+func rotulos(visibles: bool) -> void:
+	for nodo in get_children():
+		if nodo is Label3D:
+			nodo.visible = visibles
 
 
 func _process(delta: float) -> void:
@@ -47,8 +53,8 @@ func _suelo() -> void:
 	cuerpo.add_child(forma)
 	add_child(cuerpo)
 	_caja(Vector3(30, 0.16, 30), Vector3(0, -0.08, 0), Color(0.11, 0.08, 0.1))
-	_caja(Vector3(12.6, 0.05, 10.4), Vector3(0, 0.02, 5.4), Color(0.32, 0.16, 0.08))
-	_caja(Vector3(12.6, 0.05, 10.4), Vector3(0, 0.02, -5.4), Color(0.16, 0.1, 0.3))
+	_caja(Vector3(10.4, 0.05, 12.6), Vector3(-5.4, 0.02, 0), Color(0.32, 0.16, 0.08))
+	_caja(Vector3(10.4, 0.05, 12.6), Vector3(5.4, 0.02, 0), Color(0.16, 0.1, 0.3))
 	_cilindro(4.2, 0.06, Vector3(0, 0.04, 0), Color(0.2, 0.14, 0.16))
 
 
@@ -74,29 +80,33 @@ func _muro(pos: Vector3, tam: Vector3) -> void:
 
 
 func _pueblo(nombre: String, origen: Vector3, color: Color, cerveza: bool) -> void:
-	var lado := 1.0 if origen.z > 0.0 else -1.0
-	_caja(Vector3(0.45, 2.4, 0.45), origen + Vector3(-1.7, 1.2, 0), color.darkened(0.25))
-	_caja(Vector3(0.45, 2.4, 0.45), origen + Vector3(1.7, 1.2, 0), color.darkened(0.25))
-	_caja(Vector3(4.0, 0.38, 0.45), origen + Vector3(0, 2.45, 0), color)
+	var hacia := -origen
+	hacia.y = 0.0
+	hacia = hacia.normalized()
+	var lateral := hacia.cross(Vector3.UP).normalized()
+	var a_lo_ancho := absf(hacia.x) > absf(hacia.z)
+	_caja(Vector3(0.45, 2.4, 0.45), origen + lateral * 1.7 + Vector3(0, 1.2, 0), color.darkened(0.25))
+	_caja(Vector3(0.45, 2.4, 0.45), origen - lateral * 1.7 + Vector3(0, 1.2, 0), color.darkened(0.25))
+	var viga := Vector3(0.45, 0.38, 4.0) if a_lo_ancho else Vector3(4.0, 0.38, 0.45)
+	_caja(viga, origen + Vector3(0, 2.45, 0), color)
 	if cerveza:
-		for x in [-0.7, 0.15, 0.9]:
-			_cilindro(0.28, 0.55, origen + Vector3(x, 0.32, -0.8 * lado), Color(0.62, 0.32, 0.12))
-		_cilindro(0.16, 0.32, origen + Vector3(-1.15, 0.7, -0.8 * lado), Color(0.95, 0.72, 0.28))
+		for i in 3:
+			var sitio := origen + hacia * 0.85 + lateral * (-0.7 + float(i) * 0.7)
+			_cilindro(0.28, 0.55, sitio + Vector3(0, 0.32, 0), Color(0.62, 0.32, 0.12))
+		_cilindro(0.16, 0.32, origen + hacia * 1.15 + lateral * -1.1 + Vector3(0, 0.7, 0), Color(0.95, 0.72, 0.28))
 	else:
 		for i in 4:
-			var carta := _caja(Vector3(0.42, 0.7, 0.05), origen + Vector3(-1.0 + float(i) * 0.62, 0.45, -0.55 * lado), Color(0.95, 0.93, 0.86))
+			var carta := _caja(Vector3(0.05, 0.7, 0.42), origen + hacia * 0.7 + lateral * (-1.0 + float(i) * 0.62) + Vector3(0, 0.45, 0), Color(0.95, 0.93, 0.86))
 			carta.rotation.z = deg_to_rad(-12.0 + float(i) * 8.0)
-			carta.rotation.y = deg_to_rad(lado * 18.0)
 	var rotulo := Label3D.new()
 	rotulo.text = nombre
-	rotulo.font_size = 64
-	rotulo.pixel_size = 0.014
+	rotulo.font_size = 48
+	rotulo.pixel_size = 0.011
 	rotulo.modulate = color.lightened(0.2)
-	rotulo.outline_size = 16
+	rotulo.outline_size = 12
 	rotulo.outline_modulate = Color(0.05, 0.02, 0.06)
 	rotulo.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	rotulo.no_depth_test = true
-	rotulo.position = origen + Vector3(0, 3.15, 0)
+	rotulo.position = origen + Vector3(0, 3.2, 0)
 	add_child(rotulo)
 
 
