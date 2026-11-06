@@ -931,6 +931,7 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   expect(seated?.sit).toBe(1);
   await page.getByTestId("choice-workshop-back").dispatchEvent("click");
   await expect(page.getByTestId("choice-confirm")).toBeVisible();
+  expect(await page.evaluate(() => window.__protoLab?.workshopClouds?.()?.count ?? -1)).toBe(0);
   await expect(page.getByTestId("dialogue-text")).toContainText("Cometa lunar");
   const home = await page.evaluate(() => window.__protoLab?.workshopView?.());
   expect(home?.place).toBe("stand");
@@ -942,6 +943,7 @@ test("el escritorio conserva la nota y devuelve al Inventor a su sitio", async (
   await expect(page.getByTestId("choice-workshop-next")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("dialogue")).toBeHidden();
+  expect(await page.evaluate(() => window.__protoLab?.workshopClouds?.()?.count ?? -1)).toBe(0);
   const left = await page.evaluate(() => window.__protoLab?.workshopView?.());
   expect(left?.place).toBe("stand");
   expect(left?.sit).toBe(0);

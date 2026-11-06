@@ -81,6 +81,8 @@ export function createDialogue(options: {
   onWorkshopIdeas?: (ideas: WorkshopIdeaMesh[] | null) => void;
   /** Entre rondas: las nubes siguen, latiendo, mientras llega la respuesta. */
   onWorkshopHold?: () => void;
+  /** Primera respuesta: nubes vacías mientras aún no hay letra. */
+  onWorkshopOpening?: () => void;
 }) {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let phase: Phase = { name: "greet" };
@@ -279,9 +281,11 @@ export function createDialogue(options: {
   }
 
   function beginModelTurn(body: WorkshopRequest) {
-    const between = workshopScreen?.kind === "pick" && !turnIsClosing(body);
-    workshopClosing = turnIsClosing(body);
-    workshopScreen = { kind: "loading", purpose: workshopClosing ? "summary" : "model", between };
+    const closing = turnIsClosing(body);
+    const between = workshopScreen?.kind === "pick" && !closing;
+    const opening = !between && !closing;
+    workshopClosing = closing;
+    workshopScreen = { kind: "loading", purpose: workshopClosing ? "summary" : "model", between, opening };
     options.onWorkshopBeat?.(workshopClosing ? "talk" : "work");
     render();
     askWorkshop(body);
@@ -431,13 +435,16 @@ export function createDialogue(options: {
     options.root.dataset.outcome = phase.name === "done" ? phase.outcome : "";
     options.root.classList.toggle("is-workshop", phase.name === "workshop");
     const betweenWait = phase.name === "workshop" && workshopScreen?.kind === "loading" && workshopScreen.between === true;
+    const openingWait = phase.name === "workshop" && workshopScreen?.kind === "loading" && workshopScreen.opening === true;
     if (betweenWait) options.onWorkshopHold?.();
+    else if (openingWait) options.onWorkshopOpening?.();
     else if (!(phase.name === "workshop" && workshopScreen?.kind === "pick")) options.onWorkshopIdeas?.(null);
     releaseSheet();
     options.root.append(createDialogCloseButton(() => close()));
-    if (phase.name === "workshop" && workshopScreen) options.root.dataset.workshop = betweenWait ? "pick" : workshopScreen.kind;
+    const modelWait = betweenWait || openingWait;
+    if (phase.name === "workshop" && workshopScreen) options.root.dataset.workshop = modelWait ? "pick" : workshopScreen.kind;
     else delete options.root.dataset.workshop;
-    if (betweenWait) options.root.dataset.workshopWait = "1";
+    if (modelWait) options.root.dataset.workshopWait = "1";
     else delete options.root.dataset.workshopWait;
     liftKeyboard();
     const pending = nextNotice;
@@ -502,7 +509,7 @@ export function createDialogue(options: {
       return crossed;
     };
 
-    if (calm || betweenWait) {
+    if (calm || betweenWait || openingWait) {
       reveal(plain.length, 0);
       for (const view of line.views) {
         if (view.run.kind) view.el.classList.add("is-on");
@@ -673,7 +680,7 @@ export function createDialogue(options: {
       return;
     }
     if (screen.kind === "loading") {
-      if (screen.between) {
+      if (screen.between || screen.opening) {
         const note = document.createElement("p");
         note.className = "workshop-counter";
         note.dataset.testid = "workshop-waiting";

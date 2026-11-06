@@ -48,16 +48,17 @@ export const IDEA_FONT = `"${IDEA_FONT_FAMILY}", "Trebuchet MS", "Segoe UI", san
  */
 export const CLOUD_AURA_SCALE = 1.09;
 
-const IDEA_INK = "#100c08";
-const IDEA_CLOUD = "#fffaf6";
-const IDEA_HALO = "#fffdf8";
+const IDEA_INK = "#0c0907";
+const IDEA_CLOUD = "#fffefc";
+/** El trazo es de la misma tinta: un halo claro adelgazaba la letra sobre el algodón. */
+const IDEA_HALO = IDEA_INK;
 
 /**
  * Plano del rótulo. Cabe en la panza de la nube, no en la caja: los lóbulos
  * se estrechan y una letra en la esquina se saldría. El margen lo mide
  * `LABEL_PAD`.
  */
-export const CLOUD_LABEL = { width: 0.6, height: 0.62, y: -0.02, minPx: 64 } as const;
+export const CLOUD_LABEL = { width: 0.6, height: 0.62, y: -0.02, minPx: 72 } as const;
 
 /** Holgura, en unidades de la malla, entre la tinta y el contorno. */
 export const LABEL_PAD = 0.03;
@@ -180,7 +181,7 @@ function drawLabel(
 ) {
   const maxWidth = width * 0.98;
   const maxHeight = height * 0.96;
-  let size = Math.max(CLOUD_LABEL.minPx, Math.floor(height * 0.34));
+  let size = Math.max(CLOUD_LABEL.minPx, Math.floor(height * 0.4));
   let lines = wrapLines(context, text, maxWidth, size);
   while (size > 28 && !labelFits(context, lines, size, maxWidth, maxHeight)) {
     size -= 2;
@@ -206,7 +207,7 @@ function drawLabel(
   for (const { line, at } of linesAt) context.strokeText(line, width / 2, at);
   context.fillStyle = ink;
   context.strokeStyle = ink;
-  context.lineWidth = Math.max(2, size * 0.045);
+  context.lineWidth = Math.max(3, size * 0.09);
   for (const { line, at } of linesAt) {
     context.strokeText(line, width / 2, at);
     context.fillText(line, width / 2, at);
@@ -214,7 +215,7 @@ function drawLabel(
 }
 
 function haloWidth(size: number): number {
-  return Math.max(10, size * 0.2);
+  return Math.max(5, size * 0.12);
 }
 
 /** Ancho y alto de la tinta, con el halo. Así el ¿ y el ? cuentan. */
@@ -443,14 +444,14 @@ export function createCloudCottonMaterial(): ShaderMaterial {
         float nap = fiberNoise(vLocal * 16.0);
         float nx = fiberNoise(vLocal * 8.0 + vec3(0.18, 0.0, 0.0)) - wool;
         float ny = fiberNoise(vLocal * 8.0 + vec3(0.0, 0.18, 0.0)) - wool;
-        n = normalize(n + vec3(nx, ny, nx * 0.35) * 0.85);
+        n = normalize(n + vec3(nx, ny, nx * 0.35) * 0.4);
         float crease = clamp(length(fwidth(n)) * 5.0, 0.0, 1.0);
-        float ao = mix(1.0, 0.58, crease) * mix(0.72, 1.0, n.y * 0.5 + 0.5);
-        vec3 warmFill = mix(uGroundColor, uDeskColor, 0.55);
-        vec3 hemi = mix(warmFill, uSkyColor, clamp(n.y * 0.55 + 0.42, 0.0, 1.0)) * uHemi;
-        float wrap = clamp(dot(n, sunDir) * 0.72 + 0.22, 0.0, 1.0);
+        float ao = mix(1.0, 0.84, crease) * mix(0.92, 1.0, n.y * 0.5 + 0.5);
+        vec3 warmFill = mix(uGroundColor, uDeskColor, 0.35);
+        vec3 hemi = mix(warmFill, uSkyColor, clamp(n.y * 0.55 + 0.5, 0.0, 1.0)) * uHemi;
+        float wrap = clamp(dot(n, sunDir) * 0.45 + 0.62, 0.0, 1.0);
         float scatter = pow(clamp(dot(-n, sunDir), 0.0, 1.0), 1.6) * pow(clamp(dot(view, -sunDir), 0.0, 1.0), 1.15);
-        vec3 sun = uSunColor * (wrap * 0.2 + scatter * 0.07);
+        vec3 sun = uSunColor * (wrap * 0.48 + scatter * 0.04);
         vec3 toDesk = uDeskPos - vWorld;
         float lightDistance = length(toDesk);
         vec3 deskDir = toDesk / max(lightDistance, 0.001);
@@ -458,10 +459,11 @@ export function createCloudCottonMaterial(): ShaderMaterial {
         float atten = reach * reach / max(lightDistance * lightDistance, 0.08);
         float deskWrap = clamp(dot(n, deskDir) * 0.55 + 0.5, 0.0, 1.0);
         vec3 desk = uDeskColor * uDeskIntensity * atten * deskWrap;
-        vec3 albedo = vec3(1.0, 0.992, 0.982);
-        albedo *= 0.98 + wool * 0.05 + nap * 0.02;
-        vec3 color = albedo * (hemi * 0.18 + sun + desk * 0.09) * ao;
-        color = mix(color, vec3(1.0), 0.07);
+        vec3 albedo = vec3(1.0, 0.996, 0.99);
+        albedo *= 0.99 + wool * 0.02 + nap * 0.01;
+        vec3 lit = hemi * 0.7 + sun + desk * 0.1;
+        vec3 color = albedo * max(lit, 0.78) * ao;
+        color = mix(color, vec3(1.0), 0.34);
         float rim = pow(1.0 - max(dot(n, view), 0.0), 2.0);
         vec3 rimColor = mix(uSkyColor, uDeskColor, 0.82);
         color += rimColor * rim * 0.2;

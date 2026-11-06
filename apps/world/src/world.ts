@@ -216,6 +216,8 @@ export type WorldHandle = {
   setWorkshopIdeas: (ideas: WorkshopIdeaMesh[] | null) => void;
   /** Entre rondas, las nubes laten en vez de desaparecer. */
   holdWorkshopClouds: () => void;
+  /** Primera respuesta: nubes vacías que laten hasta que llega el texto. */
+  showOpeningClouds: () => void;
   dispose: () => void;
 };
 
@@ -696,6 +698,8 @@ export function startWorld(options: {
   };
   let cloudEntries: CloudEntry[] = [];
   let cloudHolding = false;
+  /** `opening` es la primera respuesta; `round` es la espera entre rondas. */
+  let cloudHoldKind: "idle" | "round" | "opening" = "idle";
   let cloudLabelsSettled = false;
   let cloudPaintGen = 0;
   let cloudBodyGeometry: BufferGeometry | null = null;
@@ -1458,6 +1462,8 @@ export function startWorld(options: {
   function setWorkshopBeat(beat: DeskBeat) {
     const changed = workshopBeat !== beat;
     workshopBeat = beat;
+    // Fuera del trabajo de la mesa las nubes no pueden seguir a la cámara.
+    if (beat !== "work") disposeWorkshopClouds();
     ambient.setDeskBeat(beat);
     if (changed) retargetDeskCamera();
   }
@@ -1508,6 +1514,8 @@ export function startWorld(options: {
       entry.mesh.removeFromParent();
     }
     cloudEntries = [];
+    cloudHolding = false;
+    cloudHoldKind = "idle";
     disposeCloudShadow();
     options.onWorkshopHits?.([]);
   }
@@ -1539,6 +1547,26 @@ export function startWorld(options: {
   function holdWorkshopClouds() {
     if (cloudEntries.length === 0) return;
     cloudHolding = true;
+    cloudHoldKind = "round";
+    for (const entry of cloudEntries) {
+      entry.arriveAt = null;
+      entry.arrived = false;
+      if (entry.glow) entry.glow.visible = false;
+    }
+  }
+
+  /** Cuatro nubes sin letra, latiendo, mientras llega la primera respuesta. */
+  function showOpeningClouds() {
+    if (cloudHoldKind === "opening" && cloudEntries.length > 0) return;
+    if (cloudEntries.length === 0) {
+      mountClouds(
+        [0, 1, 2, 3].map((index) => ({ id: `wait-${index}`, text: "", role: "now" as const, picked: false })),
+        true,
+      );
+      return;
+    }
+    cloudHolding = true;
+    cloudHoldKind = "opening";
     for (const entry of cloudEntries) {
       entry.arriveAt = null;
       entry.arrived = false;
@@ -1573,6 +1601,29 @@ export function startWorld(options: {
     // La espera termina al llegar el texto. Si siguiera activa, marcar una
     // nube volvería a disparar la entrada escalonada.
     cloudHolding = false;
+    cloudHoldKind = "idle";
+    placeWorkshopClouds(frame, quiet);
+  }
+
+  /** La primera letra usa la misma aparición junta, no el escalonado de las rondas. */
+  function revealOpeningClouds(next: WorkshopIdeaMesh[]) {
+    const quiet = reduced || e2eRender;
+    next.forEach((idea, index) => {
+      const entry = cloudEntries[index];
+      if (!entry) return;
+      entry.idea = idea;
+      entry.glowKick = idea.picked ? 1 : 0;
+      const arrival = cloudArrival(index, true);
+      entry.arriveAt = null;
+      entry.arrived = true;
+      entry.born = frame + arrival.delay;
+      entry.popSeconds = arrival.seconds;
+      paintCloud(entry);
+      setTextOpacity(entry, 1);
+    });
+    cloudHolding = false;
+    cloudHoldKind = "idle";
+    scheduleCloudRepaint();
     placeWorkshopClouds(frame, quiet);
   }
 
@@ -1586,7 +1637,11 @@ export function startWorld(options: {
           idea.text === cloudEntries[index]?.idea.text &&
           idea.role === cloudEntries[index]?.idea.role,
       );
-    if (cloudHolding && next.length > 0 && next.length === cloudEntries.length) {
+    if (cloudHoldKind === "opening" && next.length > 0 && next.length === cloudEntries.length) {
+      revealOpeningClouds(next);
+      return;
+    }
+    if (cloudHoldKind === "round" && cloudHolding && next.length > 0 && next.length === cloudEntries.length) {
       reformClouds(next);
       return;
     }
@@ -1602,9 +1657,21 @@ export function startWorld(options: {
       return;
     }
     disposeWorkshopClouds();
-    cloudHolding = false;
     cloudLabelsSettled = false;
     if (next.length === 0) return;
+    mountClouds(next, false);
+  }
+
+  function scheduleCloudRepaint() {
+    const paintGen = ++cloudPaintGen;
+    void loadIdeaFont().then(() => {
+      if (paintGen !== cloudPaintGen) return;
+      for (const entry of cloudEntries) paintCloud(entry);
+      cloudLabelsSettled = true;
+    });
+  }
+
+  function mountClouds(next: WorkshopIdeaMesh[], wait: boolean) {
     const laid = layoutCloudSlots(next.length, camera.aspect, camera.fov);
     const shared = ensureCloudParts();
     const faceZ = Number(shared.bodyGeometry.userData.faceZ) || 0.2;
@@ -1653,22 +1720,22 @@ export function startWorld(options: {
         idea,
         canvas,
         texture,
-        born: frame + arrival.delay,
+        born: frame,
         popSeconds: arrival.seconds,
         arriveAt: null,
-        arrived: true,
+        arrived: !wait,
         glowKick: idea.picked ? 1 : 0,
       };
       paintCloud(entry);
+      if (wait) setTextOpacity(entry, 0);
       scene.add(mesh);
       cloudEntries.push(entry);
     });
-    const paintGen = ++cloudPaintGen;
-    void loadIdeaFont().then(() => {
-      if (paintGen !== cloudPaintGen) return;
-      for (const entry of cloudEntries) paintCloud(entry);
-      cloudLabelsSettled = true;
-    });
+    if (wait) {
+      cloudHolding = true;
+      cloudHoldKind = "opening";
+    }
+    scheduleCloudRepaint();
     placeWorkshopClouds(frame, reduced || e2eRender);
   }
 
@@ -1737,13 +1804,17 @@ export function startWorld(options: {
       }
       const forming = !still && !entry.arrived && (entry.arriveAt == null || time < entry.arriveAt);
       const age = still ? 1 : Math.min(1, Math.max(0, (time - entry.born) / entry.popSeconds));
-      const pop = still ? 1 : forming ? 0.9 + Math.sin(time * 2.3 + index * 0.8) * 0.035 : cloudPop(age);
+      const pulse =
+        cloudHoldKind === "opening"
+          ? 0.34 + Math.sin(time * 2.2 + index * 0.7) * 0.06
+          : 0.9 + Math.sin(time * 2.3 + index * 0.8) * 0.035;
+      const pop = still ? 1 : forming ? pulse : cloudPop(age);
       const bob = still || forming ? 0 : Math.sin(time * 0.95 + index * 1.4) * 0.016;
       const rise = still || forming ? 0 : (1 - Math.min(1, age)) * 0.05;
       entry.mesh.position.y += bob + rise;
       const breathe = still || forming ? 1 : 1 + Math.sin(time * 1.5 + index) * 0.012;
       entry.mesh.scale.setScalar(slot.scale * pop * breathe);
-      if (!still && forming) setTextOpacity(entry, 0.22);
+      if (!still && forming) setTextOpacity(entry, cloudHoldKind === "opening" ? 0 : 0.22);
       else if (!still && entry.arriveAt != null) setTextOpacity(entry, age);
       if (entry.glow) {
         const kick = still ? 0 : entry.glowKick;
@@ -1854,6 +1925,7 @@ export function startWorld(options: {
   }
 
   function playWorkshopTrip(dest: "desk" | "home", onDone: () => void, movesCamera = true) {
+    if (dest === "home") disposeWorkshopClouds();
     if (movesCamera) rememberFollowRig();
     const token = ++workshopToken;
     workshopTrip = {
@@ -2333,6 +2405,7 @@ export function startWorld(options: {
     setWorkshopBeat,
     setWorkshopIdeas,
     holdWorkshopClouds,
+    showOpeningClouds,
     dispose() {
       disposeWorkshopClouds();
       running = false;

@@ -344,6 +344,50 @@ test("entre rondas las nubes siguen mientras la respuesta tarda", async ({ page 
   await expectTextInside(page);
 });
 
+test("la primera respuesta enseña nubes mientras llega", async ({ page }, testInfo) => {
+  skipUnlessChromium(testInfo, "escritorio");
+  test.setTimeout(20_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/proposals/status", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, items: [] }) });
+  });
+  await page.route("**/api/workshop", async (route) => {
+    const body = route.request().postDataJSON() as { op?: string; decision?: string };
+    if (body.op === "start") await new Promise((resolve) => setTimeout(resolve, 700));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        phase: "pick",
+        sessionId: "a".repeat(32),
+        speech: "Ronda 1 de 3.",
+        options: roundOne,
+        round: 1,
+        maxRounds: 3,
+        draft: original,
+        original,
+      }),
+    });
+  });
+  await page.goto("/?e2e=1");
+  await expect(page.getByTestId("world-ready")).toBeVisible();
+  await page.evaluate(() => window.__protoLab?.focus("inventor"));
+  await page.getByTestId("interact").click();
+  await page.getByTestId("choice-propose").click();
+  await page.getByTestId("dialogue-input").fill("Cometa lunar");
+  await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa con el dedo.");
+  await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("choice-workshop").click();
+  await page.getByTestId("workshop-begin").click();
+  await expect(page.getByTestId("workshop-waiting")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopClouds?.()?.count ?? 0)).toBe(4);
+  await expect(page.getByTestId("workshop-counter")).toHaveText("Ronda 1 de 3");
+  await expect(page.getByTestId("workshop-waiting")).toHaveCount(0);
+  await expectTextInside(page);
+});
+
 test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) => {
   skipUnlessProject("webkit-iphone", testInfo, "proyecto webkit-iphone");
   await mockWorkshop(page);
