@@ -89,6 +89,7 @@ func _mapa() -> void:
 	conjunto.set_physics_layer_collision_layer(0, 1)
 	conjunto.set_physics_layer_collision_mask(0, 0)
 	var fuente := conjunto.add_source(atlas)
+	# El foso es la única tesela con polígono físico: cierra el mapa y deja el patio libre.
 	var agua := atlas.get_tile_data(Vector2i(4, 0), 0)
 	if agua == null:
 		push_error("La tesela de agua no entró en el atlas.")
