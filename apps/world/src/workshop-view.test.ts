@@ -8,6 +8,7 @@ import {
   workshopKindLabel,
   workshopPickChoices,
   workshopSummaryChoices,
+  workshopAuthorSummaryError,
   workshopSummaryError,
   workshopSummaryPicks,
   workshopTrailBefore,
@@ -66,6 +67,10 @@ describe("vista del taller", () => {
     expect(workshopSummaryError("ab", draft.description)).toContain("título");
     expect(workshopSummaryError(draft.title, "corto")).toContain("texto");
     expect(workshopSummaryError(draft.title, draft.description)).toBeNull();
+    expect(workshopAuthorSummaryError("iteracion", "")).toBeNull();
+    expect(workshopAuthorSummaryError("propuesta", "")).toContain("autor");
+    expect(workshopAuthorSummaryError("propuesta", "a".repeat(81))).toBeTruthy();
+    expect(workshopAuthorSummaryError("propuesta", "Ana")).toBeNull();
   });
 
   it("exige cuatro ideas en la ronda y no se queda campos de más", () => {

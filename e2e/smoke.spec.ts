@@ -362,6 +362,8 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
   await page.getByTestId("dialogue-send").click();
   await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa con el dedo.");
   await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-author").fill("Amiga de prueba");
+  await page.getByTestId("dialogue-send").click();
   await expect(page.getByTestId("dialogue-text")).toContainText("Cometa lunar");
   await page.getByTestId("choice-confirm").click();
 
@@ -370,6 +372,7 @@ test("el laboratorio carga, se propone una idea y se abre el prototipo", async (
     kind: "propuesta",
     title: "Cometa lunar",
     description: "Un juego corto en el que persigues una cometa con el dedo.",
+    author: "Amiga de prueba",
   });
   await expect(page.getByTestId("dialogue-text")).toContainText("Apuntado");
   await expect(page.getByTestId("dialogue")).toHaveAttribute("data-outcome", "ok");
@@ -818,6 +821,8 @@ async function reachConfirmStep(page: import("@playwright/test").Page) {
   await page.getByTestId("dialogue-send").click();
   await page.getByTestId("dialogue-input").fill("Un juego corto en el que persigues una cometa con el dedo.");
   await page.getByTestId("dialogue-send").click();
+  await page.getByTestId("dialogue-author").fill("Prueba e2e");
+  await page.getByTestId("dialogue-send").click();
   await expect(page.getByTestId("choice-confirm")).toBeVisible();
 }
 
@@ -964,14 +969,16 @@ test("el resumen del escritorio envía solo el título y el texto finales", asyn
   await expect(page.getByTestId("workshop-title")).toHaveValue(workshopSummaryDraft.title);
   await expect(page.getByTestId("workshop-kind")).toHaveText("Propuesta nueva");
   await expect(page.getByTestId("workshop-description")).toHaveValue(workshopSummaryDraft.description);
+  await page.getByTestId("workshop-author").fill("Autora del taller");
   const proposal = page.waitForRequest((req) => req.method() === "POST" && /\/api\/proposals$/.test(req.url()));
   await page.getByTestId("choice-workshop-submit").click();
   const sent = (await proposal).postDataJSON() as Record<string, unknown>;
-  expect(Object.keys(sent).sort()).toEqual(["description", "kind", "title"]);
+  expect(Object.keys(sent).sort()).toEqual(["author", "description", "kind", "title"]);
   expect(sent).toEqual({
     kind: "propuesta",
     title: workshopSummaryDraft.title,
     description: workshopSummaryDraft.description,
+    author: "Autora del taller",
   });
   expect(JSON.stringify(sent)).not.toMatch(/inventor|email|session|estela de la máquina/i);
   await expect(page.getByTestId("dialogue-text")).toContainText("tablón");

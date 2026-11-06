@@ -6,6 +6,8 @@ export type DialoguePhase =
   | { name: "title"; mode: "propuesta" | "iteracion" }
   | { name: "body"; mode: "propuesta" | "iteracion" }
   | { name: "pick" }
+  /** Tras título y texto: solo propuesta nueva pasa por aquí antes de confirmar el envío. */
+  | { name: "author" }
   | { name: "confirm" }
   | { name: "workshop" }
   | { name: "sending" };
@@ -35,6 +37,8 @@ export function inventorSpeech(
       return phase.mode === "propuesta"
         ? `«${draft.title}». Cuéntame de qué va: qué se hace, cómo se juega o qué problema resuelve.`
         : `¿Qué le cambiarías a «${proto?.title ?? ITERATION_FALLBACK}»? Sé concreto: qué sobra, qué falta, cómo debería sentirse.`;
+    case "author":
+      return "Último paso: ¿con qué {em}nombre{/em} firmamos la petición en el tablón? Así quedará en el manifiesto si el dueño la aprueba.";
     case "pick":
       return prototypes.length === 0
         ? "Todavía no hay mundos encendidos que retocar. Cuando alguien deje uno en la máquina, volvemos a hablar."

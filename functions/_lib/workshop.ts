@@ -283,6 +283,7 @@ export function parseWorkshopFinal(
   const validated = validateProposal(
     { kind: draft.kind, title, description, ...(draft.slug ? { slug: draft.slug } : {}) },
     knownSlugs,
+    { requireAuthorForNew: false },
   );
   if (!validated.ok) return null;
   return { title: validated.value.title, description: validated.value.description };
