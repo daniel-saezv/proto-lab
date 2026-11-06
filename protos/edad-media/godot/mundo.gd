@@ -272,14 +272,15 @@ func _al_mito(id: String) -> void:
 
 
 func _al_morir(quien: Node) -> void:
-	if not is_instance_valid(quien):
+	var pieza := quien as Node2D
+	if pieza == null or not is_instance_valid(pieza):
 		return
-	var punto := quien.global_position
-	var de_oleada := str(quien.origen) == "oleada"
+	var punto := pieza.global_position
+	var de_oleada := str(pieza.get("origen")) == "oleada"
 	if de_oleada:
-		Partida.anotar_xp(int(quien.xp))
-	_poner_botin(punto, int(quien.oro), int(quien.madera), int(quien.piedra))
-	if de_oleada and _quedan(quien) == 0:
+		Partida.anotar_xp(int(pieza.get("xp")))
+	_poner_botin(punto, int(pieza.get("oro")), int(pieza.get("madera")), int(pieza.get("piedra")))
+	if de_oleada and _quedan(pieza) == 0:
 		Partida.cerrar_oleada()
 
 
@@ -371,13 +372,16 @@ func _disparo_torre() -> void:
 	if nivel <= 0 or Partida.fase != "juego":
 		return
 	var origen := Vector2(352, 360)
-	var mejor: Node = null
+	var mejor: Node2D = null
 	var mejor_distancia := 170.0 + float(nivel) * 30.0
 	for pieza in get_tree().get_nodes_in_group("enemigo"):
-		var distancia := origen.distance_to(pieza.global_position)
+		var cuerpo := pieza as Node2D
+		if cuerpo == null:
+			continue
+		var distancia := origen.distance_to(cuerpo.global_position)
 		if distancia < mejor_distancia:
 			mejor_distancia = distancia
-			mejor = pieza
+			mejor = cuerpo
 	if mejor != null and mejor.has_method("recibir"):
 		mejor.recibir(8 * nivel)
 		_anillo(mejor.global_position, 18.0, Color(0.9, 0.45, 0.3, 0.7))

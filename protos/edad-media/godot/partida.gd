@@ -515,14 +515,13 @@ func _pedir_lectura() -> void:
 	if puente == null:
 		_puede_guardar = true
 		return
-	var promesa: Variant = puente.call("get", "partida")
+	var promesa: Variant = puente.get("partida")
 	if promesa == null:
 		_puede_guardar = true
 		return
 	_cb_leer = JavaScriptBridge.create_callback(_al_leer)
 	_cb_fallo = JavaScriptBridge.create_callback(_al_fallo_leer)
-	promesa.call("then", _cb_leer)
-	promesa.call("catch", _cb_fallo)
+	promesa.then(_cb_leer, _cb_fallo)
 
 
 func _al_leer(args: Array) -> void:
@@ -589,4 +588,4 @@ func _escribir() -> void:
 		"ciclo": ciclo,
 		"oleada": oleada,
 	}
-	puente.call("set", "partida", JSON.stringify(datos))
+	puente.set("partida", JSON.stringify(datos))
