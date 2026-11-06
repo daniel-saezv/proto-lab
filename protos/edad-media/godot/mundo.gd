@@ -423,7 +423,8 @@ func _al_morir_heroe() -> void:
 
 func _al_revivir() -> void:
 	var heroe := $Cuerpos/Heroe
-	heroe.position = Vector2(352, 560)
+	# Al sur de la puerta, en la franja que el panel inferior deja libre.
+	heroe.position = Vector2(352, 500)
 	heroe.soltar_orden()
 	_poner(Partida.grupos_actuales(), "oleada")
 

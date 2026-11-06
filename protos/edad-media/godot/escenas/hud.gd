@@ -7,8 +7,7 @@ var _oficio: Label
 var _guerra: Label
 var _bienes: Label
 var _aviso: Label
-var _vida: Label
-var _aliento: Label
+var _estado: Label
 var _vida_barra: ProgressBar
 var _aliento_barra: ProgressBar
 var _oficios: HBoxContainer
@@ -50,34 +49,35 @@ func _process(_delta: float) -> void:
 
 
 func _armar() -> void:
-	var arriba := _panel(8, 8, 374, 104)
+	var arriba := _panel(8, 8, 374, 128)
 	var caja_arriba := VBoxContainer.new()
 	caja_arriba.set_anchors_preset(Control.PRESET_FULL_RECT)
 	caja_arriba.offset_left = 8
 	caja_arriba.offset_top = 6
 	caja_arriba.offset_right = -8
 	caja_arriba.offset_bottom = -6
+	caja_arriba.add_theme_constant_override("separation", 1)
 	arriba.add_child(caja_arriba)
-	var titulo := _etiqueta("Medieval Age", 22)
+	var titulo := _etiqueta("Medieval Age", 18)
 	caja_arriba.add_child(titulo)
-	_oficio = _etiqueta("", 16)
-	_guerra = _etiqueta("", 16)
-	_bienes = _etiqueta("", 16)
-	_aviso = _etiqueta("", 14)
+	_oficio = _etiqueta("", 14)
+	_guerra = _etiqueta("", 14)
+	_bienes = _etiqueta("", 14)
+	_aviso = _etiqueta("", 13)
 	_aviso.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	caja_arriba.add_child(_oficio)
 	caja_arriba.add_child(_guerra)
 	caja_arriba.add_child(_bienes)
 	caja_arriba.add_child(_aviso)
 
-	var abajo := _panel(8, 578, 374, 258)
+	var abajo := _panel(8, 568, 374, 268)
 	var caja := VBoxContainer.new()
 	caja.set_anchors_preset(Control.PRESET_FULL_RECT)
 	caja.offset_left = 8
 	caja.offset_top = 8
 	caja.offset_right = -8
 	caja.offset_bottom = -8
-	caja.add_theme_constant_override("separation", 4)
+	caja.add_theme_constant_override("separation", 3)
 	abajo.add_child(caja)
 
 	_oficios = HBoxContainer.new()
@@ -90,13 +90,11 @@ func _armar() -> void:
 		_oficios.add_child(boton)
 		_botones_clase[id] = boton
 
-	_vida = _etiqueta("Vida", 14)
-	_aliento = _etiqueta("Aliento", 14)
+	_estado = _etiqueta("Vida", 14)
 	_vida_barra = _barra(Color(0.72, 0.22, 0.18))
 	_aliento_barra = _barra(Color(0.24, 0.46, 0.75))
-	caja.add_child(_vida)
+	caja.add_child(_estado)
 	caja.add_child(_vida_barra)
-	caja.add_child(_aliento)
 	caja.add_child(_aliento_barra)
 
 	_planetas = GridContainer.new()
@@ -112,7 +110,7 @@ func _armar() -> void:
 		_botones_planeta[id] = boton
 
 	_obras = GridContainer.new()
-	_obras.columns = 2
+	_obras.columns = 3
 	_obras.visible = false
 	_obras.add_theme_constant_override("h_separation", 6)
 	_obras.add_theme_constant_override("v_separation", 6)
@@ -139,13 +137,15 @@ func _refrescar(_arg: Variant = null) -> void:
 	_guerra.text = Partida.titulo_guerra()
 	_bienes.text = Partida.texto_bienes()
 	_aviso.text = Partida.aviso
-	_vida.text = "Vida %d" % maxi(Partida.vida, 0)
-	_aliento.text = "Aliento %d" % maxi(Partida.mana, 0)
+	_estado.text = "Vida %d · Aliento %d" % [maxi(Partida.vida, 0), maxi(Partida.mana, 0)]
 	_vida_barra.max_value = maxi(Partida.vida_max, 1)
 	_vida_barra.value = maxi(Partida.vida, 0)
 	_aliento_barra.max_value = maxi(Partida.mana_max, 1)
 	_aliento_barra.value = maxi(Partida.mana, 0)
-	_oficios.visible = Partida.oficio_abierto
+	var en_juego := Partida.fase == "juego"
+	_oficios.visible = Partida.oficio_abierto and en_juego
+	_planetas.visible = not _obras_abiertas and en_juego
+	_obras.visible = _obras_abiertas and en_juego
 	for id in _botones_clase:
 		var boton: Button = _botones_clase[id]
 		boton.disabled = not Partida.oficio_abierto
@@ -230,7 +230,7 @@ func _boton(texto: String) -> Button:
 func _barra(color: Color) -> ProgressBar:
 	var barra := ProgressBar.new()
 	barra.show_percentage = false
-	barra.custom_minimum_size = Vector2(0, 16)
+	barra.custom_minimum_size = Vector2(0, 12)
 	var fondo := StyleBoxFlat.new()
 	fondo.bg_color = Color(0.05, 0.04, 0.04)
 	fondo.set_corner_radius_all(6)
