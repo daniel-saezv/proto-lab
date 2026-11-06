@@ -127,6 +127,18 @@ El laboratorio aloja aplicaciones hechas con tecnología web: herramientas, util
 
 Hay dos plantillas. Cópialas, no las importes. No hay una plantilla por motor.
 
+### Propuestas aprobadas: juegos y Godot (2026-11-06)
+
+Si una propuesta **aprobada** describe un **juego**, el agente que la implemente debe hacerlo **en Godot** y usar las capacidades del motor (escenas, física, animación, mapas de teselas, etc.) dentro de los límites ya documentados en este repositorio: preset de móvil en `godot/project.godot`, un solo hilo, sin `SharedArrayBuffer`, cupos de tamaño del sitio y, para WebAssembly, declarar **`wasm`** en `capabilities`.
+
+Godot no es solo un enganche de export: el proyecto vive en **`protos/<slug>/godot/`**. El procedimiento de export y el workflow que genera el artefacto están descritos en `templates/export-estatico/LEEME.md` y en la sección **Proyecto** de este archivo (workflow `exportar-godot.yml`); aquí no se reescriben.
+
+Si el texto de la issue pide **explícitamente** otra tecnología para ese juego, se sigue la issue.
+
+Las propuestas que **no** son un juego (herramientas, utilidades, visualizaciones u otras experiencias) siguen pudiendo elegir libremente entre las tecnologías web disponibles en el laboratorio.
+
+Esta política no obliga a reescribir prototipos ya publicados.
+
 - **Código** (`templates/aplicacion/`, pasos en su `LEEME.md`): Vite + TypeScript. Avisa `alive` y `ready`, y `stop()` suelta el bucle, los listeners, el audio y WebGL. Incluye `window.__protoLabData`.
 - **Export estático** (`templates/export-estatico/`): shell HTML para un build ya hecho. Añade `alive`, `ready` (con `__protoLabNotifyReady` cuando el export termina de pintar) y `stop()`. No exige `package.json` ni Vite. `pnpm` ignora la carpeta si no hay paquete; el catálogo y el ensamblado sí la publican: copian la carpeta (salvo `proto.json`, `godot/`, `db/`, `node_modules`, `dist` y dotfiles) y exigen `index.html`. Un export de Godot 4 deja el proyecto en `godot/` y el shell de `godot-shell.html`: `ready` en el `then` de `startGame`, `onProgress` reenviado como `progress` y cierre con `requestQuit`. El `.wasm` publicado va en Brotli q11 y se sirve con `Content-Encoding: br`. El workflow descubre `protos/*/godot/`, exporta solo el proyecto que toca el diff y sube el árbol servido como artefacto `godot-export-<slug>`. No tiene token de escritura ni secretos: el agente lo descarga con `gh run download` y lo commitea, sin pisar `proto.json` ni `godot/`. El procedimiento está en el `LEEME` del export estático.
 
