@@ -119,16 +119,7 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
   screen.position.set(dx - 0.42, 0.9, dz - 0.21);
   screen.rotation.y = Math.PI;
   f.scene.add(screen);
-  f.box(f.scene, 0.08, 0.04, 0.2, dx + 0.4, 0.78, dz + 0.02, PAL.wrapper, false);
-  f.box(f.scene, 0.25, 0.08, 0.18, dx + 0.15, 0.78, dz - 0.08, 0xf4efe4, false);
-  f.box(f.scene, 0.14, 0.06, 0.14, dx + 0.42, 0.77, dz + 0.16, PAL.cartridge, false);
-  f.box(f.scene, 0.06, 0.08, 0.05, dx - 0.05, 0.79, dz + 0.1, PAL.deskDark, false);
-  f.box(f.scene, 0.045, 0.05, 0.045, dx - 0.02, 0.835, dz + 0.1, PAL.desk, false);
-  f.box(f.scene, 0.09, 0.035, 0.07, dx + 0.28, 0.785, dz - 0.02, PAL.shelf, false);
-  f.box(f.scene, 0.085, 0.03, 0.065, dx + 0.28, 0.815, dz - 0.02, PAL.tool, false);
-  f.box(f.scene, 0.08, 0.025, 0.06, dx + 0.29, 0.84, dz - 0.02, PAL.wrapper, false);
-  f.box(f.scene, 0.18, 0.12, 0.012, dx - 0.55, 1.05, dz + 0.38, PAL.cartridge, false);
-  f.box(f.scene, 0.16, 0.1, 0.01, dx - 0.55, 1.05, dz + 0.392, PAL.neon, false);
+  addDeskTabletop(f, dx, dz);
 
   const sx = LAYOUT.shelves.x;
   const sz = LAYOUT.shelves.z;
@@ -179,6 +170,18 @@ function addWorkCorner(f: AmbientFactories): CornerInteractables {
     deskNote: deskProps.note,
     deskPen: deskProps.pen,
   };
+}
+
+/** Atrezzo apoyado en el tablero: teclado, cuaderno, cartucho, taza y libros. */
+export function addDeskTabletop(f: AmbientFactories, dx: number, dz: number) {
+  f.box(f.scene, 0.08, 0.04, 0.2, dx + 0.4, 0.78, dz + 0.02, PAL.wrapper, false);
+  f.box(f.scene, 0.25, 0.08, 0.18, dx + 0.15, 0.78, dz - 0.08, 0xf4efe4, false);
+  f.box(f.scene, 0.14, 0.06, 0.14, dx + 0.42, 0.77, dz + 0.16, PAL.cartridge, false);
+  f.box(f.scene, 0.06, 0.08, 0.05, dx - 0.05, 0.79, dz + 0.1, PAL.deskDark, false);
+  f.box(f.scene, 0.045, 0.05, 0.045, dx - 0.02, 0.835, dz + 0.1, PAL.desk, false);
+  f.box(f.scene, 0.09, 0.035, 0.07, dx + 0.28, 0.785, dz - 0.02, PAL.shelf, false);
+  f.box(f.scene, 0.085, 0.03, 0.065, dx + 0.28, 0.815, dz - 0.02, PAL.tool, false);
+  f.box(f.scene, 0.08, 0.025, 0.06, dx + 0.29, 0.84, dz - 0.02, PAL.wrapper, false);
 }
 
 function addPinballRepair(f: AmbientFactories) {
