@@ -166,6 +166,7 @@ test("en escritorio las nubes se eligen con ratón y teclado", async ({ page }, 
   await openRound(page);
   await expectTargets(page, 1280, 800);
   await expectSeguirCentered(page, 1280, 800);
+  await expectNoTapSquare(page);
   await expect(page.getByRole("button", { name: roundOne[0] })).toHaveAttribute("aria-pressed", "false");
   await page.getByTestId("workshop-option").nth(0).click();
   await expect(page.getByRole("button", { name: roundOne[0] })).toHaveAttribute("aria-pressed", "true");
@@ -235,6 +236,15 @@ test("en el móvil táctil cada idea es un objetivo de 44 px", async ({ browser 
   await context.close();
 });
 
+async function expectNoTapSquare(page: Page) {
+  const tap = await page.evaluate(() => {
+    const button = document.querySelector("[data-testid='workshop-option']");
+    if (!(button instanceof HTMLElement)) return "missing";
+    return getComputedStyle(button).getPropertyValue("-webkit-tap-highlight-color");
+  });
+  expect(["transparent", "rgba(0, 0, 0, 0)"]).toContain(tap);
+}
+
 async function expectTextInside(page: Page) {
   await expect.poll(async () => page.evaluate(() => window.__protoLab?.workshopTextInside?.() ?? "missing")).toBe("ok");
 }
@@ -299,6 +309,7 @@ test("en WebKit la idea se marca y sigue legible", async ({ page }, testInfo) =>
   expect(viewport).toBeTruthy();
   await expectTargets(page, viewport!.width, viewport!.height);
   await expectSeguirCentered(page, viewport!.width, viewport!.height);
+  await expectNoTapSquare(page);
   await page.getByTestId("workshop-option").nth(2).click();
   await expect(page.getByRole("button", { name: roundOne[2] })).toHaveAttribute("aria-pressed", "true");
   await expectTextInside(page);

@@ -116,8 +116,10 @@ export function loadIdeaFont(): Promise<boolean> {
 /** Rótulo oscuro sobre transparente. La nube blanca va en otra malla, con la luz de la sala. */
 export function paintIdeaCanvas(canvas: HTMLCanvasElement, text: string, picked: boolean): void {
   const { width, height } = IDEA_CANVAS;
-  canvas.width = width;
-  canvas.height = height;
+  // Reasignar el tamaño vacía el lienzo. Si ya mide eso, la textura WebGL
+  // se quedaría negra un fotograma al marcar la nube.
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) return;
   context.clearRect(0, 0, width, height);

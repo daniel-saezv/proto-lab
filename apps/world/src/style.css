@@ -719,6 +719,11 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
   touch-action: manipulation;
   cursor: pointer;
   pointer-events: auto;
+  appearance: none;
+  outline: none;
+  /* El objetivo es un rectángulo sobre la nube. El resaltado de toque
+     del navegador lo pinta negro un instante. */
+  -webkit-tap-highlight-color: transparent;
 }
 .workshop-cloud-hit:focus-visible {
   outline: 3px solid var(--amber);
@@ -726,9 +731,11 @@ body.joystick-dragging :is(input, textarea, select, [contenteditable="true"]) {
 }
 .workshop-cloud-hit,
 .workshop-cloud-hit:focus,
+.workshop-cloud-hit:active,
 .workshop-cloud-hit[aria-pressed="true"] {
   border-color: transparent;
   background: transparent;
+  -webkit-tap-highlight-color: transparent;
 }
 @keyframes workshop-rise {
   from { opacity: 0; transform: translateY(8px); }
