@@ -1,0 +1,18 @@
+{
+  "slug": "santoku",
+  "title": "Santoku",
+  "description": "Metroidvania 3D de ritmo rápido. Controlas a un samurái que cruza plataformas, derrota enemigos y aprende katas —Kesa-giri, Iai, Kasumi y Fūjin— para abrir caminos. En cada mapa hay descansos que curan o afinan el filo, y un jefe final distinto.",
+  "author": "Gamu",
+  "date": "2026-11-07",
+  "tags": ["juego", "accion", "plataformas"],
+  "version": "0.1.0",
+  "readyMs": 20000,
+  "capabilities": ["save", "wasm"],
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-07",
+      "note": "Samurái 3D con dos mapas, katas, descansos que curan o afinan, y un jefe final distinto en cada uno."
+    }
+  ]
+}

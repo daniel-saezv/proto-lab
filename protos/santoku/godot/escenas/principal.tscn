@@ -1,0 +1,34 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/principal.gd" id="1_principal"]
+[ext_resource type="Script" path="res://scripts/camara.gd" id="2_camara"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="3_hud"]
+[ext_resource type="Script" path="res://scripts/jugador.gd" id="4_jugador"]
+[ext_resource type="Script" path="res://scripts/calidad.gd" id="5_calidad"]
+
+[node name="Principal" type="Node3D"]
+script = ExtResource("1_principal")
+
+[node name="Mundo" type="Node3D" parent="."]
+
+[node name="Camara" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 2, 6)
+current = true
+fov = 48.0
+keep_aspect = 0
+script = ExtResource("2_camara")
+
+[node name="Sol" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.82, -0.35, 0.45, 0, 0.79, 0.61, -0.57, -0.5, 0.65, 0, 8, 4)
+
+[node name="Ambiente" type="WorldEnvironment" parent="."]
+
+[node name="Jugador" type="CharacterBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.2, 0.2, 0)
+script = ExtResource("4_jugador")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("3_hud")
+
+[node name="Calidad" type="Node" parent="."]
+script = ExtResource("5_calidad")

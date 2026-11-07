@@ -1,0 +1,41 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Santoku"
+config/description="Metroidvania 3D de un samurái."
+run/main_scene="res://escenas/principal.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Estado="*res://scripts/estado.gd"
+AudioJuego="*res://scripts/audio_juego.gd"
+Guardado="*res://scripts/guardado.gd"
+
+[display]
+
+window/size/viewport_width=390
+window/size/viewport_height=844
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[gui]
+
+theme/default_font_multichannel_signed_distance_field=true
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=2048
+environment/defaults/default_clear_color=Color(0.07, 0.06, 0.1, 1)
