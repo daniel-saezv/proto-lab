@@ -18,6 +18,8 @@ var control := Reglas.SPAWN
 var punto_santuario := Vector3(-0.8, 9.38, 0)
 var lista := false
 var _pistas: Dictionary = {}
+var _al_leer_cb: JavaScriptObject
+var _al_fallar_cb: JavaScriptObject
 
 
 func _ready() -> void:
@@ -150,8 +152,11 @@ func _pedir_guardado() -> void:
 		lista = true
 		cargada.emit()
 		return
-	promesa.then(JavaScriptBridge.create_callback(_al_leer))
-	promesa.catch(JavaScriptBridge.create_callback(_al_fallar))
+	# Si el callback no se guarda, Godot lo libera y la promesa resuelve en vacío.
+	_al_leer_cb = JavaScriptBridge.create_callback(_al_leer)
+	_al_fallar_cb = JavaScriptBridge.create_callback(_al_fallar)
+	promesa.then(_al_leer_cb)
+	promesa.catch(_al_fallar_cb)
 
 
 func _datos() -> Variant:
