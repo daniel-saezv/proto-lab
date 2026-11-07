@@ -33,31 +33,33 @@ func _ready() -> void:
 	_vida.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	raiz.add_child(_vida)
 	_estado = Label.new()
-	_estado.position = Vector2(16, 52)
-	_estado.add_theme_font_size_override("font_size", 16)
+	_estado.position = Vector2(16, 48)
+	_estado.size = Vector2(200, 48)
+	_estado.add_theme_font_size_override("font_size", 15)
+	_estado.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	raiz.add_child(_estado)
 	_mapa = Label.new()
-	_mapa.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_mapa.offset_top = 16
-	_mapa.offset_bottom = 48
-	_mapa.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_mapa.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mapa.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_mapa.offset_left = -210
+	_mapa.offset_top = 12
+	_mapa.offset_right = -12
+	_mapa.offset_bottom = 44
+	_mapa.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_mapa.add_theme_font_size_override("font_size", 15)
 	_mapa.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	raiz.add_child(_mapa)
 	_banner = Label.new()
-	_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_banner.offset_top = 78
-	_banner.offset_bottom = 150
-	_banner.offset_left = -150
-	_banner.offset_right = 150
+	_banner.position = Vector2(16, 96)
+	_banner.size = Vector2(230, 72)
 	_banner.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_banner.add_theme_font_size_override("font_size", 15)
 	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	raiz.add_child(_banner)
 	_pista = Label.new()
 	_pista.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_pista.offset_top = -210
-	_pista.offset_bottom = -168
+	_pista.offset_top = -250
+	_pista.offset_bottom = -188
 	_pista.offset_left = -160
 	_pista.offset_right = 160
 	_pista.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

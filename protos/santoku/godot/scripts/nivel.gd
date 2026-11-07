@@ -59,9 +59,9 @@ static func construir(mundo: Node3D) -> void:
 	var takeoni := _jefe(mundo, "takeoni", "Takeoni", 58.3, 66.3, Vector3(62.4, 0.0, 0))
 	takeoni.x_min = 58.3
 	_jefe(mundo, "tetsu", "Tetsu", 106.6, 116.5, Vector3(111.0, 0.0, 0))
-	_letrero(mundo, "Patio del Bambú", Vector3(2.2, 2.4, -1.2))
-	_letrero(mundo, "Cornisa del viento", Vector3(13.5, Datos.CORNISA_Y + 1.3, 0))
-	_letrero(mundo, "Santuario de Hierro", Vector3(78.0, 2.5, -1.2))
+	_letrero(mundo, "Patio del Bambú", Vector3(0.2, 3.6, -1.8))
+	_letrero(mundo, "Cornisa del viento", Vector3(14.2, Datos.CORNISA_Y + 1.5, -0.4))
+	_letrero(mundo, "Santuario de Hierro", Vector3(75.2, 3.7, -1.8))
 	_torii(mundo, 1.2, -2.4)
 	_torii(mundo, 80.5, -2.5)
 	_bambu(mundo)
