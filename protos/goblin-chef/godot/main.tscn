@@ -1,0 +1,23 @@
+[gd_scene load_steps=4 format=3 uid="uid://cchefmain0001"]
+
+[ext_resource type="Script" path="res://main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://jugador.tscn" id="2_jugador"]
+[ext_resource type="Script" path="res://hud.gd" id="3_hud"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="Mundo" type="Node3D" parent="."]
+
+[node name="Jugador" parent="." instance=ExtResource("2_jugador")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 1.6)
+
+[node name="Camara" type="Camera3D" parent="."]
+current = true
+
+[node name="Luz" type="DirectionalLight3D" parent="."]
+
+[node name="Entorno" type="WorldEnvironment" parent="."]
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("3_hud")

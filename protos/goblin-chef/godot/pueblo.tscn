@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cchefpueblo01"]
+
+[ext_resource type="Script" path="res://pueblo.gd" id="1_pueblo"]
+
+[node name="Pueblo" type="Node3D"]
+script = ExtResource("1_pueblo")
