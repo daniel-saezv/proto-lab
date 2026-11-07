@@ -1,6 +1,6 @@
 ---
 name: godot-juego
-description: "Juego aprobado de Proto Lab en Godot 4.7. La issue marca 3D o 2D; el viewport no obliga a hacer 2D. Incluye cómo comprobar el proyecto con Godot headless en Cursor Cloud, el presupuesto de rendimiento para escritorio y móvil de gama alta, y las fuentes CC0 de las que se puede copiar arte. Úsala al crear o iterar protos/<slug>/godot o al elegir modelos, sprites o audio. No sustituye a proto-lab-app ni al LEEME del export."
+description: "Juego aprobado de Proto Lab en Godot 4.7. La issue marca 3D o 2D; el viewport no obliga a hacer 2D. Incluye cómo comprobar el proyecto con Godot headless en Cursor Cloud, el presupuesto de rendimiento para escritorio y móvil de gama alta, pautas de interfaz rica, enlaces a la documentación 4.7 y a los demos oficiales, y las fuentes CC0 de las que se puede copiar arte. Úsala al crear o iterar protos/<slug>/godot o al elegir modelos, sprites o audio. No sustituye a proto-lab-app ni al LEEME del export."
 ---
 
 # Juego Godot en Proto Lab
@@ -64,8 +64,8 @@ Técnicas, de más a menos rentables:
 
 - **Repetición**: `MultiMeshInstance3D` para todo lo que se repite (hierba, rocas, multitudes, balas). Un material compartido por muchos objetos cuesta menos que muchos materiales parecidos; usa atlas de texturas.
 - **Distancia**: `visibility_range_end` en `GeometryInstance3D` para ocultar lo lejano, y la cámara con `far` ajustado. Niebla de profundidad simple para esconder el corte.
-- **Luz**: en Compatibility cada omni o spot que toca un objeto añade coste; acota `omni_range` / `spot_range`. La emisión en el material y un ambiente bien elegido sustituyen a muchas luces. Sombras solo en la direccional, con `directional_shadow_max_distance` corto.
-- **Resolución**: con `canvas_items` el 3D se pinta a la resolución de la ventana, que en un móvil con densidad 3 son muchos píxeles. `get_viewport().scaling_3d_scale` baja solo el 3D y deja la interfaz nítida (comprueba en la doc 4.7 qué modo de escalado admite Compatibility).
+- **Luz**: Compatibility pinta en una sola pasada y admite 8 omni y 8 spot por malla; cada luz con sombra añade otra pasada. Acota `omni_range` / `spot_range` para que cada malla toque pocas. La emisión en el material y un ambiente bien elegido sustituyen a muchas luces. Sombras solo en la direccional, con `directional_shadow_max_distance` corto.
+- **Resolución**: con `canvas_items` el 3D se pinta a la resolución de la ventana, que en un móvil con densidad 3 son muchos píxeles. `get_viewport().scaling_3d_scale` baja solo el 3D y deja la interfaz nítida. En Compatibility el único modo es el bilineal (FSR no está).
 - **Física**: formas simples (caja, esfera, cápsula) para lo que se mueve; `ConcavePolygonShape3D` solo en estático.
 - **GDScript**: tipado, nodos cacheados con `@onready`, nada de `get_node`, `find_child` ni creación de objetos en cada `_process`. Reutiliza instancias (pool) en vez de `instantiate()` / `queue_free()` continuos.
 - **Tirones**: el primer uso de un material o efecto compila su shader. Muéstralos una vez durante la carga, antes de enviar `ready`, para que no tartamudee al jugar.
@@ -74,6 +74,69 @@ Técnicas, de más a menos rentables:
 Escalado automático, para no tener que elegir entre arte y fluidez: el juego mide `Performance.get_monitor(Performance.TIME_PROCESS)` o `Engine.get_frames_per_second()` y, si pasa unos segundos por debajo de ~50 fps, baja en este orden `scaling_3d_scale`, sombras y partículas. El arte y el diseño no cambian; solo su coste.
 
 El agente no puede medir en un teléfono. En el PR anota las cifras estimadas (llamadas de dibujo, triángulos, luces, sombra sí o no) y qué hace el escalado automático. La fluidez real la confirma el dueño.
+
+## Interfaz rica
+
+Una interfaz cuidada es parte del juego, no un extra. Lo que hace que se vea bien en 390×844 y en escritorio:
+
+- Un `Theme` del proyecto (`gui/theme/custom`) con colores, `StyleBoxFlat` (esquinas, bordes, sombras) y variaciones de tipo, en vez de estilos sueltos en cada nodo.
+- `Container` y anclajes para que el `expand` de la ventana reparta el espacio sola en vertical y en apaisado. Nada de posiciones fijas en píxeles.
+- Fuentes MSDF para texto nítido a cualquier escala (`gui/theme/default_font_multichannel_signed_distance_field`, o la opción de importación de cada fuente); el texto 3D con `Label3D`.
+- Movimiento: `Tween` para entradas, pulsaciones y números que suben; `AnimationPlayer` para secuencias. Shaders `canvas_item` y partículas 2D para brillo, destellos y transiciones.
+- Toque: botones grandes y separados, respuesta visual en la pulsación y foco navegable (`focus_neighbor_*`) para teclado y mando en escritorio.
+- `RichTextLabel` con BBCode para diálogos y textos con efectos.
+
+El arte de interfaz (botones, paneles, iconos, fuentes) sale de la tabla CC0 de abajo: Kenney tiene packs de interfaz y de fuentes.
+
+## Referencias (enlaces, no se copian al repo)
+
+No hay skill oficial de Godot (la organización `godotengine` no publica ninguna). Las referencias son la documentación 4.7 y los demos oficiales. Se leen; no se clonan en el repositorio ni se instalan como skill. Si `docs.godotengine.org` no responde, la misma página está en [`godot-docs` rama 4.7](https://github.com/godotengine/godot-docs/tree/4.7) como `.rst`.
+
+Documentación 4.7, interfaz:
+[índice de UI](https://docs.godotengine.org/en/4.7/tutorials/ui/index.html) ·
+[contenedores](https://docs.godotengine.org/en/4.7/tutorials/ui/gui_containers.html) ·
+[tamaño y anclajes](https://docs.godotengine.org/en/4.7/tutorials/ui/size_and_anchors.html) ·
+[temas](https://docs.godotengine.org/en/4.7/tutorials/ui/gui_skinning.html) ·
+[editor de temas](https://docs.godotengine.org/en/4.7/tutorials/ui/gui_using_theme_editor.html) ·
+[variaciones de tipo](https://docs.godotengine.org/en/4.7/tutorials/ui/gui_theme_type_variations.html) ·
+[fuentes](https://docs.godotengine.org/en/4.7/tutorials/ui/gui_using_fonts.html) ·
+[BBCode](https://docs.godotengine.org/en/4.7/tutorials/ui/bbcode_in_richtextlabel.html) ·
+[navegación por foco](https://docs.godotengine.org/en/4.7/tutorials/ui/gui_navigation.html) ·
+[controles propios](https://docs.godotengine.org/en/4.7/tutorials/ui/custom_gui_controls.html) ·
+[varias resoluciones](https://docs.godotengine.org/en/4.7/tutorials/rendering/multiple_resolutions.html)
+
+Documentación 4.7, movimiento y efectos:
+[animación](https://docs.godotengine.org/en/4.7/tutorials/animation/introduction.html) ·
+[`Tween`](https://docs.godotengine.org/en/4.7/classes/class_tween.html) ·
+[primer shader 2D](https://docs.godotengine.org/en/4.7/tutorials/shaders/your_first_shader/your_first_2d_shader.html) ·
+[shader `canvas_item`](https://docs.godotengine.org/en/4.7/tutorials/shaders/shader_reference/canvas_item_shader.html) ·
+[partículas 2D](https://docs.godotengine.org/en/4.7/tutorials/2d/particle_systems_2d.html) ·
+[luces 2D](https://docs.godotengine.org/en/4.7/tutorials/2d/2d_lights_and_shadows.html) ·
+[antialias 2D](https://docs.godotengine.org/en/4.7/tutorials/2d/2d_antialiasing.html) ·
+[texto 3D](https://docs.godotengine.org/en/4.7/tutorials/3d/3d_text.html) ·
+[ejemplos de entrada](https://docs.godotengine.org/en/4.7/tutorials/inputs/input_examples.html)
+
+Documentación 4.7, web y rendimiento:
+[web](https://docs.godotengine.org/en/4.7/tutorials/platform/web/index.html) ·
+[renderers](https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html) (la tabla dice qué existe en Compatibility) ·
+[rendimiento](https://docs.godotengine.org/en/4.7/tutorials/performance/index.html) ·
+[optimización general](https://docs.godotengine.org/en/4.7/tutorials/performance/general_optimization.html) ·
+[MultiMesh](https://docs.godotengine.org/en/4.7/tutorials/performance/using_multimesh.html) ·
+[rangos de visibilidad](https://docs.godotengine.org/en/4.7/tutorials/3d/visibility_ranges.html) ·
+[escalado de resolución](https://docs.godotengine.org/en/4.7/tutorials/3d/resolution_scaling.html) ·
+[guía de estilo GDScript](https://docs.godotengine.org/en/4.7/tutorials/scripting/gdscript/gdscript_styleguide.html) ·
+[buenas prácticas](https://docs.godotengine.org/en/4.7/tutorials/best_practices/index.html)
+
+Demos oficiales, MIT, en el commit fijado [`b761b4cd`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1) (el `project.godot` declara 4.7 y `gl_compatibility`; consultado el 2026-11-07):
+
+| Para | Demos |
+| --- | --- |
+| Interfaz | [`gui/control_gallery`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/control_gallery), [`gui/theming_override`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/theming_override), [`gui/rich_text_bbcode`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/rich_text_bbcode), [`gui/msdf_font`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/msdf_font), [`gui/multiple_resolutions`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/multiple_resolutions), [`gui/drag_and_drop`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/drag_and_drop) |
+| Movimiento y efectos 2D | [`2d/tween`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/tween), [`2d/particles`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/particles), [`2d/sprite_shaders`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/sprite_shaders), [`2d/screen_space_shaders`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/screen_space_shaders) |
+| Juegos completos pequeños | [`2d/dodge_the_creeps`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/dodge_the_creeps), [`3d/squash_the_creeps`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/squash_the_creeps) |
+| 3D y rendimiento | [`3d/labels_and_texts`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/labels_and_texts), [`3d/visibility_ranges`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/visibility_ranges), [`3d/occlusion_culling_mesh_lod`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/occlusion_culling_mesh_lod), [`3d/graphics_settings`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/graphics_settings) (ajustes de calidad en el juego) |
+
+Cómo usarlos desde Cursor Cloud: lee un archivo con `curl -sL https://raw.githubusercontent.com/godotengine/godot-demo-projects/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/<ruta>` o descarga una carpeta a `/tmp`, nunca dentro del repo. Algunos demos usan funciones de Forward+: antes de copiar una técnica, mira en la tabla de renderers que exista en Compatibility. Se puede adaptar código; si un archivo queda casi igual, anótalo en `CREDITOS.md` con la licencia MIT. El arte de los demos no se copia: el arte sale de la tabla de abajo.
 
 ## Arte que se puede copiar
 
