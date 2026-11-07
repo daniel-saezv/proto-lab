@@ -73,6 +73,11 @@ describe("export web de Godot", () => {
     for (const [name, buf] of prepared.files) writeFileSync(join(protoDir, name), buf);
     for (const [name, buf] of prepared.engine) writeFileSync(join(engineDir, name), buf);
     expect(compareServed(protoDir, prepared.files)).toEqual([]);
+    writeFileSync(join(protoDir, "preview.mp4"), Buffer.from("clip"));
+    writeFileSync(join(protoDir, "preview-src.sha256"), Buffer.from("sello\n"));
+    writeFileSync(join(protoDir, "preview.webp"), Buffer.from("foto"));
+    writeFileSync(join(protoDir, "proto.json"), Buffer.from("{}\n"));
+    expect(compareServed(protoDir, prepared.files)).toEqual([]);
     expect(compareEngine(engineDir, prepared.engine)).toEqual([]);
     writeFileSync(join(engineDir, "index.wasm"), plain);
     expect(compareEngine(engineDir, prepared.engine).some((line) => line.includes("Brotli"))).toBe(true);
@@ -143,6 +148,6 @@ describe("disparadores de Godot", () => {
   it("el diff nombra solo los proyectos Godot que toca", () => {
     expect(godotSlugsInDiff(["protos/toque/godot/project.godot", "protos/chispa/src/main.ts", "README.md"])).toEqual(["toque"]);
     expect(godotSlugsInDiff(["scripts/godot-web.mjs"])).toEqual([]);
-    expect(listGodotProjects(join(root, "protos"))).toEqual(["toque"]);
+    expect(listGodotProjects(join(root, "protos"))).toEqual(["goblin-chef", "toque"]);
   });
 });
