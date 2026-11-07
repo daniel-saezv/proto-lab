@@ -1,10 +1,12 @@
 extends CharacterBody3D
 
+const Visuales := preload("res://visuales.gd")
+
 var vida := 36
 var queda := 8.0
 var mordisco := 0.0
 var muerto := false
-var mat: StandardMaterial3D
+var modelo: Node3D
 
 
 func _ready() -> void:
@@ -19,36 +21,24 @@ func _ready() -> void:
 	forma.shape = capsula
 	forma.position = Vector3(0, 0.42, 0)
 	add_child(forma)
-	var cuerpo := MeshInstance3D.new()
-	var malla := CapsuleMesh.new()
-	malla.radius = 0.26
-	malla.height = 0.8
-	cuerpo.mesh = malla
-	cuerpo.position = Vector3(0, 0.42, 0)
-	mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.95, 0.45, 0.62)
-	mat.roughness = 0.68
-	cuerpo.material_override = mat
-	add_child(cuerpo)
-	var cabeza := MeshInstance3D.new()
-	var bola := SphereMesh.new()
-	bola.radius = 0.16
-	bola.height = 0.32
-	cabeza.mesh = bola
-	cabeza.position = Vector3(0, 0.95, 0)
-	var mat_cabeza := StandardMaterial3D.new()
-	mat_cabeza.albedo_color = Color(0.98, 0.82, 0.45)
-	cabeza.material_override = mat_cabeza
-	add_child(cabeza)
+	modelo = Visuales.montar_jugador(_raiz(), "comparsa")
+	if modelo:
+		modelo.scale = Vector3.ONE * Visuales.ESCALA_ALIADO
+
+
+func _raiz() -> Node3D:
+	var bob := Node3D.new()
+	bob.name = "Bob"
+	add_child(bob)
+	return bob
 
 
 func sufrir(cantidad: int) -> void:
 	if muerto or cantidad <= 0:
 		return
 	vida -= cantidad
-	mat.albedo_color = Color(1, 0.95, 0.9)
-	var tw := create_tween()
-	tw.tween_property(mat, "albedo_color", Color(0.95, 0.45, 0.62), 0.1)
+	if modelo:
+		Visuales.destellar(self, modelo)
 	if vida <= 0:
 		_morir()
 

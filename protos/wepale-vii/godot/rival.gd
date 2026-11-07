@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const Visuales := preload("res://visuales.gd")
+
 var vida := 28
 var vida_max := 28
 var rapidez := 3.0
@@ -13,6 +15,7 @@ var muerto := false
 var mat_cuerpo: StandardMaterial3D
 var color := Color.WHITE
 var flash: Tween
+var modelo: Node3D
 
 signal cayo
 
@@ -34,14 +37,7 @@ func _ready() -> void:
 	mat_cuerpo = StandardMaterial3D.new()
 	mat_cuerpo.albedo_color = color
 	mat_cuerpo.roughness = 0.74
-	$Bob/Cuerpo.material_override = mat_cuerpo
-	var cabeza := StandardMaterial3D.new()
-	cabeza.albedo_color = color.lightened(0.2)
-	cabeza.roughness = 0.7
-	$Bob/Cabeza.material_override = cabeza
-	var gorra := StandardMaterial3D.new()
-	gorra.albedo_color = color.darkened(0.2)
-	$Bob/Gorra.material_override = gorra
+	modelo = Visuales.montar_rival($Bob, equipo)
 	_idle()
 	_sombra()
 
@@ -162,6 +158,8 @@ func _flash() -> void:
 	mat_cuerpo.albedo_color = Color(1, 0.95, 0.85)
 	flash = create_tween()
 	flash.tween_property(mat_cuerpo, "albedo_color", color, 0.1)
+	if modelo:
+		Visuales.destellar(self, modelo)
 
 
 func _numero(cantidad: int) -> void:

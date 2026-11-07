@@ -3,6 +3,7 @@ extends CharacterBody3D
 const ESCENA_TIRO := preload("res://tiro.tscn")
 const ESCENA_CHARCO := preload("res://charco.tscn")
 const ESCENA_INVITADO := preload("res://invitado.tscn")
+const Visuales := preload("res://visuales.gd")
 const MASCARA_RIVALES := 4
 
 var orden := Vector3.ZERO
@@ -28,6 +29,7 @@ var mat_arma: StandardMaterial3D
 var golpe_malla: MeshInstance3D
 var golpe_queda := 0.0
 var flash: Tween
+var modelo: Node3D
 
 signal muere
 signal sacude(fuerza: float)
@@ -40,9 +42,8 @@ func _ready() -> void:
 	mat_cuerpo = _material(Color(0.85, 0.85, 0.85))
 	mat_cabeza = _material(Color(0.92, 0.92, 0.92))
 	mat_arma = _material(Color(0.95, 0.9, 0.75))
-	$Bob/Cuerpo.material_override = mat_cuerpo
-	$Bob/Cabeza.material_override = mat_cabeza
-	$Bob/Arma.material_override = mat_arma
+	Visuales.ocultar_primitivas($Bob)
+	$Bob/Arma.visible = false
 	_idle($AnimationPlayer, NodePath("Bob:position"))
 	_sombra()
 
@@ -56,7 +57,7 @@ func preparar(datos: Dictionary) -> void:
 	mat_cuerpo.albedo_color = color
 	mat_cabeza.albedo_color = color.lightened(0.32)
 	mat_arma.albedo_color = color.lightened(0.12)
-	_poner_arma(str(datos["id"]))
+	modelo = Visuales.montar_jugador($Bob, str(datos["id"]))
 	_registrar(datos["ataque"])
 	for hab in datos["habilidades"]:
 		_registrar(hab)
@@ -103,6 +104,8 @@ func sufrir(cantidad: int) -> void:
 	vida -= cantidad
 	invulnerable = 0.42
 	_flash(mat_cuerpo, color)
+	if modelo:
+		Visuales.destellar(self, modelo)
 	_sonar("herida")
 	sacude.emit(1.15)
 	cambio.emit()
@@ -342,37 +345,12 @@ func _registrar(hab: Dictionary) -> void:
 	cds[id] = 0.0
 
 
-func _poner_arma(id: String) -> void:
-	var malla: Mesh
-	match id:
-		"jarra":
-			var vaso := CylinderMesh.new()
-			vaso.top_radius = 0.14
-			vaso.bottom_radius = 0.16
-			vaso.height = 0.4
-			malla = vaso
-		"naipe":
-			var carta := BoxMesh.new()
-			carta.size = Vector3(0.42, 0.58, 0.045)
-			malla = carta
-		"espuma":
-			var burbuja := SphereMesh.new()
-			burbuja.radius = 0.2
-			burbuja.height = 0.4
-			malla = burbuja
-		_:
-			var bola := SphereMesh.new()
-			bola.radius = 0.14
-			bola.height = 0.28
-			malla = bola
-	$Bob/Arma.mesh = malla
-
-
 func _balancear() -> void:
-	var arma: Node3D = $Bob/Arma
+	if modelo == null:
+		return
 	var tw := create_tween()
-	tw.tween_property(arma, "rotation:x", deg_to_rad(-78.0), 0.07)
-	tw.tween_property(arma, "rotation:x", 0.0, 0.11)
+	tw.tween_property(modelo, "rotation:x", deg_to_rad(-12.0), 0.07)
+	tw.tween_property(modelo, "rotation:x", 0.0, 0.11)
 
 
 func _marcar_golpe(fondo: float, ancho: float) -> void:

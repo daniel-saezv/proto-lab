@@ -10,7 +10,7 @@
     "fiesta"
   ],
   "cover": null,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "capabilities": [
     "wasm"
   ],
@@ -20,6 +20,11 @@
       "version": "0.1.0",
       "date": "2026-11-06",
       "note": "Primer corte jugable: cuatro oficios, plaza entre Tvresn y Ajgulzil y tres rondas."
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-11-07",
+      "note": "Modelos CC0 de KayKit en plaza, oficios, rivales y proyectiles; misma lógica de combate."
     }
   ],
   "preview": "preview.webp"

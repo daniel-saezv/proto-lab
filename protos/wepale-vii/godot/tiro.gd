@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const Visuales := preload("res://visuales.gd")
+
 var direccion := Vector3.FORWARD
 var dano := 1
 var rapidez := 16.0
@@ -27,19 +29,7 @@ func _ready() -> void:
 	esfera.radius = 0.2
 	forma.shape = esfera
 	add_child(forma)
-	var malla := MeshInstance3D.new()
-	var bola := SphereMesh.new()
-	bola.radius = 0.16
-	bola.height = 0.32
-	malla.mesh = bola
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.emission_enabled = true
-	mat.emission = color
-	mat.emission_energy_multiplier = 0.55
-	malla.material_override = mat
-	malla.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(malla)
+	Visuales.proyectil(self, color)
 
 
 func _physics_process(delta: float) -> void:

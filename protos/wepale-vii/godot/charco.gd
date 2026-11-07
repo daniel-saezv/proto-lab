@@ -1,5 +1,7 @@
 extends Area3D
 
+const Visuales := preload("res://visuales.gd")
+
 var radio := 2.2
 var dano := 6
 var dura := 3.0
@@ -29,19 +31,8 @@ func _ready() -> void:
 	forma.shape = esfera
 	forma.position = Vector3(0, 0.4, 0)
 	add_child(forma)
-	var malla := MeshInstance3D.new()
-	var cilindro := CylinderMesh.new()
-	cilindro.top_radius = radio
-	cilindro.bottom_radius = radio * 0.92
-	cilindro.height = 0.06
-	malla.mesh = cilindro
-	var mat := StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(color.r, color.g, color.b, 0.42)
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	malla.material_override = mat
-	malla.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(malla)
+	var charco := Visuales.charco_visual(self, color)
+	charco.scale = Vector3(radio, 0.06, radio) * 0.42
 
 
 func _physics_process(delta: float) -> void:
