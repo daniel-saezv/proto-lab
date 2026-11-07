@@ -1,0 +1,26 @@
+{
+  "slug": "ultimo-samurai",
+  "title": "The Last Samurai: Jefes y Kata",
+  "description": "Asciende un santuario en 3D al anochecer. El camino es de plataformas: ashigaru, arqueros y un ronin, y el kata se afina mientras luchas. Empiezas con el iai; al tercer enemigo el filo recuerda el kesa. En el descanso eliges recuperar el aliento o grabar el tatsumaki, el giro que rompe el sello del piso superior. Arriba espera Kagemaru, el general de ceniza: sus embestidas se castigan atravesándolas.",
+  "author": "Gamu",
+  "date": "2026-11-07",
+  "tags": [
+    "juego",
+    "accion",
+    "3d"
+  ],
+  "version": "0.1.0",
+  "capabilities": [
+    "save",
+    "wasm"
+  ],
+  "readyMs": 20000,
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-07",
+      "note": "Primera subida: un mapa, tres katas, un descanso y el general de ceniza."
+    }
+  ],
+  "preview": "preview.webp"
+}
