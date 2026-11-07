@@ -10,7 +10,7 @@
     "fiesta"
   ],
   "cover": null,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "capabilities": [
     "wasm"
   ],
@@ -30,6 +30,11 @@
       "version": "0.3.0",
       "date": "2026-11-07",
       "note": "Rendimiento móvil: suelo y muros en MultiMesh, LOD en glTF, menos luces y animaciones de escena."
+    },
+    {
+      "version": "0.3.1",
+      "date": "2026-11-07",
+      "note": "Reimport limpio y export web alineado con CI (sin caché .godot previa)."
     }
   ],
   "preview": "preview.webp"
