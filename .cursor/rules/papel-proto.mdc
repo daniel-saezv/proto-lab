@@ -1,0 +1,9 @@
+---
+description: Papel Proto. Crear o evolucionar un prototipo en protos/<slug>/ (issue propuesta o aprobado, juego, app, proto.json).
+globs: protos/**,templates/**
+alwaysApply: false
+---
+
+Papel Proto. Radio de acción: solo `protos/<slug>/` y, si hay dependencias nuevas, `pnpm-lock.yaml`. Si la issue pide algo fuera, coméntalo en la issue y no lo hagas.
+
+Si aún no lo has leído, abre `protos/AGENTS.md`: es el contrato y dice en qué orden leer la skill `proto-lab-app`, la skill `godot-juego` (si es un juego) y el `LEEME.md` de la plantilla.
