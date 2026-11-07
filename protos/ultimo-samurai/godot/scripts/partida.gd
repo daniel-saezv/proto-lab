@@ -134,8 +134,9 @@ func guardar() -> void:
 		"santuario": santuario,
 		"sello": sello_roto,
 	})
-	# Object.set no llama al método JS: el puente expone set() como función.
-	datos.call("set", "avance", texto)
+	# En un JavaScriptObject el método se llama por su nombre. .call() buscaría
+	# una función JS llamada «call», que el puente no tiene.
+	datos.set("avance", texto)
 
 
 func _pedir_guardado() -> void:
@@ -144,13 +145,13 @@ func _pedir_guardado() -> void:
 		lista = true
 		cargada.emit()
 		return
-	var promesa: Variant = datos.call("get", "avance")
+	var promesa: Variant = datos.get("avance")
 	if promesa == null or not (promesa is Object):
 		lista = true
 		cargada.emit()
 		return
-	promesa.call("then", JavaScriptBridge.create_callback(_al_leer))
-	promesa.call("catch", JavaScriptBridge.create_callback(_al_fallar))
+	promesa.then(JavaScriptBridge.create_callback(_al_leer))
+	promesa.catch(JavaScriptBridge.create_callback(_al_fallar))
 
 
 func _datos() -> Variant:
