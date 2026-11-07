@@ -27,7 +27,7 @@ La issue marca la dimensión.
 
 - Si pide 3D, perspectiva, modelos o una cámara en el espacio, la escena de juego es `Node3D` con `Camera3D`.
 - Cenital describe la cámara. En 3D es una `Camera3D` en perspectiva u ortográfica, mirando hacia abajo.
-- `TileMapLayer` entra cuando la issue pide 2D o teselas. La mención de mapas de teselas en `AGENTS.md` es un ejemplo de usar el motor.
+- `TileMapLayer` entra cuando la issue pide 2D o teselas. La mención de mapas de teselas en `protos/AGENTS.md` es un ejemplo de usar el motor.
 
 El viewport 390×844, `canvas_items` y `expand` son la ventana que exige el validador (`scripts/godot-web.mjs`). Se quedan así. En la guía de [varias resoluciones](https://docs.godotengine.org/en/4.7/tutorials/rendering/multiple_resolutions.html), `canvas_items` deja el 3D a la resolución de la ventana. En vertical, `Camera3D.keep_aspect` queda en `Camera3D.KEEP_WIDTH`.
 
