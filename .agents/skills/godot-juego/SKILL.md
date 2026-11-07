@@ -1,6 +1,6 @@
 ---
 name: godot-juego
-description: "Juego aprobado de Proto Lab en Godot 4.7. La issue marca 3D o 2D; el viewport no obliga a hacer 2D. Incluye cómo comprobar el proyecto con Godot headless en Cursor Cloud, el presupuesto de rendimiento para escritorio y móvil de gama alta, pautas de gráficos ricos 2D y 3D en Compatibility, de interfaz rica, enlaces a la documentación 4.7 y a los demos oficiales, y las fuentes CC0 de las que se puede copiar arte. Úsala al crear o iterar protos/<slug>/godot o al elegir modelos, sprites o audio. No sustituye a proto-lab-app ni al LEEME del export."
+description: "Juego aprobado de Proto Lab en Godot 4.7. La issue marca 3D o 2D; el viewport no obliga a hacer 2D. Incluye cómo comprobar el proyecto con Godot headless en Cursor Cloud, el presupuesto de rendimiento para escritorio y móvil de gama alta, pautas de gráficos ricos 2D y 3D en Compatibility, de interfaz rica, enlaces a la documentación 4.7 y a los demos oficiales, y las fuentes CC0 de las que se puede copiar arte. Úsala al crear o iterar protos/<slug>/godot o al elegir modelos, sprites o audio. No sustituye a protos/AGENTS.md ni al LEEME del export."
 ---
 
 # Juego Godot en Proto Lab
@@ -9,8 +9,8 @@ No hay una skill oficial de Godot. La API de referencia es la documentación **4
 
 ## Quién manda
 
-1. [`.agents/skills/proto-lab-app/SKILL.md`](../proto-lab-app/SKILL.md) y [`templates/export-estatico/LEEME.md`](../../../templates/export-estatico/LEEME.md) mandan en el export, el validador, la ventana, el hilo único, `wasm`, la CSP, el guardado y los cupos.
-2. Esta skill manda en la dimensión de la escena y en las fuentes de las que se puede copiar arte.
+1. [`protos/AGENTS.md`](../../../protos/AGENTS.md) manda en el contrato con el laboratorio (señales, `stop()`, cupos, ventana, hilo único, `wasm`, CSP, guardado) y en la política de cuándo un juego va en Godot. [`templates/export-estatico/LEEME.md`](../../../templates/export-estatico/LEEME.md) manda en el procedimiento de export.
+2. Esta skill manda en cómo se hace el juego: dimensión, comprobación headless, rendimiento, gráficos, interfaz, referencias y arte.
 3. Si una receta y la documentación 4.7 no coinciden, gana la documentación.
 
 No instales packs de skills. Ni [GodotPrompter](https://github.com/jame581/GodotPrompter), ni [awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills), ni [gd-agentic-skills](https://github.com/underscor1ng/gd-agentic-skills), ni [Godot-Skill](https://github.com/shihabshahrier/Godot-Skill), ni [godot-skills](https://github.com/grndctrl/godot-skills).
@@ -19,7 +19,7 @@ Como lectura, no como skill instalada, GodotPrompter es MIT. El commit fijado es
 
 Las skills de Phaser del workspace no se aplican a un juego aprobado.
 
-El agente no exporta en la máquina. El procedimiento sigue en el `LEEME` del export estático.
+El agente no exporta en su máquina: el export lo hace el workflow (ver `protos/AGENTS.md`). Sí descarga Godot para comprobar el proyecto en headless (sección «Comprobar el proyecto sin exportar»).
 
 ## Dimensión
 
@@ -27,9 +27,9 @@ La issue marca la dimensión.
 
 - Si pide 3D, perspectiva, modelos o una cámara en el espacio, la escena de juego es `Node3D` con `Camera3D`.
 - Cenital describe la cámara. En 3D es una `Camera3D` en perspectiva u ortográfica, mirando hacia abajo.
-- `TileMapLayer` entra cuando la issue pide 2D o teselas. La mención de mapas de teselas en `protos/AGENTS.md` es un ejemplo de usar el motor.
+- `TileMapLayer` entra cuando la issue pide 2D o teselas.
 
-El viewport 390×844, `canvas_items` y `expand` son la ventana que exige el validador (`scripts/godot-web.mjs`). Se quedan así. En la guía de [varias resoluciones](https://docs.godotengine.org/en/4.7/tutorials/rendering/multiple_resolutions.html), `canvas_items` deja el 3D a la resolución de la ventana. En vertical, `Camera3D.keep_aspect` queda en `Camera3D.KEEP_WIDTH`.
+El viewport 390×844, `canvas_items` y `expand` son la ventana que exige el validador (`scripts/godot-web.mjs`); no se cambian para hacer el juego 2D ni 3D. En la guía de [varias resoluciones](https://docs.godotengine.org/en/4.7/tutorials/rendering/multiple_resolutions.html), `canvas_items` deja el 3D a la resolución de la ventana. En vertical, `Camera3D.keep_aspect` queda en `Camera3D.KEEP_WIDTH`.
 
 El renderer sigue en `gl_compatibility`. En la web es el único y [sí pinta juegos 3D](https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html). Qué efectos tiene y cómo sustituir los que faltan está en la sección «Gráficos ricos». El cielo de partida es `ProceduralSkyMaterial`.
 
@@ -50,7 +50,7 @@ $G --headless --path . --check-only --script res://ruta/script.gd   # sale con 1
 $G --headless --path . --quit-after 300 2>&1 | grep -E "SCRIPT ERROR|ERROR:" && echo "hay errores"
 ```
 
-Un error en tiempo de ejecución no cambia el código de salida: por eso el `grep`. En headless no se pinta nada, así que esto valida carga, scripts y lógica, no rendimiento ni aspecto. `.godot/` queda ignorado por el `.gitignore` del proyecto; los `*.import` sí se commitean. El export sigue siendo el del workflow.
+Un error en tiempo de ejecución no cambia el código de salida: por eso el `grep`. En headless no se pinta nada, así que esto valida carga, scripts y lógica, no rendimiento ni aspecto. El proyecto lleva un `.gitignore` con `.godot/`; los `*.import` sí se commitean. El export sigue siendo el del workflow.
 
 ## Rendimiento: escritorio y móvil de gama alta
 
@@ -206,7 +206,7 @@ Quedan fuera OpenGameArt, Poly Pizza, la Asset Library de Godot, itch.io genéri
 1. Prueba antes una malla primitiva, un CSG o un color.
 2. Elige una fila de la tabla. Desde Cursor Cloud se descarga con `curl` a `/tmp`. Si la fuente solo da un zip (Kenney, Quaternius), descomprímelo en `/tmp` y copia solo los archivos que entran en la escena: glTF o glb para modelos, ogg para audio, texturas de como mucho 1024 px de lado. El zip no se commitea. Sin el all-in-one de Kenney, sin megakits y sin archivos de Patreon. En KayKit, el `raw` de GitHub da el archivo suelto.
 3. Déjalos en ese prototipo. En un juego van dentro de `protos/<slug>/godot/`: Godot empaqueta `res://` en el `.pck`. La CSP del sitio (`connect-src 'self'`) no permite pedirlos a otro origen al jugar.
-4. En una app que no es juego, los mismos archivos van en la carpeta del prototipo, por donde esa app ya publica imágenes y audio. Siguen los cupos de la app: imagen o audio sueltos a 1,5 MiB, 64 archivos y 32 MiB.
+4. En una app que no es juego, los mismos archivos van en la carpeta del prototipo y siguen los cupos de lo publicado de `protos/AGENTS.md`.
 5. Anota `CREDITOS.md` en el prototipo. En un juego, `protos/<slug>/godot/CREDITOS.md`, con nombre, URL, licencia y archivos. En CC0 la atribución no es obligatoria; el archivo es la prueba para quien revisa.
-6. El `.pck` publicado sigue en 12 MiB como máximo. Si el archivo no cabe, bájalo de resolución o no lo metas.
-7. Pasa `--import` en headless (sección «Comprobar el proyecto sin exportar») para confirmar que cada archivo entra en Godot. No commitees `.godot/`. No hay almacén compartido en el repo: cada prototipo guarda los archivos que usa.
+6. El `.pck` publicado tiene que caber en el cupo por archivo de `protos/AGENTS.md`. Si no cabe, bájalo de resolución o no lo metas.
+7. Pasa `--import` en headless (sección «Comprobar el proyecto sin exportar») para confirmar que cada archivo entra en Godot. No hay almacén compartido en el repo: cada prototipo guarda los archivos que usa.

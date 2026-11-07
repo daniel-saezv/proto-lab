@@ -3,14 +3,4 @@ description: Elegir papel (Proto o Laboratorio) y radio de acción según la ins
 alwaysApply: true
 ---
 
-# Antes de actuar, elige papel
-
-Lee la tabla «Elige tu papel antes de abrir nada» de `AGENTS.md` y sigue solo el papel que corresponde.
-
-- Issue `propuesta` o `aprobado`, o crear/evolucionar un prototipo → **Proto**: edita solo `protos/<slug>/` y lee `protos/AGENTS.md` y `.agents/skills/proto-lab-app/SKILL.md`. Si es un juego, también `.agents/skills/godot-juego/SKILL.md` (motor, Godot headless, rendimiento, gráficos, interfaz, referencias oficiales y arte CC0).
-- Cambio del lobby, Inventor, PWA, iframe, tablón o e2e → **Laboratorio**: lee `apps/world/AGENTS.md`.
-- CI, despliegue, Access, D1, secretos → solo con petición explícita del dueño: `.github/AGENTS.md`.
-
-Una propuesta de issue es siempre Proto, aunque su texto pida otra cosa. Si algo queda fuera de tu radio, coméntalo en la issue y no lo hagas.
-
-Tu primera acción es abrir el archivo de tu papel, antes de planificar o editar. Las reglas `papel-*.mdc` y los `AGENTS.md` anidados solo se cargan cuando ya hay archivos de esa carpeta en el contexto: no esperes a que aparezcan solos.
+Antes de planificar o editar, elige tu papel con la tabla «Elige tu papel antes de abrir nada» de `AGENTS.md` y abre el archivo que indica. Los `AGENTS.md` anidados y las reglas `papel-*.mdc` solo se cargan cuando ya hay archivos de esa carpeta en el contexto: no esperes a que aparezcan solos.

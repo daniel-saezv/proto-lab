@@ -6,11 +6,11 @@ Producción: `https://proto-lab-3k6.pages.dev`. Previews: `https://*.proto-lab-3
 
 ## Elige tu papel antes de abrir nada
 
-Este archivo es lo único que se carga siempre. Decide el papel según la instrucción que recibiste y lee **solo** lo que indica la tabla. No abras las instrucciones del otro papel.
+Este archivo es lo único que se carga siempre. Decide el papel según la instrucción que recibiste y, antes de planificar o editar, abre el primer archivo de su fila. Lee **solo** lo de tu papel.
 
 | Si la instrucción es… | Papel | Radio de acción (solo puedes editar) | Lee, en este orden |
 | --- | --- | --- | --- |
-| Una issue con etiqueta `propuesta` o `aprobado`, o pide crear o evolucionar un prototipo/juego/app con un slug | **Proto** | `protos/<slug>/` (y `pnpm-lock.yaml` si el prototipo trae dependencias nuevas) | [`protos/AGENTS.md`](protos/AGENTS.md) → [`.agents/skills/proto-lab-app/SKILL.md`](.agents/skills/proto-lab-app/SKILL.md) → si es un juego, [`.agents/skills/godot-juego/SKILL.md`](.agents/skills/godot-juego/SKILL.md) → la plantilla de `templates/` |
+| Una issue con etiqueta `propuesta` o `aprobado`, o pide crear o evolucionar un prototipo/juego/app con un slug | **Proto** | `protos/<slug>/` (y `pnpm-lock.yaml` si el prototipo trae dependencias nuevas) | [`protos/AGENTS.md`](protos/AGENTS.md), que da el orden de lo demás (skill `proto-lab-app`, skill `godot-juego` si es un juego, `LEEME.md` de la plantilla) |
 | Pide cambiar el laboratorio 3D, el lobby, el NPC/Inventor, la PWA, el iframe/cromo, el tablón o sus tests e2e | **Laboratorio** | `apps/world/`, `e2e/`, y lo que la tarea pida de forma explícita (`scripts/`, `functions/`, `docs/`) | [`apps/world/AGENTS.md`](apps/world/AGENTS.md) |
 | Pide tocar CI, workflows, despliegue, Access, D1 o secretos | **Plataforma** (solo con petición explícita del dueño) | lo que pida el dueño | [`.github/AGENTS.md`](.github/AGENTS.md) |
 
@@ -80,11 +80,11 @@ Comandos comprobados en este repositorio (Node 26.13, pnpm 12.17.0). Node 26 no 
 
 ## Cursor Cloud specific instructions
 
-Cursor aplica siempre este archivo y las reglas `alwaysApply` de [`.cursor/rules/`](.cursor/rules/); los `AGENTS.md` anidados solo llegan si el agente los abre. Por eso la tabla de papeles es la puerta de entrada: `enrutador.mdc` (siempre activa) la resume y `papel-proto.mdc` y `papel-laboratorio.mdc` se adjuntan al editar `protos/**` o `apps/world/**`, repitiendo en pocas líneas el radio de acción y qué leer. El contenido largo vive una sola vez, en el `AGENTS.md` de su carpeta; si cambias un radio de acción, actualiza la tabla, la regla y ese `AGENTS.md`.
+Cursor aplica siempre este archivo y la regla `alwaysApply` [`.cursor/rules/enrutador.mdc`](.cursor/rules/enrutador.mdc), que solo obliga a usar la tabla de papeles. Los `AGENTS.md` anidados y las reglas `papel-proto.mdc` / `papel-laboratorio.mdc` (por glob de `protos/**` o `apps/world/**`) llegan cuando ya hay archivos de esa carpeta en el contexto; las reglas solo repiten el radio de acción y apuntan al `AGENTS.md` de su carpeta. Cada tema vive en un solo archivo: radio y reglas comunes aquí; contrato de una aplicación en `protos/AGENTS.md`; cómo hacer un juego en la skill `godot-juego`; export en `templates/export-estatico/LEEME.md`; laboratorio en `apps/world/AGENTS.md`; plataforma en `.github/AGENTS.md`. Si cambias un radio de acción, actualiza la tabla, la regla y ese `AGENTS.md`.
 
 El `install` de `.cursor/environment.json` asume el Node de `.nvmrc`. Node 26 no trae Corepack: el comando lo instala con npm, prepara pnpm 12.17.0 y luego las dependencias y los navegadores de Playwright del entorno local (`pnpm previews` y depuración puntual de e2e). En GitHub Actions los e2e usan la imagen Docker oficial, no `playwright install`. Es idempotente.
 
-El entorno de los agentes solo admite el MCP de documentación de Cloudflare (`https://docs.mcp.cloudflare.com/mcp`), registrado en `.cursor/mcp.json` y en `mcpServerAllowlist`. No se añade el MCP de la API (`https://mcp.cloudflare.com/mcp`) ni ningún token. Godot no se instala en la imagen: el export lo hace el workflow y el agente commitea el artefacto (ver [`protos/AGENTS.md`](protos/AGENTS.md)). Para comprobar escenas y GDScript, el agente descarga el binario oficial a `/tmp` durante la sesión y lo usa en headless; los comandos están en [`.agents/skills/godot-juego/SKILL.md`](.agents/skills/godot-juego/SKILL.md).
+El entorno de los agentes solo admite el MCP de documentación de Cloudflare (`https://docs.mcp.cloudflare.com/mcp`), registrado en `.cursor/mcp.json` y en `mcpServerAllowlist`. No se añade el MCP de la API (`https://mcp.cloudflare.com/mcp`) ni ningún token. Godot no se instala en la imagen: el export lo hace un workflow ([`protos/AGENTS.md`](protos/AGENTS.md)) y la comprobación headless descarga el binario a `/tmp` durante la sesión ([`.agents/skills/godot-juego/SKILL.md`](.agents/skills/godot-juego/SKILL.md)).
 
 Para probar en la nube: `pnpm typecheck`, `pnpm test:unit` y `pnpm build`; opcional `pnpm preview` (4173) o `pnpm dev` (5173). Playwright local según **Pruebas E2E sostenibles** en [`apps/world/AGENTS.md`](apps/world/AGENTS.md); la suite completa del PR en GitHub Actions.
 

@@ -1,19 +1,9 @@
 ---
-description: Papel Laboratorio. Cambios en el mundo 3D, lobby, Inventor, PWA, iframe/cromo, tablón y tests e2e (apps/world, e2e). Léelo antes de editar esos archivos.
+description: Papel Laboratorio. Cambios en el mundo 3D, lobby, Inventor, PWA, iframe/cromo, tablón y tests e2e (apps/world, e2e).
 globs: apps/world/**,e2e/**,playwright.config.ts
 alwaysApply: false
 ---
 
-# Papel Laboratorio (`apps/world/`)
+Papel Laboratorio. Radio de acción: `apps/world/`, `e2e/` y lo que la tarea pida de forma explícita. Una propuesta de issue nunca activa este papel.
 
-Radio de acción: `apps/world/`, `e2e/` y lo que la tarea pida de forma explícita. Una propuesta de issue no activa este papel: es siempre papel Proto.
-
-Antes de editar, lee `apps/world/AGENTS.md`: render del lobby, service worker y catálogo, iframe y cromo, Inventor, comandos y la sección «Pruebas E2E sostenibles».
-
-Reglas que se olvidan:
-
-- El catálogo (`apps/world/src/generated/catalog.json`, `functions/_lib/slugs.json`) no se edita a mano: lo regenera `pnpm generate`.
-- No modifiques `protos/<slug>/` desde aquí. El contrato del iframe vive en `protos/AGENTS.md`: léelo, no lo dupliques.
-- Valida con `pnpm typecheck`, `pnpm test:unit` y `pnpm build`. Playwright solo para specs concretos; la suite completa corre en CI.
-- No edites `.github/` ni workflows sin petición explícita del dueño; su detalle está en `.github/AGENTS.md`.
-- PR y commits: sección «Convenciones para agentes (pull requests)» de `AGENTS.md`.
+Si aún no lo has leído, abre `apps/world/AGENTS.md`: render, service worker, iframe, Inventor, comandos y pruebas e2e.
