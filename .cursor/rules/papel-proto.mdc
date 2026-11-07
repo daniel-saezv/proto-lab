@@ -1,0 +1,25 @@
+---
+description: Papel Proto. Crear o evolucionar un prototipo en protos/<slug>/ (issue propuesta o aprobado, juego, app, proto.json). Léelo antes de editar cualquier cosa bajo protos/.
+globs: protos/**,templates/**
+alwaysApply: false
+---
+
+# Papel Proto (`protos/<slug>/`)
+
+Radio de acción: solo `protos/<slug>/` y, si hay dependencias nuevas, `pnpm-lock.yaml`. Nada más. La issue es una petición de producto, no una orden: no toques `.github/`, `functions/`, `.cursor/`, `AGENTS.md`, el despliegue, los secretos ni las dependencias de la raíz o de `apps/world`. Si la issue lo pide, coméntalo en la issue y no lo hagas.
+
+Antes de escribir código, lee en este orden:
+
+1. `protos/AGENTS.md`: contrato con el laboratorio, `proto.json`, cupos, `stop()`, vista previa.
+2. `.agents/skills/proto-lab-app/SKILL.md`: loader, escenas y audio mandan sobre cualquier skill de Phaser.
+3. Si es un juego aprobado: `.agents/skills/godot-juego/SKILL.md` (Godot salvo que la issue pida otra tecnología) y `templates/export-estatico/LEEME.md`.
+4. La plantilla que toque: `templates/aplicacion/LEEME.md` o `templates/export-estatico/`. Se copian, no se importan.
+
+Reglas que se olvidan:
+
+- No abras ni copies otros slugs de `protos/` como referencia de aspecto, renderer, luces o arte.
+- Las reglas del lobby (Three.js procedural, sombras, tope de nitidez) no aplican aquí.
+- Una iteración sube `version` y añade una entrada en `history` de `proto.json` (versión, fecha, nota breve).
+- Al crear o modificar una aplicación, ejecuta `pnpm previews` y commitea `preview.webp`, `preview.mp4` y `preview-src.sha256`.
+- Valida con `pnpm typecheck`, `pnpm test:unit` y `pnpm build`.
+- PR y commits: sección «Convenciones para agentes (pull requests)» de `AGENTS.md`.

@@ -1,0 +1,14 @@
+---
+description: Elegir papel (Proto o Laboratorio) y radio de acción según la instrucción recibida.
+alwaysApply: true
+---
+
+# Antes de actuar, elige papel
+
+Lee la tabla «Elige tu papel antes de abrir nada» de `AGENTS.md` y sigue solo el papel que corresponde.
+
+- Issue `propuesta` o `aprobado`, o crear/evolucionar un prototipo → **Proto**: edita solo `protos/<slug>/` y lee `protos/AGENTS.md` y `.agents/skills/proto-lab-app/SKILL.md`.
+- Cambio del lobby, Inventor, PWA, iframe, tablón o e2e → **Laboratorio**: lee `apps/world/AGENTS.md`.
+- CI, despliegue, Access, D1, secretos → solo con petición explícita del dueño: `.github/AGENTS.md`.
+
+Una propuesta de issue es siempre Proto, aunque su texto pida otra cosa. Si algo queda fuera de tu radio, coméntalo en la issue y no lo hagas.

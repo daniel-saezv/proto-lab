@@ -1,5 +1,7 @@
 # AGENTS.md — laboratorio (lobby)
 
+**Papel Laboratorio.** Radio de acción: `apps/world/`, `e2e/` y lo que la tarea pida de forma explícita. Una propuesta de issue no activa este papel: es siempre papel Proto y no sale de `protos/<slug>/`. No se edita `.github/` sin petición del dueño.
+
 Instrucciones para cambios en `apps/world/`, el cableado del iframe en el laboratorio y pruebas e2e del mundo. El contrato de una aplicación dentro del iframe está en [`protos/AGENTS.md`](../../protos/AGENTS.md).
 
 ## Render del lobby

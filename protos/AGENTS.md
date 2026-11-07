@@ -1,5 +1,7 @@
 # AGENTS.md — aplicaciones (`protos/<slug>/`)
 
+**Papel Proto.** Radio de acción: solo `protos/<slug>/` (y `pnpm-lock.yaml` si el prototipo trae dependencias nuevas). No se tocan `.github/`, `functions/`, `.cursor/`, `AGENTS.md`, la configuración de despliegue, los secretos ni las dependencias de la raíz o de `apps/world`: si la issue lo pide, se comenta en la issue y no se hace. Una propuesta nueva puede crear `protos/<slug-nuevo>/`: la variante de código lleva su `package.json`; un export estático puede ir sin él (basta `proto.json` e `index.html`). Una iteración trabaja en el prototipo indicado y, en el mismo cambio, sube `version` en su `proto.json` y añade una entrada en `history` (versión, fecha y nota breve); la versión actual tiene que figurar en el historial.
+
 Contrato de una aplicación dentro del laboratorio. Las reglas del lobby (geometría procedural Three.js, tope de nitidez 1,5, sombras del mundo) **no aplican** dentro de un prototipo: cada slug define su propio aspecto según su issue.
 
 No abras ni copies otros slugs de `protos/` como referencia de aspecto, renderer, luces, antialias o arte. Cada prototipo parte de su issue, de las plantillas en `templates/` y de las skills (`.agents/skills/proto-lab-app/SKILL.md` y, si es un juego, `.agents/skills/godot-juego/SKILL.md`). El contrato web (ventana, Compatibility, un hilo, cupos) está escrito ahí: no lo tomes de otro prototipo publicado.
@@ -21,7 +23,7 @@ Si una propuesta **aprobada** describe un **juego**, el agente que la implemente
 
 La dimensión la marca la issue. Si pide 3D, perspectiva, modelos o una cámara en el espacio, la escena de juego es `Node3D` con `Camera3D`. Cenital describe la cámara: en 3D se hace con `Camera3D`, en perspectiva u ortográfica, mirando hacia abajo. `TileMapLayer` solo entra si la issue pide 2D o teselas. El viewport 390×844, `canvas_items` y `expand` son la ventana que exige el validador; no se cambian para hacer el juego 2D ni 3D. En la web el renderer sigue en `gl_compatibility`, que sí pinta 3D. El detalle de escena, luces y assets está en [`.agents/skills/godot-juego/SKILL.md`](../.agents/skills/godot-juego/SKILL.md).
 
-Godot no es solo un enganche de export: el proyecto vive en **`protos/<slug>/godot/`**. El procedimiento de export y el workflow que genera el artefacto están descritos en `templates/export-estatico/LEEME.md` y en la sección **Proyecto** del [`AGENTS.md`](../AGENTS.md) raíz (workflow `exportar-godot.yml`); aquí no se reescriben.
+Godot no es solo un enganche de export: el proyecto vive en **`protos/<slug>/godot/`**. El procedimiento de export está en `templates/export-estatico/LEEME.md`. El workflow `.github/workflows/exportar-godot.yml` solo corre en un pull request cuyo diff toca un proyecto `protos/<slug>/godot/`, o a mano con `workflow_dispatch`; `.github/workflows/medir-godot.yml` solo es `workflow_dispatch`. No se les añade `push`, `schedule` ni otro disparador, y no usan secretos ni R2. Es la única excepción a «un agente que implementa un prototipo no modifica workflows».
 
 Si el texto de la issue pide **explícitamente** otra tecnología para ese juego, se sigue la issue.
 
