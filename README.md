@@ -105,3 +105,5 @@ Hay que abrir [https://proto-lab-3k6.pages.dev](https://proto-lab-3k6.pages.dev)
 - **Android:** Chrome, menú, «Instalar aplicación» o «Añadir a pantalla de inicio».
 
 La app cachea la carcasa del laboratorio y los assets del mundo. Los prototipos se piden siempre a la red.
+
+Línea añadida para la prueba de Copilot.
