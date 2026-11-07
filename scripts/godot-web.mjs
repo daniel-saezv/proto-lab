@@ -17,7 +17,7 @@ const NODE_IDS = Buffer.from("node_ids\0");
 const ENGINE_FILES = new Set(GODOT_ENGINE_FILES);
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PUBLISHED_SKIP = new Set(["proto.json", "preview.webp", "godot"]);
+const PUBLISHED_SKIP = new Set(["proto.json", "preview.webp", "preview.mp4", "preview-src.sha256", "godot"]);
 
 export function findHtmlDir(dir) {
   const direct = join(dir, "index.html");
