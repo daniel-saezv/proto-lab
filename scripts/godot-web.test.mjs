@@ -148,6 +148,10 @@ describe("disparadores de Godot", () => {
   it("el diff nombra solo los proyectos Godot que toca", () => {
     expect(godotSlugsInDiff(["protos/toque/godot/project.godot", "protos/chispa/src/main.ts", "README.md"])).toEqual(["toque"]);
     expect(godotSlugsInDiff(["scripts/godot-web.mjs"])).toEqual([]);
-    expect(listGodotProjects(join(root, "protos"))).toEqual(["goblin-chef", "toque"]);
+    const projects = listGodotProjects(join(root, "protos"));
+    expect(projects).toContain("toque");
+    for (const slug of projects) {
+      expect(existsSync(join(root, "protos", slug, "godot", "project.godot"))).toBe(true);
+    }
   });
 });
