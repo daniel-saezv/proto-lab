@@ -1,0 +1,26 @@
+{
+  "slug": "goblin-chef",
+  "title": "Goblin Chef",
+  "description": "Eres un goblin cocinero en un pueblo de fantasía, visto en isométrica. Sales por el arco a un claro que se genera en cada incursión: golpeas a las criaturas, recoges setas, bayas, raíces y el botín que sueltan, y vuelves al caldero. Los platos mejoran daño, vida, armadura, paso o cadencia; si ya tienes otra mejora afín, el caldero enciende una combinación. Con dos huesos contratas a Níspero, que duplica el plato. Cada salida es más dura. Este primer corte vive en la sesión: no guarda la partida al cerrar.",
+  "author": "Gamu",
+  "date": "2026-11-07",
+  "tags": [
+    "godot",
+    "3d",
+    "juego"
+  ],
+  "cover": null,
+  "version": "0.1.0",
+  "capabilities": [
+    "wasm"
+  ],
+  "readyMs": 20000,
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-07",
+      "note": "Primer corte jugable: pueblo, mapa procedural, combate, cocina combinable y un pinche."
+    }
+  ],
+  "preview": "preview.webp"
+}
