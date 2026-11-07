@@ -58,6 +58,8 @@ func preparar(datos: Dictionary) -> void:
 	mat_cabeza.albedo_color = color.lightened(0.32)
 	mat_arma.albedo_color = color.lightened(0.12)
 	modelo = Visuales.montar_jugador($Bob, str(datos["id"]))
+	$AnimationPlayer.stop()
+	$AnimationPlayer.active = false
 	_registrar(datos["ataque"])
 	for hab in datos["habilidades"]:
 		_registrar(hab)

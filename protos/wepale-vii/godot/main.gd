@@ -10,6 +10,7 @@ const MenuScript := preload("res://menu.gd")
 const HudScript := preload("res://hud.gd")
 const SonidoScript := preload("res://sonido.gd")
 const PlazaScript := preload("res://plaza.gd")
+const RendimientoScript := preload("res://rendimiento.gd")
 
 const RONDAS := [
 	{"n": 5, "vida": 28, "velocidad": 2.85, "mordisco": 7},
@@ -36,6 +37,7 @@ var orbita := 0.4
 
 
 func _ready() -> void:
+	RendimientoScript.aplicar_en_web(get_tree())
 	_cielo()
 	plaza = PlazaScript.new()
 	add_child(plaza)
@@ -91,6 +93,7 @@ func _empezar(id: String) -> void:
 	estado = "juego"
 	menu.cerrar()
 	plaza.ocultar_muestras()
+	plaza.pausar_decoracion(true)
 	plaza.rotulos(true)
 	jugador = EscenaJugador.instantiate()
 	jugador.position = Vector3(0, 0, 1.2)
@@ -233,13 +236,13 @@ func _cielo() -> void:
 	entorno.sky = cielo
 	entorno.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	entorno.ambient_light_color = Color(0.42, 0.32, 0.46)
-	entorno.ambient_light_energy = 0.85
+	entorno.ambient_light_energy = 1.05
 	var mundo := WorldEnvironment.new()
 	mundo.environment = entorno
 	add_child(mundo)
 	var sol := DirectionalLight3D.new()
 	sol.rotation_degrees = Vector3(-54, -32, 0)
 	sol.light_color = Color(1.0, 0.92, 0.82)
-	sol.light_energy = 1.2
+	sol.light_energy = 1.0
 	sol.shadow_enabled = false
 	add_child(sol)

@@ -34,6 +34,17 @@ const Estandarte_AMBAR := preload("res://artes/mazmorra/banner_thin_brown.glb")
 const Estandarte_VIOLETA := preload("res://artes/mazmorra/banner_thin_yellow.glb")
 const BOTELLA := preload("res://artes/mazmorra/bottle_A_labeled_brown.glb")
 
+static var _mat_destello: StandardMaterial3D
+static var _tintas: Dictionary = {}
+
+
+static func _mat_flash() -> StandardMaterial3D:
+	if _mat_destello == null:
+		_mat_destello = StandardMaterial3D.new()
+		_mat_destello.albedo_color = Color(1.0, 0.96, 0.9)
+		_mat_destello.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return _mat_destello
+
 
 static func montar_jugador(contenedor: Node3D, id: String) -> Node3D:
 	_limpiar_visuales(contenedor)
@@ -87,13 +98,11 @@ static func charco_visual(padre: Node3D, tinta: Color) -> Node3D:
 static func destellar(anfitrion: Node, raiz: Node) -> void:
 	if anfitrion == null or raiz == null:
 		return
+	var flash := _mat_flash()
 	var marcados: Array[MeshInstance3D] = []
 	_reunir_mallas(raiz, marcados)
 	for malla in marcados:
 		var anterior = malla.material_overlay
-		var flash := StandardMaterial3D.new()
-		flash.albedo_color = Color(1.0, 0.96, 0.9)
-		flash.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		malla.material_overlay = flash
 		var tw := anfitrion.create_tween()
 		tw.tween_interval(0.11)
@@ -133,21 +142,33 @@ static func _apagar_rig(nodo: Node) -> void:
 
 static func _sin_sombras(nodo: Node) -> void:
 	if nodo is GeometryInstance3D:
-		(nodo as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var geo := nodo as GeometryInstance3D
+		geo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		geo.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	for hijo in nodo.get_children():
 		_sin_sombras(hijo)
 
 
 static func _brillar(raiz: Node, tinta: Color, emision := 0.55) -> void:
+	var mat := _mat_tinta(tinta, emision)
 	var marcados: Array[MeshInstance3D] = []
 	_reunir_mallas(raiz, marcados)
 	for malla in marcados:
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = tinta
-		mat.emission_enabled = true
-		mat.emission = tinta
-		mat.emission_energy_multiplier = emision
 		malla.material_overlay = mat
+
+
+static func _mat_tinta(tinta: Color, emision: float) -> StandardMaterial3D:
+	var clave := "%s:%s" % [tinta, emision]
+	if _tintas.has(clave):
+		return _tintas[clave]
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = tinta
+	mat.emission_enabled = true
+	mat.emission = tinta
+	mat.emission_energy_multiplier = emision
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_tintas[clave] = mat
+	return mat
 
 
 static func _reunir_mallas(nodo: Node, lista: Array[MeshInstance3D]) -> void:

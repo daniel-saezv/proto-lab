@@ -38,7 +38,8 @@ func _ready() -> void:
 	mat_cuerpo.albedo_color = color
 	mat_cuerpo.roughness = 0.74
 	modelo = Visuales.montar_rival($Bob, equipo)
-	_idle()
+	$AnimationPlayer.stop()
+	$AnimationPlayer.active = false
 	_sombra()
 
 

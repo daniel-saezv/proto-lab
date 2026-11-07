@@ -22,10 +22,25 @@ window/handheld/orientation=1
 
 pointing/emulate_touch_from_mouse=true
 
+[importer_defaults]
+
+gltf={
+"meshes/generate_lods": true,
+"meshes/create_shadow_meshes": false,
+"meshes/light_baking": 0,
+"meshes/lods/normal_merge_angle": 25.0,
+"animation/import": false,
+"skins/use_named_skins": false
+}
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
+textures/default_filters/texture_mipmap_bias=0.35
+textures/default_filters/anisotropic_filtering_level=0
+lights_and_shadows/positional_shadow/atlas_size=0
 environment/defaults/default_clear_color=Color(0.07, 0.04, 0.08, 1)
 anti_aliasing/quality/msaa_3d=0
+limits/opengl/max_lights_per_object=8

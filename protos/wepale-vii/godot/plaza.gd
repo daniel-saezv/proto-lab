@@ -4,11 +4,13 @@ extends Node3D
 
 const Oficios := preload("res://oficios.gd")
 const Visuales := preload("res://visuales.gd")
+const Rendimiento := preload("res://rendimiento.gd")
 
 var muestras: Array[Node3D] = []
 var flotantes: Array[Node3D] = []
 var bases: Array[float] = []
 var tiempo := 0.0
+var decoracion_activa := true
 
 
 func construir() -> void:
@@ -33,7 +35,13 @@ func rotulos(visibles: bool) -> void:
 			nodo.visible = visibles
 
 
+func pausar_decoracion(pausa: bool) -> void:
+	decoracion_activa = not pausa
+
+
 func _process(delta: float) -> void:
+	if not decoracion_activa:
+		return
 	tiempo += delta
 	for i in flotantes.size():
 		var nodo := flotantes[i]
@@ -53,13 +61,17 @@ func _suelo() -> void:
 	forma.position = Vector3(0, -0.5, 0)
 	cuerpo.add_child(forma)
 	add_child(cuerpo)
+	var grandes: Array = []
 	for ix in range(-3, 4):
 		for iz in range(-3, 4):
-			Visuales.prop(self, Visuales.SUELO_GRANDE, Vector3(float(ix) * 2.05, 0.0, float(iz) * 2.05), 1.02)
+			grandes.append({"pos": Vector3(float(ix) * 2.05, 0.0, float(iz) * 2.05), "escala": 1.02})
+	Rendimiento.multimesh(self, Visuales.SUELO_GRANDE, grandes, 1.02)
 	var paso := 2.05
+	var peque: Array = []
 	for ix in range(-1, 2):
 		for iz in range(-1, 2):
-			Visuales.prop(self, Visuales.SUELO_PEQUE, Vector3(float(ix) * paso * 0.9, 0.01, float(iz) * paso * 0.9), 1.05)
+			peque.append({"pos": Vector3(float(ix) * paso * 0.9, 0.01, float(iz) * paso * 0.9), "escala": 1.05})
+	Rendimiento.multimesh(self, Visuales.SUELO_PEQUE, peque, 1.05)
 
 
 func _muros() -> void:
@@ -83,12 +95,15 @@ func _fila_muro(pos: Vector3, tam: Vector3, giro: float) -> void:
 	var largo := tam.x if tam.x > tam.z else tam.z
 	var piezas := maxi(3, int(round(largo / 1.9)))
 	var dir := Vector3.RIGHT if tam.x > tam.z else Vector3.FORWARD
+	var intermedios: Array = []
 	for i in piezas:
 		var lugar := pos + dir * (float(i) - float(piezas - 1) * 0.5) * 1.95
 		if i == 0 or i == piezas - 1:
 			Visuales.prop(self, Visuales.ESQUINA, lugar, 1.0, giro + PI * 0.25)
 		else:
-			Visuales.prop(self, Visuales.MURO, lugar, 1.0, giro)
+			intermedios.append({"pos": lugar, "rot": giro, "escala": 1.0})
+	if not intermedios.is_empty():
+		Rendimiento.multimesh(self, Visuales.MURO, intermedios, 1.0)
 
 
 func _pueblo(nombre: String, origen: Vector3, cerveza: bool) -> void:
@@ -116,10 +131,10 @@ func _pueblo(nombre: String, origen: Vector3, cerveza: bool) -> void:
 		Visuales.prop(self, Visuales.SILLA, origen + hacia * 1.65 + lateral * 1.25, 0.9, rot)
 	var rotulo := Label3D.new()
 	rotulo.text = nombre
-	rotulo.font_size = 48
+	rotulo.font_size = 40
 	rotulo.pixel_size = 0.011
 	rotulo.modulate = Color(0.98, 0.88, 0.72) if cerveza else Color(0.82, 0.72, 1.0)
-	rotulo.outline_size = 12
+	rotulo.outline_size = 6
 	rotulo.outline_modulate = Color(0.05, 0.02, 0.06)
 	rotulo.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	rotulo.position = origen + Vector3(0, 3.2, 0)
@@ -139,10 +154,10 @@ func _muestras() -> void:
 		bases.append(modelo.position.y)
 		var nombre := Label3D.new()
 		nombre.text = str(datos["nombre"])
-		nombre.font_size = 42
+		nombre.font_size = 38
 		nombre.pixel_size = 0.008
 		nombre.modulate = Color(0.98, 0.95, 0.9)
-		nombre.outline_size = 10
+		nombre.outline_size = 5
 		nombre.outline_modulate = Color(0.04, 0.02, 0.05)
 		nombre.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		nombre.position = Vector3(0, 1.55, 0)
@@ -158,11 +173,6 @@ func _cartas() -> void:
 		bases.append(carta.position.y)
 
 
-func _faro(pos: Vector3, color: Color) -> void:
-	var luz := OmniLight3D.new()
-	luz.position = pos
-	luz.light_color = color
-	luz.light_energy = 1.35
-	luz.omni_range = 8.0
-	luz.shadow_enabled = false
-	add_child(luz)
+func _faro(_pos: Vector3, _color: Color) -> void:
+	# Sin omni en web: el ambiente de main basta y ahorra pases de luz en móvil.
+	pass
