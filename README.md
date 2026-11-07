@@ -26,7 +26,7 @@ pnpm preview
 
 `pnpm preview` sirve el sitio en `http://127.0.0.1:4173`. `pnpm dev` regenera el catálogo, construye los prototipos y arranca el laboratorio con recarga.
 
-`pnpm test:unit` ejecuta Vitest sobre el laboratorio (tablón, catálogo, navegación, validación alineada con la Function, etc.) y tests de `functions/_lib`. `pnpm test:e2e` abre el mundo, completa una propuesta con la Function simulada y lanza el prototipo de ejemplo (flujo habitual en CI; cuándo conviene en local: [`AGENTS.md`](AGENTS.md)). `pnpm typecheck` comprueba los tipos.
+`pnpm test:unit` ejecuta Vitest sobre el laboratorio (tablón, catálogo, navegación, validación alineada con la Function, etc.) y tests de `functions/_lib`. `pnpm test:e2e` abre el mundo, completa una propuesta con la Function simulada y lanza el prototipo de ejemplo (flujo habitual en CI; cuándo conviene en local: [`apps/world/AGENTS.md`](apps/world/AGENTS.md)). `pnpm typecheck` comprueba los tipos.
 
 ### Commits en pull requests
 
@@ -45,12 +45,12 @@ El `proto.json` lleva:
 - `title`, `description`, `author` (email o alias), `date` (`AAAA-MM-DD`)
 - `tags`, `cover` (archivo en la misma carpeta, o `null`)
 - `version` y `history` (la versión actual tiene que aparecer en el historial)
-- opcional: `"readyMs"` (plazo de arranque, por defecto 8000 ms) y `"capabilities"` (`save`, `wasm`, `shared`, `tables` y permisos de dispositivo; ver [`AGENTS.md`](AGENTS.md)). `"permissions"` sigue valiendo como lista de dispositivos.
-- opcional: `"assets": ["media/foo.png", …]` — puente heredado de recursos declarados (64 rutas, 4 MiB, 16 MiB; ver [`AGENTS.md`](AGENTS.md))
+- opcional: `"readyMs"` (plazo de arranque, por defecto 8000 ms) y `"capabilities"` (`save`, `wasm`, `shared`, `tables` y permisos de dispositivo; ver [`protos/AGENTS.md`](protos/AGENTS.md)). `"permissions"` sigue valiendo como lista de dispositivos.
+- opcional: `"assets": ["media/foo.png", …]` — puente heredado de recursos declarados (64 rutas, 4 MiB, 16 MiB; ver [`protos/AGENTS.md`](protos/AGENTS.md))
 
 No hace falta registrar la carpeta en la raíz. `pnpm build` lee los manifiestos que hay en `protos/`, publica el laboratorio en `/` y cada aplicación en `/protos/<slug>/`. El mundo coloca una máquina por manifiesto. Crea también la etiqueta de GitHub con el slug para que las iteraciones puedan llevarla.
 
-Al abrirla, el laboratorio carga `/protos/<slug>/` en un iframe del mismo origen, sin `sandbox` y sin documento `blob:`. La aplicación avisa `alive` al cargar y `ready` cuando el primer fotograma ya se ve; hasta entonces una capa tapa el iframe. `window.__protoLabApp.stop()` es obligatorio: al cerrar, el laboratorio lo llama, pasa el iframe a `about:blank` y lo quita. El contrato (señales, permisos, topes de la aplicación servida y las dos plantillas) está en [`AGENTS.md`](AGENTS.md).
+Al abrirla, el laboratorio carga `/protos/<slug>/` en un iframe del mismo origen, sin `sandbox` y sin documento `blob:`. La aplicación avisa `alive` al cargar y `ready` cuando el primer fotograma ya se ve; hasta entonces una capa tapa el iframe. `window.__protoLabApp.stop()` es obligatorio: al cerrar, el laboratorio lo llama, pasa el iframe a `about:blank` y lo quita. El contrato (señales, permisos, topes de la aplicación servida y las dos plantillas) está en [`protos/AGENTS.md`](protos/AGENTS.md).
 
 Si Access devuelve la página del PIN en vez de la aplicación, no se monta el iframe y queda el aviso con Volver. En producción y en las previews, la aplicación de Access tiene que permitir iframes (`allow_iframe`); lo activa el dueño en el dashboard. En local no hay Access. La aplicación pide imágenes, audio y JSON bajo `/protos/<slug>/` con `window.__protoLabData`. Si declara `save`, guarda los datos de una persona en el `localStorage` del laboratorio (`proto-lab:app:<slug>`). Si declara `wasm`, la CSP de esa ruta permite instanciar WebAssembly. El atributo `allow` del iframe solo lleva permisos de dispositivo de la lista cerrada. Si declara `shared`, `sharedGet` / `sharedSet` / `sharedRemove` leen y escriben un dato común a todas las sesiones, en D1, por `POST /api/apps/<slug>/shared`. Si declara `tables`, `query(nombre, params)` ejecuta solo las consultas de `protos/<slug>/db/queries.json`. El contrato está en [`docs/contrato-tablas.md`](docs/contrato-tablas.md). No hay hilos ni `SharedArrayBuffer`, y los formularios no se envían. Abrir `/protos/<slug>/` en una pestaña sigue funcionando.
 
@@ -79,7 +79,7 @@ Hostnames:
 
 Access con PIN de un solo uso cubre los dos. La Function valida el JWT `Cf-Access-Jwt-Assertion` con las claves de `ancient-waterfall-b3eb.cloudflareaccess.com` y la variable `CF_ACCESS_AUD` (etiqueta AUD de la aplicación). No basta la cabecera de email. No definas `ALLOW_DEV_AUTH` en Pages: es solo para probar la Function en local, y solo en loopback.
 
-Los datos compartidos y las tablas por aplicación usan el binding D1 `DB`. Las bases ya existen: `proto-lab-shared` en producción (`7f6608b2-bb75-44ba-b240-60d6cff51794`) y `proto-lab-shared-preview` en las previews (`797b147d-e5c7-4198-a20e-fe378758217a`). Los ids están en `wrangler.toml`, y el bloque de preview repite el KV `PROPOSALS`. La migración [`migrations/0001_lab_shared_entries.sql`](migrations/0001_lab_shared_entries.sql) la aplica [`.github/workflows/d1-app-tables.yml`](.github/workflows/d1-app-tables.yml) cuando existe el secreto de Actions `CLOUDFLARE_D1_TOKEN` (solo el permiso Account → D1 → Edit). En el plan Free, pasar el cupo de D1 hace fallar la petición y no genera cargo. El detalle está en [`AGENTS.md`](AGENTS.md).
+Los datos compartidos y las tablas por aplicación usan el binding D1 `DB`. Las bases ya existen: `proto-lab-shared` en producción (`7f6608b2-bb75-44ba-b240-60d6cff51794`) y `proto-lab-shared-preview` en las previews (`797b147d-e5c7-4198-a20e-fe378758217a`). Los ids están en `wrangler.toml`, y el bloque de preview repite el KV `PROPOSALS`. La migración [`migrations/0001_lab_shared_entries.sql`](migrations/0001_lab_shared_entries.sql) la aplica [`.github/workflows/d1-app-tables.yml`](.github/workflows/d1-app-tables.yml) cuando existe el secreto de Actions `CLOUDFLARE_D1_TOKEN` (solo el permiso Account → D1 → Edit). En el plan Free, pasar el cupo de D1 hace fallar la petición y no genera cargo. El detalle está en [`.github/AGENTS.md`](.github/AGENTS.md).
 
 La app solo se sirve en esos hostnames. `Access-Control-Allow-Origin: *` en `/protos/*` no basta para saltarse Access: sin la cookie, el PIN sigue delante. El iframe es del mismo origen, así que viaja con la cookie de quien ya entró. Además, la aplicación de Access tiene que permitir enmarcar (`allow_iframe`); si no, producción y las previews pueden mostrar el PIN dentro del arcade.
 
