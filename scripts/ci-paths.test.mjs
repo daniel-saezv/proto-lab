@@ -117,7 +117,7 @@ describe("barrera de una propuesta", () => {
   it("una propuesta cerrada solo puede tocar un prototipo y el lockfile", () => {
     const labels = new Map([[4, ["propuesta"]]]);
     expect(proposalScopeError(["protos/chispa/src/main.ts", "pnpm-lock.yaml"], [4], labels)).toBeNull();
-    expect(proposalScopeError(["protos/chispa/a.ts", "protos/toque/index.html"], [4], labels)).toMatch(/un prototipo/);
+    expect(proposalScopeError(["protos/chispa/a.ts", "protos/demo-app/index.html"], [4], labels)).toMatch(/un prototipo/);
     expect(proposalScopeError(["protos/chispa/a.ts", ".github/workflows/ci.yml"], [4], labels)).toMatch(/no puede tocar/);
     expect(proposalScopeError(["docs/nota.md"], [4], labels)).toMatch(/ninguno/);
     expect(proposalScopeError([".github/workflows/ci.yml"], [4], new Map([[4, ["bug"]]]))).toBeNull();

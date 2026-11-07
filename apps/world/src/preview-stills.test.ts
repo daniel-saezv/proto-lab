@@ -12,7 +12,7 @@ describe("caché en memoria de las fotos", () => {
     const [first, again, other] = await Promise.all([
       cache.load("/protos/chispa/preview.webp"),
       cache.load("/protos/chispa/preview.webp"),
-      cache.load("/protos/toque/preview.webp"),
+      cache.load("/protos/otro/preview.webp"),
     ]);
     expect(calls).toBe(2);
     expect(first).toBe(again);

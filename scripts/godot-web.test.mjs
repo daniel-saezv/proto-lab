@@ -2,9 +2,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { brotliCompressSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { inspectServedApp } from "./app-budget.mjs";
-import { assertSharedEngines, GODOT_ENGINE_BASE } from "./godot-engine.mjs";
 import {
   assertGodotProject,
   compareEngine,
@@ -26,19 +25,76 @@ const GODOT_THREADS_ENABLED = false;
 engine.startGame().then(function () { window.__protoLabNotifyReady(); });
 engine.requestQuit();
 </script>`;
+const project = `config_version=5
+[display]
+window/size/viewport_width=390
+window/size/viewport_height=844
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+[input_devices]
+pointing/emulate_touch_from_mouse=true
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+`;
+const preset = `variant/thread_support=false
+variant/extensions_support=false
+progressive_web_app/enabled=false
+progressive_web_app/ensure_cross_origin_isolation_headers=false
+vram_texture_compression/for_mobile=true
+vram_texture_compression/for_desktop=false
+html/custom_html_shell="shell.html"
+`;
+
+function makePack(scene) {
+  const filename = Buffer.from("res://main.scn");
+  const file = Buffer.from(scene);
+  const directoryOffset = 40;
+  const dataOffset = directoryOffset + 4 + 4 + filename.length + 8 + 8 + 16 + 4;
+  const pack = Buffer.alloc(dataOffset + file.length);
+  pack.write("GDPC", 0);
+  pack.writeUInt32LE(4, 4);
+  pack.writeBigUInt64LE(BigInt(dataOffset), 24);
+  pack.writeBigUInt64LE(BigInt(directoryOffset), 32);
+  pack.writeUInt32LE(1, directoryOffset);
+  let offset = directoryOffset + 4;
+  pack.writeUInt32LE(filename.length, offset);
+  offset += 4;
+  filename.copy(pack, offset);
+  offset += filename.length;
+  pack.writeBigUInt64LE(0n, offset);
+  pack.writeBigUInt64LE(BigInt(file.length), offset + 8);
+  offset += 8 + 8 + 16 + 4;
+  file.copy(pack, dataOffset);
+  return pack;
+}
+
+function scene(ids, content = "scene: original") {
+  const nodeIds = Buffer.alloc(8);
+  nodeIds.writeUInt32LE(ids[0], 0);
+  nodeIds.writeUInt32LE(ids[1], 4);
+  return Buffer.concat([
+    Buffer.from(`${content}\nnode_ids\0`),
+    Buffer.alloc(4),
+    Buffer.from([2, 0, 0, 0]),
+    nodeIds,
+  ]);
+}
 
 describe("export web de Godot", () => {
-  it("acepta el proyecto de ejemplo y el shell de la plantilla", () => {
-    const project = readFileSync(join(root, "protos/toque/godot/project.godot"), "utf8");
-    const preset = readFileSync(join(root, "protos/toque/godot/export_presets.cfg"), "utf8");
+  it("valida la configuración mínima y el shell de la plantilla", () => {
     expect(assertGodotProject(project, preset)).toEqual([]);
     const estrecho = project.replace("window/size/viewport_width=390", "window/size/viewport_width=1280");
     expect(assertGodotProject(estrecho, preset).some((line) => line.includes("viewport_width"))).toBe(true);
     const escritorio = preset.replace("vram_texture_compression/for_desktop=false", "vram_texture_compression/for_desktop=true");
     expect(assertGodotProject(project, escritorio).some((line) => line.includes("for_desktop"))).toBe(true);
-    const shell = readFileSync(join(root, "protos/toque/godot/shell.html"));
-    const template = readFileSync(join(root, "templates/export-estatico/godot-shell.html"));
-    expect(shell.equals(template)).toBe(true);
+    const template = readFileSync(join(root, "templates/export-estatico/godot-shell.html"), "utf8");
+    expect(template).toContain('src="/protos/engines/godot/4.7.2-stable-nothreads/index.js"');
+    expect(template).toContain("engine.requestQuit()");
+    expect(template).toContain("window.__protoLabNotifyReady()");
+    expect(template).toContain("mainPack: 'index.pck'");
   });
 
   it("publica el wasm en Brotli y rechaza memoria compartida", () => {
@@ -87,31 +143,13 @@ describe("export web de Godot", () => {
   });
 
   it("tolera los node_ids del pck y detecta un cambio de escena", () => {
-    const stored = readFileSync(join(root, "protos/toque/index.pck"));
-    const decoded = decodeServedPack(stored);
+    const exported = makePack(scene([12, 24]));
+    const published = brotliCompressSync(makePack(scene([81, 93])));
+    const decoded = decodeServedPack(published);
     expect(decoded?.brotli).toBe(true);
     const pck = decoded.pack;
-    expect(packsMatch(stored, pck)).toBe(true);
-    const changed = Buffer.from(pck);
-    const at = changed.indexOf("Toca la pantalla");
-    expect(at).toBeGreaterThan(0);
-    changed[at] ^= 1;
-    expect(packsMatch(pck, changed)).toBe(false);
-  });
-
-  it("Toque deja el motor fuera de la app y el paquete en Brotli", () => {
-    const protoDir = join(root, "protos/toque");
-    expect(existsSync(join(protoDir, "index.wasm"))).toBe(false);
-    expect(existsSync(join(protoDir, "index.js"))).toBe(false);
-    const html = readFileSync(join(protoDir, "index.html"), "utf8");
-    expect(html).toContain(GODOT_ENGINE_BASE);
-    expect(html).toContain("mainPack: 'index.pck'");
-    const app = inspectServedApp(protoDir, "toque", { staticProto: true });
-    expect(app.errors).toEqual([]);
-    expect(app.total).toBeLessThan(1024 * 1024);
-    const engines = assertSharedEngines(root);
-    expect(engines.versions.map((item) => item.id)).toEqual(["4.7.2-stable-nothreads"]);
-    expect(engines.versions[0].total).toBeGreaterThan(1024 * 1024);
+    expect(packsMatch(published, exported)).toBe(true);
+    expect(packsMatch(published, makePack(scene([81, 93], "scene: changed")))).toBe(false);
   });
 });
 
@@ -142,14 +180,15 @@ describe("disparadores de Godot", () => {
     expect(source).toContain("name: godot-export-${{ matrix.slug }}");
     expect(source).toContain("actions/upload-artifact@v7.0.2");
     expect(source).not.toContain("contents: write");
-    expect(source).not.toMatch(/relative_project_path: \.\/protos\/toque\/godot/);
   });
 
   it("el diff nombra solo los proyectos Godot que toca", () => {
-    expect(godotSlugsInDiff(["protos/toque/godot/project.godot", "protos/chispa/src/main.ts", "README.md"])).toEqual(["toque"]);
+    expect(godotSlugsInDiff(["protos/demo-game/godot/project.godot", "protos/chispa/src/main.ts", "README.md"])).toEqual([
+      "demo-game",
+    ]);
     expect(godotSlugsInDiff(["scripts/godot-web.mjs"])).toEqual([]);
     const projects = listGodotProjects(join(root, "protos"));
-    expect(projects).toContain("toque");
+    expect(projects.length).toBeGreaterThan(0);
     for (const slug of projects) {
       expect(existsSync(join(root, "protos", slug, "godot", "project.godot"))).toBe(true);
     }

@@ -1,6 +1,6 @@
 # Medición: export web de Godot 4.7.2 en un solo hilo
 
-Informe de la medición. El dueño aprobó la fase 4 el 2026-11-03: el wasm va en Brotli q11 con `Content-Encoding: br`, los topes servidos son 12 MiB por archivo y 32 MiB por aplicación (25 MiB de Pages sigue siendo fallo duro) y el ejemplo está en `protos/toque/`. Las cifras de abajo son la medición, no los topes vigentes.
+Informe de la medición. El dueño aprobó la fase 4 el 2026-11-03: el wasm va en Brotli q11 con `Content-Encoding: br`, los topes servidos son 12 MiB por archivo y 32 MiB por aplicación (25 MiB de Pages sigue siendo fallo duro). La muestra usada es `medida/godot-minimo/`; las cifras de abajo son la medición, no los topes vigentes.
 
 Runs: [41700556458](https://github.com/daniel-saezv/proto-lab/actions/runs/41700556458) (válido, 5 min 27 s de reloj) y [41699323058](https://github.com/daniel-saezv/proto-lab/actions/runs/41699323058) (el `.wasm` es el mismo; falló la primera sonda de arranque). Godot 4.7.2 stable, preset `Web`, `variant/thread_support=false`. Muestra mínima, viewport 390×844, sin texturas. El `.wasm` es el de la plantilla oficial: una aplicación con arte pesará sobre todo en el `.pck`, no en el motor.
 

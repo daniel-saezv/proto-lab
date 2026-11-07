@@ -4,7 +4,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readCatalog } from "./catalog-lib.mjs";
 import { headersForPath, parsePagesHeaders } from "./pages-headers.mjs";
-import { appendBrotliWasmHeaders, appendCapabilityHeaders, cspWithWasm, headerSource, permissionsPolicy } from "./proto-csp.mjs";
+import {
+  appendBrotliPackHeaders,
+  appendBrotliWasmHeaders,
+  appendCapabilityHeaders,
+  cspWithWasm,
+  headerSource,
+  permissionsPolicy,
+} from "./proto-csp.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(join(root, "apps/world/public/_headers"), "utf8");
@@ -62,7 +69,7 @@ describe("CSP por capacidades", () => {
     expect(augmented.toLowerCase()).not.toContain("cross-origin-embedder-policy");
   });
 
-  it("el ejemplo Toque sirve el motor compartido y el pck en Brotli", () => {
+  it("sirve el motor compartido y genera cabeceras Brotli para un pack estático", () => {
     const source = headerSource(root);
     const rules = parsePagesHeaders(source);
     for (const rule of rules) {
@@ -77,24 +84,27 @@ describe("CSP por capacidades", () => {
     expect(engineJs.has("content-encoding")).toBe(false);
     const worklet = headersForPath(rules, "/protos/engines/godot/4.7.2-stable-nothreads/index.audio.worklet.js");
     expect(worklet.get("cache-control")?.value).toBe("public, max-age=31536000, immutable, no-transform");
-    const pack = headersForPath(rules, "/protos/toque/index.pck");
+    const packRules = parsePagesHeaders(appendBrotliPackHeaders(source, ["demo-game"]));
+    const pack = headersForPath(packRules, "/protos/demo-game/index.pck");
     expect(pack.get("content-encoding")?.value).toBe("br");
     expect(pack.get("content-type")?.value).toBe("application/octet-stream");
     expect(pack.get("cache-control")?.value).toBe("no-cache, no-transform");
-    expect(headersForPath(rules, "/protos/toque/index.html").get("cache-control")?.value).toBe("no-cache");
-    expect(headersForPath(rules, "/protos/toque/index.wasm").has("content-encoding")).toBe(false);
-    expect(headersForPath(rules, "/protos/toque/").get("content-security-policy")?.value).toContain("'wasm-unsafe-eval'");
+    expect(headersForPath(rules, "/protos/demo-game/index.html").get("cache-control")?.value).toBe("no-cache");
+    expect(headersForPath(rules, "/protos/demo-game/index.wasm").has("content-encoding")).toBe(false);
+    expect(headersForPath(rules, "/protos/demo-game/").get("content-security-policy")?.value ?? "").not.toContain("'wasm-unsafe-eval'");
     expect(headersForPath(rules, "/").get("content-security-policy")?.value ?? "").not.toContain("wasm-unsafe-eval");
     expect(source.toLowerCase()).not.toContain("cross-origin-opener-policy");
   });
 
   it("marca el wasm en Brotli y no lo aplica a otro slug", () => {
-    const augmented = appendBrotliWasmHeaders(source, ["toque"]);
+    const withCapability = appendCapabilityHeaders(source, [{ slug: "demo-wasm", capabilities: ["wasm"] }]);
+    const augmented = appendBrotliWasmHeaders(withCapability, ["demo-wasm"]);
     const rules = parsePagesHeaders(augmented);
-    const wasm = headersForPath(rules, "/protos/toque/index.wasm");
+    const wasm = headersForPath(rules, "/protos/demo-wasm/index.wasm");
     expect(wasm.get("content-type")?.value).toBe("application/wasm");
     expect(wasm.get("content-encoding")?.value).toBe("br");
-    expect(headersForPath(rules, "/protos/toque/index.js").has("content-encoding")).toBe(false);
+    expect(headersForPath(rules, "/protos/demo-wasm/index.js").has("content-encoding")).toBe(false);
+    expect(headersForPath(rules, "/protos/demo-wasm/").get("content-security-policy")?.value).toContain("'wasm-unsafe-eval'");
     expect(headersForPath(rules, "/protos/chispa/index.wasm").has("content-encoding")).toBe(false);
     expect(augmented.toLowerCase()).not.toContain("cross-origin-opener-policy");
   });
