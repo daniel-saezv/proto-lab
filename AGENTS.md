@@ -84,7 +84,7 @@ Cursor aplica siempre este archivo y las reglas `alwaysApply` de [`.cursor/rules
 
 El `install` de `.cursor/environment.json` asume el Node de `.nvmrc`. Node 26 no trae Corepack: el comando lo instala con npm, prepara pnpm 12.17.0 y luego las dependencias y los navegadores de Playwright del entorno local (`pnpm previews` y depuración puntual de e2e). En GitHub Actions los e2e usan la imagen Docker oficial, no `playwright install`. Es idempotente.
 
-El entorno de los agentes solo admite el MCP de documentación de Cloudflare (`https://docs.mcp.cloudflare.com/mcp`), registrado en `.cursor/mcp.json` y en `mcpServerAllowlist`. No se añade el MCP de la API (`https://mcp.cloudflare.com/mcp`) ni ningún token. Godot no se instala en la imagen: el export lo hace el workflow y el agente commitea el artefacto (ver [`protos/AGENTS.md`](protos/AGENTS.md)).
+El entorno de los agentes solo admite el MCP de documentación de Cloudflare (`https://docs.mcp.cloudflare.com/mcp`), registrado en `.cursor/mcp.json` y en `mcpServerAllowlist`. No se añade el MCP de la API (`https://mcp.cloudflare.com/mcp`) ni ningún token. Godot no se instala en la imagen: el export lo hace el workflow y el agente commitea el artefacto (ver [`protos/AGENTS.md`](protos/AGENTS.md)). Para comprobar escenas y GDScript, el agente descarga el binario oficial a `/tmp` durante la sesión y lo usa en headless; los comandos están en [`.agents/skills/godot-juego/SKILL.md`](.agents/skills/godot-juego/SKILL.md).
 
 Para probar en la nube: `pnpm typecheck`, `pnpm test:unit` y `pnpm build`; opcional `pnpm preview` (4173) o `pnpm dev` (5173). Playwright local según **Pruebas E2E sostenibles** en [`apps/world/AGENTS.md`](apps/world/AGENTS.md); la suite completa del PR en GitHub Actions.
 

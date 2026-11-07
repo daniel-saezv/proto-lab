@@ -7,7 +7,7 @@ alwaysApply: true
 
 Lee la tabla «Elige tu papel antes de abrir nada» de `AGENTS.md` y sigue solo el papel que corresponde.
 
-- Issue `propuesta` o `aprobado`, o crear/evolucionar un prototipo → **Proto**: edita solo `protos/<slug>/` y lee `protos/AGENTS.md` y `.agents/skills/proto-lab-app/SKILL.md`.
+- Issue `propuesta` o `aprobado`, o crear/evolucionar un prototipo → **Proto**: edita solo `protos/<slug>/` y lee `protos/AGENTS.md` y `.agents/skills/proto-lab-app/SKILL.md`. Si es un juego, también `.agents/skills/godot-juego/SKILL.md` (motor, Godot headless, rendimiento y arte CC0).
 - Cambio del lobby, Inventor, PWA, iframe, tablón o e2e → **Laboratorio**: lee `apps/world/AGENTS.md`.
 - CI, despliegue, Access, D1, secretos → solo con petición explícita del dueño: `.github/AGENTS.md`.
 
