@@ -40,7 +40,7 @@ func _decorado() -> void:
 	Mallas.pozo(self, Vector3(6.1, 0, -2.2))
 	Mallas.arbol(self, Vector3(-6.5, 0, 3.4))
 	Mallas.arbol(self, Vector3(2.4, 0, 6.2))
-	Mallas.arco(self, Vector3(0, 0, -6.5))
+	Mallas.arco(self, Vector3(0, 0, -4.15))
 	var pinche := Node3D.new()
 	pinche.position = Vector3(3.35, 0, 0.15)
 	add_child(pinche)
@@ -75,7 +75,7 @@ func pieza_cara(hongo: Node3D) -> void:
 func _estaciones() -> void:
 	_estacion(Vector3(-3.15, 0, -0.35), "cocina", "Cocina")
 	_estacion(Vector3(3.35, 0, 0.15), "pinche", "Níspero")
-	_estacion(Vector3(0, 0, -6.5), "caza", "Caza")
+	_estacion(Vector3(0, 0, -4.15), "caza", "Caza")
 
 
 func _estacion(pos: Vector3, tipo: String, texto: String) -> void:

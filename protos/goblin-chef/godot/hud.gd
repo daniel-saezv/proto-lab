@@ -35,7 +35,7 @@ func _ready() -> void:
 	_barra()
 	_controles()
 	_modal()
-	cartel("Stick o WASD para andar. El botón grande golpea o usa lo que tengas al lado.")
+	cartel("Stick o WASD. El botón grande golpea o usa lo de al lado.")
 
 
 func direccion_zero() -> void:
@@ -151,7 +151,7 @@ func _barra() -> void:
 	caja.offset_left = 16
 	caja.offset_top = 14
 	caja.offset_right = -16
-	caja.offset_bottom = 132
+	caja.offset_bottom = 168
 	caja.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(caja)
 	_linea1 = _etiqueta(26)
@@ -363,6 +363,7 @@ func _etiqueta(tam: int) -> Label:
 	var etiqueta := Label.new()
 	etiqueta.add_theme_font_size_override("font_size", tam)
 	etiqueta.add_theme_color_override("font_color", Color("fff6e8"))
+	etiqueta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	etiqueta.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return etiqueta
 
