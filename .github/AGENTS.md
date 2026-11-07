@@ -68,4 +68,4 @@ Detrás de Cloudflare Access igual que `POST /api/proposals`: valida el JWT `Cf-
 
 **Caché:** KV `PROPOSALS` es el mismo namespace en producción y en las previews. La clave lleva el entorno: `proposal-status:v7:production` en `main`, `proposal-status:v7:preview:<rama>` en cada preview y `proposal-status:v7:local` sin rama de Pages. Una preview no reescribe el tablón de producción. Una lectura buena se sirve **120 s** y se guarda 24 h para poder repetirla si GitHub falla; un fallo o un `partial` no se escriben. Crear una propuesta borra solo la clave de ese entorno. Sin binding, sin caché. Las claves públicas de Access se cachean una hora (memoria del isolate y Cache API).
 
-**Pull requests de propuestas:** el cuerpo del PR debe citar siempre el número de su issue (p. ej. `Closes #N` en propuestas aprobadas implementadas) para que el tablón enlace issue y PR.
+**Pull requests de propuestas:** el tablón enlaza issue y PR porque el cuerpo del PR cita la issue (regla en [`protos/AGENTS.md`](../protos/AGENTS.md)).

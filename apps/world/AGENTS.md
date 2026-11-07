@@ -1,5 +1,7 @@
 # AGENTS.md — laboratorio (lobby)
 
+**Papel Laboratorio.** Radio de acción: `apps/world/`, `e2e/` y lo que la tarea pida de forma explícita. Una propuesta de issue nunca activa este papel. No se edita `.github/` sin petición del dueño.
+
 Instrucciones para cambios en `apps/world/`, el cableado del iframe en el laboratorio y pruebas e2e del mundo. El contrato de una aplicación dentro del iframe está en [`protos/AGENTS.md`](../../protos/AGENTS.md).
 
 ## Render del lobby
@@ -26,15 +28,13 @@ Al abrir, el laboratorio suelta el renderer WebGL del mundo (un solo contexto). 
 
 Mientras se juega, el cromo nace plegado: solo un tirador semitransparente en la esquina inferior derecha (`env(safe-area-inset-*)`, área táctil de 44 px, el resto de la pantalla sigue recibiendo el toque). Al quedar listo el prototipo, un aviso breve («Abrir controles») señala ese tirador durante unos 2 s y se retira solo, o antes si el panel se abre; no recibe toques ni deja una capa. Con puntero fino y hover el tirador visible pasa de 18 px a 36 px (área de 56 px); en táctil sigue el punto pequeño. Escape o el tirador lo despliegan (`aria-expanded` y foco visible); se pliega al pulsar fuera, al elegir una acción o a los 4 s. Si la apertura falla, el cromo se queda desplegado para que Volver siga a mano. Pantalla completa pide `requestFullscreen` sobre el overlay (`#stage`), en el mismo gesto del clic, para que el cromo de Volver siga dentro. El `allow` del iframe no interviene: la petición es del documento superior y la política por defecto de `fullscreen` ya es `self`. Si la API no existe, `fullscreenEnabled` es falso, la promesa falla o no se asienta en 700 ms, el mismo botón activa el modo CSS (`is-pseudo-fullscreen`): fijo, `100dvh`, `safe-area`, sin scroll y con el laboratorio oculto. El botón pasa a decir Salir y se sincroniza con `fullscreenchange`. Si la app ya ocupa la ventana (`display-mode: standalone`, `navigator.standalone`, o `display-mode: fullscreen` sin un elemento en la Fullscreen API), el botón se oculta: en ese modo la petición nativa no cambia el cromo y a veces la promesa no termina. El prefijo `webkit` solo se usa si el método estándar no existe. El parche de un solo motor, si hace falta, va justificado en el código.
 
-El guardado de una persona va a `localStorage` del laboratorio, en la bolsa `proto-lab:app:<slug>`, solo si `capabilities` incluye `save`. La aplicación deja `localStorage` y `sessionStorage` en manos del laboratorio y no navega la ventana superior.
+El guardado de una persona va a `localStorage` del laboratorio, en la bolsa `proto-lab:app:<slug>`, solo si `capabilities` incluye `save`: mensaje `{ source: "proto-lab", type: "save", id, op: "get"|"set"|"delete", key, value? }` y respuesta `save-result`. Sin esa capacidad el mensaje se ignora.
 
-El atributo `allow` del iframe sale solo de los permisos de dispositivo declarados en el manifiesto del prototipo.
+El atributo `allow` del iframe sale solo de los permisos de dispositivo declarados en el manifiesto del prototipo. La `Permissions-Policy` de `/` y de `/index.html` abre esos permisos para `self` para poder delegarlos.
 
 ### Puente heredado `asset-request`
 
 El laboratorio responde a `{ source: "proto-lab", type: "asset-request", id, path }` si `event.source` es el `contentWindow` del iframe, la ruta está en la lista `assets` del manifiesto y no se superan **128** peticiones por apertura. Guarda el buffer durante esa apertura y lo clona una vez hacia el iframe, sin `slice` previo. Acepta imágenes, audio y JSON (`application/json`; un `.json` servido como `text/plain` también, si el cuerpo parsea). No inyecta `window.__protoLabAssets`.
-
-El guardado lo escribe el laboratorio vía mensaje `save` solo si `proto.json` declara `save`. Mensaje `{ source: "proto-lab", type: "save", id, op: "get"|"set"|"delete", key, value? }` y respuesta `save-result`. Sin esa capacidad el mensaje se ignora.
 
 ## Inventor, taller y audio del lobby
 

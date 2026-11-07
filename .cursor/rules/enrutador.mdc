@@ -1,0 +1,6 @@
+---
+description: Elegir papel (Proto o Laboratorio) y radio de acción según la instrucción recibida.
+alwaysApply: true
+---
+
+Antes de planificar o editar, elige tu papel con la tabla «Elige tu papel antes de abrir nada» de `AGENTS.md` y abre el archivo que indica. Los `AGENTS.md` anidados y las reglas `papel-*.mdc` solo se cargan cuando ya hay archivos de esa carpeta en el contexto: no esperes a que aparezcan solos.
