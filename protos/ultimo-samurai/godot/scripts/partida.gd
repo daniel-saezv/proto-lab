@@ -157,9 +157,14 @@ func _datos() -> Variant:
 	if not OS.has_feature("web"):
 		return null
 	var ventana: Variant = JavaScriptBridge.get_interface("window")
-	if ventana == null:
+	if ventana == null or not (ventana is Object):
 		return null
-	return ventana.get("__protoLabData")
+	# JavaScriptObject.get() invoca el método JS «get», que window no tiene.
+	# El índice lee la propiedad __protoLabData del puente.
+	var puente: Variant = (ventana as Object)["__protoLabData"]
+	if puente == null or not (puente is Object):
+		return null
+	return puente
 
 
 func _al_leer(args: Variant) -> void:
