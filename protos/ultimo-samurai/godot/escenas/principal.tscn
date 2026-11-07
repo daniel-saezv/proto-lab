@@ -1,0 +1,32 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/principal.gd" id="1_principal"]
+[ext_resource type="Script" path="res://scripts/camara.gd" id="2_camara"]
+[ext_resource type="Script" path="res://scripts/mapa.gd" id="3_mapa"]
+[ext_resource type="PackedScene" path="res://escenas/jugador.tscn" id="4_jugador"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="5_hud"]
+[ext_resource type="Script" path="res://scripts/calidad.gd" id="6_calidad"]
+
+[node name="Principal" type="Node3D"]
+script = ExtResource("1_principal")
+
+[node name="Entorno" type="WorldEnvironment" parent="." groups=["entorno"]]
+
+[node name="Luna" type="DirectionalLight3D" parent="." groups=["luna"]]
+
+[node name="Camara" type="Camera3D" parent="." groups=["camara"]]
+transform = Transform3D(1, 0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, -0.55, 2.2, 9)
+current = true
+script = ExtResource("2_camara")
+
+[node name="Mapa" type="Node3D" parent="."]
+script = ExtResource("3_mapa")
+
+[node name="Jugador" parent="." instance=ExtResource("4_jugador")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0.08, 0)
+
+[node name="HUD" type="CanvasLayer" parent="." groups=["hud"]]
+script = ExtResource("5_hud")
+
+[node name="Calidad" type="Node" parent="."]
+script = ExtResource("6_calidad")
