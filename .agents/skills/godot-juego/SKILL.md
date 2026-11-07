@@ -1,6 +1,6 @@
 ---
 name: godot-juego
-description: "Juego aprobado de Proto Lab en Godot 4.7. La issue marca 3D o 2D; el viewport no obliga a hacer 2D. Incluye cómo comprobar el proyecto con Godot headless en Cursor Cloud, el presupuesto de rendimiento para escritorio y móvil de gama alta, pautas de interfaz rica, enlaces a la documentación 4.7 y a los demos oficiales, y las fuentes CC0 de las que se puede copiar arte. Úsala al crear o iterar protos/<slug>/godot o al elegir modelos, sprites o audio. No sustituye a proto-lab-app ni al LEEME del export."
+description: "Juego aprobado de Proto Lab en Godot 4.7. La issue marca 3D o 2D; el viewport no obliga a hacer 2D. Incluye cómo comprobar el proyecto con Godot headless en Cursor Cloud, el presupuesto de rendimiento para escritorio y móvil de gama alta, pautas de gráficos ricos 2D y 3D en Compatibility, de interfaz rica, enlaces a la documentación 4.7 y a los demos oficiales, y las fuentes CC0 de las que se puede copiar arte. Úsala al crear o iterar protos/<slug>/godot o al elegir modelos, sprites o audio. No sustituye a proto-lab-app ni al LEEME del export."
 ---
 
 # Juego Godot en Proto Lab
@@ -31,7 +31,7 @@ La issue marca la dimensión.
 
 El viewport 390×844, `canvas_items` y `expand` son la ventana que exige el validador (`scripts/godot-web.mjs`). Se quedan así. En la guía de [varias resoluciones](https://docs.godotengine.org/en/4.7/tutorials/rendering/multiple_resolutions.html), `canvas_items` deja el 3D a la resolución de la ventana. En vertical, `Camera3D.keep_aspect` queda en `Camera3D.KEEP_WIDTH`.
 
-El renderer sigue en `gl_compatibility`. En la web es el único y [sí pinta juegos 3D](https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html), con las funciones 3D básicas. Forward+ y Mobile no salen en el navegador. Sin niebla volumétrica, SDFGI, VoxelGI ni decals. Una luz direccional, ambiente, pocas omni y las sombras apagadas salvo que el juego las necesite. El cielo de partida es `ProceduralSkyMaterial`.
+El renderer sigue en `gl_compatibility`. En la web es el único y [sí pinta juegos 3D](https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html). Qué efectos tiene y cómo sustituir los que faltan está en la sección «Gráficos ricos». El cielo de partida es `ProceduralSkyMaterial`.
 
 GDScript. Los controles van por toque, y el primer sonido va en ese gesto. El detalle del audio sin hilos está en el `LEEME`. Las mallas van en glTF 2.0 (`.gltf` o `.glb`): el workflow de export no instala Blender. [Formatos 3D](https://docs.godotengine.org/en/4.7/tutorials/assets_pipeline/importing_3d_scenes/available_formats.html).
 
@@ -58,13 +58,13 @@ El objetivo es 60 fps estables en un navegador de escritorio y en un móvil de g
 
 El presupuesto decide la técnica, no recorta la propuesta. Si la issue pide algo caro (un mundo grande, muchas luces, mucha gente en pantalla), consíguelo con técnica y explícalo en el PR. No rebajes la idea sin decirlo.
 
-Cifras orientativas por fotograma visible, para un móvil de gama alta: unas 200–300 llamadas de dibujo, del orden de 300 k triángulos, pocas luces dinámicas por objeto y una sola sombra direccional como mucho. En escritorio sobra margen; diseña para el móvil y deja que escritorio lo luzca.
+Cifras orientativas por fotograma visible, para un móvil de gama alta: unas 200–300 llamadas de dibujo, del orden de 300 k triángulos, pocas luces dinámicas por objeto y la sombra direccional como base. En escritorio sobra margen; diseña para el móvil y deja que escritorio lo luzca.
 
 Técnicas, de más a menos rentables:
 
 - **Repetición**: `MultiMeshInstance3D` para todo lo que se repite (hierba, rocas, multitudes, balas). Un material compartido por muchos objetos cuesta menos que muchos materiales parecidos; usa atlas de texturas.
 - **Distancia**: `visibility_range_end` en `GeometryInstance3D` para ocultar lo lejano, y la cámara con `far` ajustado. Niebla de profundidad simple para esconder el corte.
-- **Luz**: Compatibility pinta en una sola pasada y admite 8 omni y 8 spot por malla; cada luz con sombra añade otra pasada. Acota `omni_range` / `spot_range` para que cada malla toque pocas. La emisión en el material y un ambiente bien elegido sustituyen a muchas luces. Sombras solo en la direccional, con `directional_shadow_max_distance` corto.
+- **Luz**: Compatibility pinta en una sola pasada y admite 8 omni y 8 spot por malla; cada luz con sombra añade otra pasada. Acota `omni_range` / `spot_range` para que cada malla toque pocas. La emisión en el material y un ambiente bien elegido sustituyen a muchas luces. La sombra base es la direccional, con `directional_shadow_max_distance` corto; omni o spot con sombra son el escalón caro de «Gráficos ricos».
 - **Resolución**: con `canvas_items` el 3D se pinta a la resolución de la ventana, que en un móvil con densidad 3 son muchos píxeles. `get_viewport().scaling_3d_scale` baja solo el 3D y deja la interfaz nítida. En Compatibility el único modo es el bilineal (FSR no está).
 - **Física**: formas simples (caja, esfera, cápsula) para lo que se mueve; `ConcavePolygonShape3D` solo en estático.
 - **GDScript**: tipado, nodos cacheados con `@onready`, nada de `get_node`, `find_child` ni creación de objetos en cada `_process`. Reutiliza instancias (pool) en vez de `instantiate()` / `queue_free()` continuos.
@@ -74,6 +74,43 @@ Técnicas, de más a menos rentables:
 Escalado automático, para no tener que elegir entre arte y fluidez: el juego mide `Performance.get_monitor(Performance.TIME_PROCESS)` o `Engine.get_frames_per_second()` y, si pasa unos segundos por debajo de ~50 fps, baja en este orden `scaling_3d_scale`, sombras y partículas. El arte y el diseño no cambian; solo su coste.
 
 El agente no puede medir en un teléfono. En el PR anota las cifras estimadas (llamadas de dibujo, triángulos, luces, sombra sí o no) y qué hace el escalado automático. La fluidez real la confirma el dueño.
+
+## Gráficos ricos (2D y 3D) en la web
+
+El juego tiene que verse bien, no solo funcionar. La riqueza sale de la dirección de arte (paleta, luz, contraste, silueta), del movimiento y de los efectos bien elegidos, no de la técnica más cara. El estilo lo marca la issue; si no dice nada, elige uno coherente y mantenlo en todo el juego.
+
+Lo que Compatibility (WebGL 2) **sí** tiene en 4.7, según la [tabla oficial de renderers](https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html):
+
+- `WorldEnvironment`: tonemap, glow, ajustes de color (brillo, contraste, saturación, LUT), niebla de profundidad y de altura, SSAO y cielo procedural o con shader.
+- Luces: direccional, omni y spot con sombras, 8 omni y 8 spot por malla, y 2 `ReflectionProbe` por malla.
+- `StandardMaterial3D` completo salvo dispersión subsuperficial: mapas de normales, emisión, rim, transparencia, `BaseMaterial3D` sin sombreado y toon.
+- Shaders propios: `spatial`, `canvas_item`, `sky` y `particles`, con texturas de pantalla y de profundidad. Posproceso propio con un quad a pantalla completa.
+- `GPUParticles3D/2D`, MSAA en 3D y supermuestreo (`scaling_3d_scale` > 1).
+- 2D: `PointLight2D` y `DirectionalLight2D` con mapas de normales, sombras con `LightOccluder2D`, `CanvasModulate`, `Parallax2D` y todo `canvas_item`.
+
+Lo que **no** tiene, y con qué se consigue el mismo efecto:
+
+| Falta | Alternativa |
+| --- | --- |
+| Profundidad de campo | Shader de posproceso con la textura de profundidad, o fondo más borroso en el propio arte |
+| Decals | `Sprite3D` o quad con alpha pegado a la superficie, o máscara en el shader del suelo |
+| Niebla volumétrica, SDFGI, VoxelGI, SSIL | Niebla de altura, rayos de luz como mallas aditivas, color de vértice o ambiente horneado en textura; emisión para el rebote |
+| Reflejos en pantalla (SSR) | `ReflectionProbe` o un cubemap en el material |
+| FXAA, TAA, SMAA, MSAA en 2D | MSAA 3D; en 2D, la propiedad `antialiased` de líneas y polígonos o bordes suaves en la textura |
+| Estelas de partículas | Malla tipo cinta actualizada por script, o partículas más densas |
+| Debanding, HDR (color RGBA8) | Ruido o *dither* en el shader de degradados; el glow se ajusta pensando en rango bajo |
+
+`LightmapGI` pinta lightmaps ya horneados, pero hornearlos necesita una GPU con RenderingDevice y el agente solo tiene headless: no lo uses salvo que el dueño entregue el horneado.
+
+Un nivel de calidad por coste, no por plataforma. El juego arranca en alto y baja solo con el escalado automático de la sección de rendimiento; no hay ramas por navegador ni sistema.
+
+| Coste | Efectos | Si el fotograma no llega |
+| --- | --- | --- |
+| Barato, siempre | Tonemap, ajustes de color, niebla, emisión, materiales toon o sin sombreado, `canvas_item`, luces 2D | — |
+| Medio | Glow, sombra direccional, MSAA 2×, partículas densas, posproceso de un paso | Bajar resolución de sombra, menos partículas |
+| Caro | SSAO, MSAA 4×, varias luces con sombra, supermuestreo | Es lo primero que se apaga |
+
+En 3D, los mapas de normales, la emisión y una buena luz direccional con glow suave dan más que muchas luces. En 2D, las luces con mapas de normales, la paralaje por capas y los shaders `canvas_item` (contorno, disolución, distorsión, destellos) hacen el trabajo de un render caro.
 
 ## Interfaz rica
 
@@ -116,6 +153,18 @@ Documentación 4.7, movimiento y efectos:
 [texto 3D](https://docs.godotengine.org/en/4.7/tutorials/3d/3d_text.html) ·
 [ejemplos de entrada](https://docs.godotengine.org/en/4.7/tutorials/inputs/input_examples.html)
 
+Documentación 4.7, gráficos:
+[entorno y posproceso](https://docs.godotengine.org/en/4.7/tutorials/3d/environment_and_post_processing.html) ·
+[`StandardMaterial3D`](https://docs.godotengine.org/en/4.7/tutorials/3d/standard_material_3d.html) ·
+[luces y sombras 3D](https://docs.godotengine.org/en/4.7/tutorials/3d/lights_and_shadows.html) ·
+[antialias 3D](https://docs.godotengine.org/en/4.7/tutorials/3d/3d_antialiasing.html) ·
+[partículas 3D](https://docs.godotengine.org/en/4.7/tutorials/3d/particles/index.html) ·
+[iluminación global](https://docs.godotengine.org/en/4.7/tutorials/3d/global_illumination/index.html) ·
+[shaders](https://docs.godotengine.org/en/4.7/tutorials/shaders/index.html) ·
+[posproceso propio](https://docs.godotengine.org/en/4.7/tutorials/shaders/custom_postprocessing.html) ·
+[visual shaders](https://docs.godotengine.org/en/4.7/tutorials/shaders/visual_shaders.html) ·
+[paralaje 2D](https://docs.godotengine.org/en/4.7/tutorials/2d/2d_parallax.html)
+
 Documentación 4.7, web y rendimiento:
 [web](https://docs.godotengine.org/en/4.7/tutorials/platform/web/index.html) ·
 [renderers](https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html) (la tabla dice qué existe en Compatibility) ·
@@ -133,6 +182,8 @@ Demos oficiales, MIT, en el commit fijado [`b761b4cd`](https://github.com/godote
 | --- | --- |
 | Interfaz | [`gui/control_gallery`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/control_gallery), [`gui/theming_override`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/theming_override), [`gui/rich_text_bbcode`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/rich_text_bbcode), [`gui/msdf_font`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/msdf_font), [`gui/multiple_resolutions`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/multiple_resolutions), [`gui/drag_and_drop`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/gui/drag_and_drop) |
 | Movimiento y efectos 2D | [`2d/tween`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/tween), [`2d/particles`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/particles), [`2d/sprite_shaders`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/sprite_shaders), [`2d/screen_space_shaders`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/screen_space_shaders) |
+| Gráficos 2D (Compatibility) | [`2d/lights_and_shadows`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/lights_and_shadows), [`2d/light2d_as_mask`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/light2d_as_mask), [`2d/bullet_shower`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/bullet_shower), [`2d/instancing`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/instancing), [`2d/platformer`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/platformer) |
+| Gráficos 3D (Forward+: lee la técnica y comprueba la tabla) | [`3d/lights_and_shadows`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/lights_and_shadows), [`3d/tonemap_color_correction`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/tonemap_color_correction), [`3d/material_testers`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/material_testers), [`3d/sky_shaders`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/sky_shaders), [`3d/particles`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/particles), [`3d/procedural_materials`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/procedural_materials), [`3d/antialiasing`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/antialiasing), [`3d/platformer`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/platformer) |
 | Juegos completos pequeños | [`2d/dodge_the_creeps`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/2d/dodge_the_creeps), [`3d/squash_the_creeps`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/squash_the_creeps) |
 | 3D y rendimiento | [`3d/labels_and_texts`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/labels_and_texts), [`3d/visibility_ranges`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/visibility_ranges), [`3d/occlusion_culling_mesh_lod`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/occlusion_culling_mesh_lod), [`3d/graphics_settings`](https://github.com/godotengine/godot-demo-projects/tree/b761b4cd5718a7118f2c95eb55f181d0a5f004f1/3d/graphics_settings) (ajustes de calidad en el juego) |
 

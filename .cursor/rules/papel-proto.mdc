@@ -12,7 +12,7 @@ Antes de escribir código, lee en este orden:
 
 1. `protos/AGENTS.md`: contrato con el laboratorio, `proto.json`, cupos, `stop()`, vista previa.
 2. `.agents/skills/proto-lab-app/SKILL.md`: loader, escenas y audio mandan sobre cualquier skill de Phaser.
-3. Si es un juego aprobado: `.agents/skills/godot-juego/SKILL.md` (Godot salvo que la issue pida otra tecnología) y `templates/export-estatico/LEEME.md`. De la skill, aplica sí o sí «Comprobar el proyecto sin exportar» (Godot headless en `/tmp` antes de cada push), «Rendimiento: escritorio y móvil de gama alta», «Interfaz rica» y «Arte que se puede copiar»; «Referencias» enlaza la documentación 4.7 y los demos oficiales, que se leen y no se copian al repo.
+3. Si es un juego aprobado: `.agents/skills/godot-juego/SKILL.md` (Godot salvo que la issue pida otra tecnología) y `templates/export-estatico/LEEME.md`. De la skill, aplica sí o sí «Comprobar el proyecto sin exportar» (Godot headless en `/tmp` antes de cada push), «Rendimiento: escritorio y móvil de gama alta», «Gráficos ricos (2D y 3D) en la web», «Interfaz rica» y «Arte que se puede copiar»; «Referencias» enlaza la documentación 4.7 y los demos oficiales, que se leen y no se copian al repo.
 4. La plantilla que toque: `templates/aplicacion/LEEME.md` o `templates/export-estatico/`. Se copian, no se importan.
 
 Reglas que se olvidan:
